@@ -1,14 +1,24 @@
-FROM golang:1.21-alpine
+# Build stage
+FROM golang:1.21-alpine AS build
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download
-
+# Copy source code first
 COPY . .
 
-RUN go build -o main .
+# Initialize go modules and download dependencies
+RUN go mod init supplier-mock || true && \
+    go mod tidy && \
+    go mod download
 
+# Build application with cached dependencies
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -o main .
+
+# Production stage
+FROM alpine:latest
+WORKDIR /app
+COPY --from=build /app/main .
 EXPOSE 8082
-
 CMD ["./main"]

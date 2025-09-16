@@ -1,25 +1,35 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { TransferRequest, WorldState } from '../models/transfer.model';
+import { TransferRequest, TransferStatus, ApproveRequest } from '../models/transfer.model';
+import { environment } from '../../environments/environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class TransferService {
-  private apiUrl = 'http://localhost:8080/transfer';
+  private apiUrl = `${environment.apiUrl}/transfer`;
 
   constructor(private http: HttpClient) {}
 
-  createTransfer(request: TransferRequest): Observable<WorldState> {
-    return this.http.post<WorldState>(`${this.apiUrl}/create`, request);
+  createTransfer(request: TransferRequest): Observable<any> {
+    return this.http.post(`${this.apiUrl}/create`, request);
   }
 
-  approveTransfer(request: TransferRequest): Observable<WorldState> {
-    return this.http.post<WorldState>(`${this.apiUrl}/approve`, request);
+  approveTransfer(request: ApproveRequest): Observable<any> {
+    return this.http.post(`${this.apiUrl}/approve`, request);
   }
 
-  getTransferStatus(transactionId: string): Observable<WorldState> {
-    return this.http.get<WorldState>(`${this.apiUrl}/status/${transactionId}`);
+  getTransferList(): Observable<TransferStatus[]> {
+    return this.http.get<TransferStatus[]>(`${this.apiUrl}/list`);
+  }
+
+  getPendingTransfers(approverId: string): Observable<TransferStatus[]> {
+    return this.http.get<TransferStatus[]>(`${this.apiUrl}/list`, {
+      params: {
+        approverId,
+        status: ['PENDING', 'PARTIALLY_APPROVED'].join(',')
+      }
+    });
   }
 }

@@ -1,11 +1,11 @@
 <div class="container mt-4">
   <mat-card>
     <mat-card-header>
-      <mat-card-title>Danh sách giao dịch cần phê duyệt</mat-card-title>
+      <mat-card-title>Danh sách giao dịch</mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
-      <table mat-table [dataSource]="pendingTransfers" class="w-100">
+      <table mat-table [dataSource]="transfers" class="w-100">
         <ng-container matColumnDef="reqId">
           <th mat-header-cell *matHeaderCellDef>Mã giao dịch</th>
           <td mat-cell *matCellDef="let transfer">{{transfer.reqId}}</td>
@@ -13,7 +13,7 @@
 
         <ng-container matColumnDef="fromUser">
           <th mat-header-cell *matHeaderCellDef>Người gửi</th>
-          <td mat-cell *matCellDef="let transfer">{{transfer.fromUser}}</td>
+          <td mat-cell *matCellDef="let transfer">{{getUserName(transfer.fromUser)}}</td>
         </ng-container>
 
         <ng-container matColumnDef="toAccount">
@@ -35,19 +35,24 @@
           <th mat-header-cell *matHeaderCellDef>Trạng thái</th>
           <td mat-cell *matCellDef="let transfer">
             <span class="status-badge"
-                  [ngClass]="transfer.status === 'PARTIALLY_APPROVED' ? 'accent' : 'primary'">
-              {{transfer.status === 'PARTIALLY_APPROVED' ? 'Đã duyệt một phần' : 'Chờ duyệt'}}
+                  [ngClass]="getStatusColor(transfer.status)">
+              {{getStatusLabel(transfer.status)}}
             </span>
           </td>
         </ng-container>
 
-        <ng-container matColumnDef="actions">
-          <th mat-header-cell *matHeaderCellDef>Thao tác</th>
+        <ng-container matColumnDef="approvers">
+          <th mat-header-cell *matHeaderCellDef>Người phê duyệt</th>
           <td mat-cell *matCellDef="let transfer">
-            <button mat-raised-button color="primary" (click)="onApprove(transfer.reqId)"
-                    [disabled]="transfer.approvedBy.includes(currentUserId)">
-              Phê duyệt
-            </button>
+            <div class="approvers-list">
+              <div *ngFor="let approverId of transfer.approvers" class="approver-item">
+                {{getUserName(approverId)}}
+                <mat-icon *ngIf="transfer.approvedBy.includes(approverId)" 
+                         class="approved-icon" color="primary">
+                  check_circle
+                </mat-icon>
+              </div>
+            </div>
           </td>
         </ng-container>
 
@@ -55,8 +60,8 @@
         <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
       </table>
 
-      <div *ngIf="pendingTransfers.length === 0" class="text-center p-4">
-        <p>Không có giao dịch nào cần phê duyệt</p>
+      <div *ngIf="transfers.length === 0" class="text-center p-4">
+        <p>Chưa có giao dịch nào</p>
       </div>
     </mat-card-content>
   </mat-card>

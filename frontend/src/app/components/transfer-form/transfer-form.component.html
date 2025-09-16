@@ -1,46 +1,71 @@
-<div class="transfer-form">
-  <h2>Create Transfer</h2>
+<div class="container mt-4">
   <form [formGroup]="transferForm" (ngSubmit)="onSubmit()">
-    <div class="form-group">
-      <label for="fromAccount">From Account</label>
-      <input
-        type="text"
-        id="fromAccount"
-        formControlName="fromAccount"
-        class="form-control"
-        placeholder="Enter sender account"
-      >
-    </div>
+    <mat-card>
+      <mat-card-header>
+        <mat-card-title>Tạo giao dịch chuyển tiền mới</mat-card-title>
+      </mat-card-header>
+      
+      <mat-card-content>
+        <div class="row">
+          <div class="col-md-6">
+            <mat-form-field appearance="outline" class="w-100">
+              <mat-label>Số tài khoản người nhận</mat-label>
+              <input matInput formControlName="toAccount" placeholder="Nhập số tài khoản">
+              <mat-error *ngIf="transferForm.get('toAccount')?.hasError('required')">
+                Vui lòng nhập số tài khoản người nhận
+              </mat-error>
+            </mat-form-field>
+          </div>
+          
+          <div class="col-md-6">
+            <mat-form-field appearance="outline" class="w-100">
+              <mat-label>Số tiền</mat-label>
+              <input matInput type="number" formControlName="amount" placeholder="Nhập số tiền">
+              <mat-error *ngIf="transferForm.get('amount')?.hasError('required')">
+                Vui lòng nhập số tiền
+              </mat-error>
+              <mat-error *ngIf="transferForm.get('amount')?.hasError('min')">
+                Số tiền phải lớn hơn 0
+              </mat-error>
+            </mat-form-field>
+          </div>
+        </div>
 
-    <div class="form-group">
-      <label for="toAccount">To Account</label>
-      <input
-        type="text"
-        id="toAccount"
-        formControlName="toAccount"
-        class="form-control"
-        placeholder="Enter recipient account"
-      >
-    </div>
+        <div class="row">
+          <div class="col-12">
+            <mat-form-field appearance="outline" class="w-100">
+              <mat-label>Nội dung chuyển tiền</mat-label>
+              <textarea matInput formControlName="description" placeholder="Nhập nội dung chuyển tiền"></textarea>
+              <mat-error *ngIf="transferForm.get('description')?.hasError('required')">
+                Vui lòng nhập nội dung chuyển tiền
+              </mat-error>
+            </mat-form-field>
+          </div>
+        </div>
 
-    <div class="form-group">
-      <label for="amount">Amount</label>
-      <input
-        type="number"
-        id="amount"
-        formControlName="amount"
-        class="form-control"
-        placeholder="Enter amount"
-        min="0"
-      >
-    </div>
+        <div class="row">
+          <div class="col-12">
+            <mat-form-field appearance="outline" class="w-100">
+              <mat-label>Người phê duyệt</mat-label>
+              <mat-select formControlName="approvers" multiple>
+                <mat-option *ngFor="let user of users" [value]="user">
+                  {{user.name}}
+                </mat-option>
+              </mat-select>
+              <mat-error *ngIf="transferForm.get('approvers')?.hasError('required')">
+                Vui lòng chọn ít nhất một người phê duyệt
+              </mat-error>
+            </mat-form-field>
+          </div>
+        </div>
+      </mat-card-content>
 
-    <button
-      type="submit"
-      class="btn btn-primary"
-      [disabled]="!transferForm.valid"
-    >
-      Create Transfer
-    </button>
+      <mat-card-actions align="end">
+        <button mat-button type="button" (click)="transferForm.reset()">Hủy</button>
+        <button mat-raised-button color="primary" type="submit" [disabled]="!transferForm.valid">
+          Xác nhận
+        </button>
+      </mat-card-actions>
+    </mat-card>
   </form>
 </div>

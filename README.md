@@ -46,7 +46,19 @@ Frontend (Angular) -> Backend (Spring Boot) -> MS Blockchain (Go) -> Supplier Mo
    docker-compose up --build
    ```
 
-3. Truy cập các endpoints:
+### Cache Docker
+
+Hệ thống đã được cấu hình cache Docker cơ bản:
+
+- **Frontend**: Cache npm dependencies
+- **Backend**: Cache Maven dependencies
+- **MS Blockchain & Supplier Mock**: Cache Go modules
+
+**Lợi ích**:
+- Giảm thời gian build cho lần rebuild
+- Tận dụng lại Docker layers đã build trước đó
+
+4. Truy cập các endpoints:
    - Frontend: http://localhost:4200
    - Backend: http://localhost:8080
    - MS Blockchain: http://localhost:8081

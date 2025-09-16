@@ -6,17 +6,30 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - mongodb_data:/data/db
+      - ./data/mongodb:/data/db  # Mount vào thư mục local để persistent data
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro  # Script khởi tạo DB
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: blockchain
 
   supplier-mock:
-    build: ./supplier-mock
+    build:
+      context: ./supplier-mock
+      dockerfile: Dockerfile
+      cache_from:
+        - golang:1.21-alpine
     ports:
       - "8082:8082"
     depends_on:
       - mongo
 
   ms-blockchain:
-    build: ./ms-blockchain
+    build:
+      context: ./ms-blockchain
+      dockerfile: Dockerfile
+      cache_from:
+        - golang:1.21-alpine
     ports:
       - "8081:8081"
     depends_on:
@@ -24,14 +37,22 @@ services:
       - supplier-mock
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      cache_from:
+        - maven:3.8-openjdk-17
     ports:
       - "8080:8080"
     depends_on:
       - ms-blockchain
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      cache_from:
+        - node:18-alpine
     ports:
       - "4200:80"
     depends_on:
@@ -39,3 +60,4 @@ services:
 
 volumes:
   mongodb_data:
+    driver: local

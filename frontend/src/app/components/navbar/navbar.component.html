@@ -1,0 +1,16 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Blockchain Demo</a>
+    
+    <div class="d-flex align-items-center">
+      <span class="text-white me-2">Người dùng:</span>
+      <mat-form-field appearance="fill">
+        <mat-select [(ngModel)]="selectedUser" (selectionChange)="onUserChange($event.value)">
+          <mat-option *ngFor="let user of users" [value]="user">
+            {{ user.name }}
+          </mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+  </div>
+</nav>

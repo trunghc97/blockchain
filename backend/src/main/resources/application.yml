@@ -1,6 +1,11 @@
 server:
   port: 8080
 
+spring:
+  data:
+    mongodb:
+      uri: mongodb://root:example@mongo:27017/blockchain?authSource=admin
+
 blockchain:
   service:
     url: http://ms-blockchain:8081

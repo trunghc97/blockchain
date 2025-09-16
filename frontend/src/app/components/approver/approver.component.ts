@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { TransferService } from '../../services/transfer.service';
-import { WorldState } from '../../models/transfer.model';
+import { TransferStatus } from '../../models/transfer.model';
 
 @Component({
   selector: 'app-approver',
@@ -9,57 +9,50 @@ import { WorldState } from '../../models/transfer.model';
   styleUrls: ['./approver.component.css']
 })
 export class ApproverComponent implements OnInit {
-  approverForm: FormGroup;
-  worldState?: WorldState;
-  error?: string;
+  pendingTransfers: TransferStatus[] = [];
+  displayedColumns: string[] = ['reqId', 'fromUser', 'toAccount', 'amount', 'description', 'status', 'actions'];
+  currentUserId: string = '';
 
   constructor(
-    private fb: FormBuilder,
-    private transferService: TransferService
-  ) {
-    this.approverForm = this.fb.group({
-      transactionId: ['', Validators.required],
-      approverId: ['', Validators.required]
-    });
+    private transferService: TransferService,
+    private snackBar: MatSnackBar
+  ) {}
+
+  ngOnInit(): void {
+    this.currentUserId = localStorage.getItem('currentUserId') || '';
+    this.loadPendingTransfers();
   }
 
-  ngOnInit() {}
-
-  onCheckStatus() {
-    const transactionId = this.approverForm.get('transactionId')?.value;
-    if (transactionId) {
-      this.transferService.getTransferStatus(transactionId).subscribe({
-        next: (response) => {
-          this.worldState = response;
-          this.error = undefined;
+  loadPendingTransfers(): void {
+    if (this.currentUserId) {
+      this.transferService.getPendingTransfers(this.currentUserId).subscribe(
+        transfers => {
+          this.pendingTransfers = transfers;
         },
-        error: (err) => {
-          this.error = 'Error fetching transaction status';
-          this.worldState = undefined;
+        error => {
+          this.snackBar.open('Có lỗi khi tải danh sách giao dịch', 'Đóng', {
+            duration: 3000
+          });
         }
-      });
+      );
     }
   }
 
-  onApprove() {
-    if (this.approverForm.valid && this.worldState) {
-      const request = {
-        transactionId: this.worldState.transactionId,
-        fromAccount: this.worldState.fromAccount,
-        toAccount: this.worldState.toAccount,
-        amount: this.worldState.amount,
-        approverId: this.approverForm.get('approverId')?.value
-      };
-
-      this.transferService.approveTransfer(request).subscribe({
-        next: (response) => {
-          this.worldState = response;
-          this.error = undefined;
+  onApprove(reqId: string): void {
+    if (this.currentUserId) {
+      this.transferService.approveTransfer({ reqId, approverId: this.currentUserId }).subscribe(
+        () => {
+          this.snackBar.open('Phê duyệt thành công', 'Đóng', {
+            duration: 3000
+          });
+          this.loadPendingTransfers();
         },
-        error: (err) => {
-          this.error = 'Error approving transaction';
+        error => {
+          this.snackBar.open('Có lỗi khi phê duyệt giao dịch', 'Đóng', {
+            duration: 3000
+          });
         }
-      });
+      );
     }
   }
 }

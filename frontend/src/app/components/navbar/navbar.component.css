@@ -1,0 +1,21 @@
+.navbar {
+  padding: 1rem;
+}
+
+mat-form-field {
+  width: 200px;
+  margin-bottom: -1.25em;
+}
+
+::ng-deep .mat-form-field-wrapper {
+  margin-bottom: 0;
+}
+
+::ng-deep .mat-form-field-underline {
+  display: none;
+}
+
+::ng-deep .mat-select-value,
+::ng-deep .mat-select-arrow {
+  color: white !important;
+}

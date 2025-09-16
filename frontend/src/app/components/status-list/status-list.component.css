@@ -2,18 +2,31 @@ table {
   width: 100%;
 }
 
-.mat-column-actions {
+.mat-column-amount {
   width: 120px;
-  text-align: center;
+  text-align: right;
 }
 
 .mat-column-status {
   width: 150px;
 }
 
-.mat-column-amount {
-  width: 120px;
-  text-align: right;
+.approvers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.approver-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.approved-icon {
+  font-size: 16px;
+  height: 16px;
+  width: 16px;
 }
 
 mat-card {
@@ -34,5 +47,10 @@ mat-card {
 
 .status-badge.accent {
   background-color: #ff9800;
+  color: white;
+}
+
+.status-badge.success {
+  background-color: #4caf50;
   color: white;
 }
