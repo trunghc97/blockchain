@@ -1,0 +1,40 @@
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Java
+target/
+.mvn/
+*.jar
+*.war
+
+# Golang
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Angular
+node_modules/
+dist/
+.angular/
+.sass-cache/
+npm-debug.log
+yarn-error.log
+
+# MongoDB
+data/
+*.log
+
+# Docker
+.docker/
+*.env
+
+# OS specific
+.DS_Store
+Thumbs.db

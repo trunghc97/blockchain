@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:6
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  supplier-mock:
+    build: ./supplier-mock
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongo
+
+  ms-blockchain:
+    build: ./ms-blockchain
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+      - supplier-mock
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ms-blockchain
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongodb_data:

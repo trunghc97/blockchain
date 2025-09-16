@@ -1,0 +1,62 @@
+<div class="approver-panel">
+  <h2>Transaction Approver</h2>
+  <form [formGroup]="approverForm">
+    <div class="form-group">
+      <label for="transactionId">Transaction ID</label>
+      <input
+        type="text"
+        id="transactionId"
+        formControlName="transactionId"
+        class="form-control"
+        placeholder="Enter transaction ID"
+      >
+    </div>
+
+    <div class="form-group">
+      <label for="approverId">Approver ID</label>
+      <input
+        type="text"
+        id="approverId"
+        formControlName="approverId"
+        class="form-control"
+        placeholder="Enter your approver ID"
+      >
+    </div>
+
+    <div class="button-group">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        (click)="onCheckStatus()"
+        [disabled]="!approverForm.get('transactionId')?.valid"
+      >
+        Check Status
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-primary"
+        (click)="onApprove()"
+        [disabled]="!approverForm.valid || !worldState || worldState.status === 'EXECUTED'"
+      >
+        Approve
+      </button>
+    </div>
+  </form>
+
+  <div class="status-panel" *ngIf="worldState">
+    <h3>Transaction Status</h3>
+    <div class="status-details">
+      <p><strong>Status:</strong> {{worldState.status}}</p>
+      <p><strong>From:</strong> {{worldState.fromAccount}}</p>
+      <p><strong>To:</strong> {{worldState.toAccount}}</p>
+      <p><strong>Amount:</strong> {{worldState.amount}}</p>
+      <p><strong>Approvals:</strong> {{worldState.approvalCount}}</p>
+      <p><strong>Last Updated:</strong> {{worldState.lastUpdated | date:'medium'}}</p>
+    </div>
+  </div>
+
+  <div class="error-message" *ngIf="error">
+    {{error}}
+  </div>
+</div>
