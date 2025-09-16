@@ -10,8 +10,7 @@ COPY tsconfig*.json ./
 
 # Install dependencies with caching
 RUN --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/root/.npm-cache \
-    npm ci --prefer-offline --no-audit
+    npm install
 
 # Copy source code
 COPY src ./src
