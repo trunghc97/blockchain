@@ -22,6 +22,7 @@ func main() {
 	r.POST("/tx/create", handlers.CreateTransaction)
 	r.POST("/tx/approve", handlers.ApproveTransaction)
 	r.GET("/tx/status/:id", handlers.GetTransactionStatus)
+	r.GET("/tx/pending-approvals", handlers.GetPendingApprovals)
 
 	// Chạy server
 	r.Run(":8081")

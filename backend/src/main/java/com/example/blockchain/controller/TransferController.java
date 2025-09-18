@@ -31,8 +31,11 @@ public class TransferController {
     }
 
     @GetMapping("/list")
-    public ResponseEntity<List<WorldState>> getAllTransfers() {
-        return ResponseEntity.ok(transferService.getAllTransfers());
+    public ResponseEntity<List<WorldState>> getTransfers(
+            @RequestParam(required = false) String approverId,
+            @RequestParam(required = false) String status
+    ) {
+        return ResponseEntity.ok(transferService.getTransfers(approverId, status));
     }
 
     @GetMapping("/transactions")
@@ -43,5 +46,10 @@ public class TransferController {
     @GetMapping("/blocks")
     public ResponseEntity<List<Block>> getAllBlocks() {
         return ResponseEntity.ok(transferService.getAllBlocks());
+    }
+
+    @GetMapping("/pending-approvals")
+    public ResponseEntity<List<WorldState>> getPendingApprovals(@RequestParam String userId) {
+        return ResponseEntity.ok(transferService.getPendingApprovals(userId));
     }
 }

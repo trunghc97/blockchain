@@ -13,13 +13,13 @@ export class StatusListComponent implements OnInit {
   transfers: TransferStatus[] = [];
   users: { [key: string]: User } = {};
   displayedColumns: string[] = [
-    'reqId',
-    'fromUser',
+    'transactionId',
+    'fromAccount',
     'toAccount',
     'amount',
-    'description',
     'status',
-    'approvers'
+    'approvers',
+    'approvalCount'
   ];
 
   constructor(
@@ -42,7 +42,7 @@ export class StatusListComponent implements OnInit {
 
   loadTransfers(): void {
     this.transferService.getTransferList().subscribe(transfers => {
-      this.transfers = transfers;
+      this.transfers = this.transferService.sortTransfersByDate(transfers);
     });
   }
 
@@ -56,23 +56,14 @@ export class StatusListComponent implements OnInit {
         return 'Chờ duyệt';
       case 'PARTIALLY_APPROVED':
         return 'Đã duyệt một phần';
+      case 'APPROVED':
+        return 'Đã duyệt';
+      case 'APPROVED_PENDING_EXEC':
+        return 'Chờ thực hiện';
       case 'EXECUTED':
         return 'Đã thực hiện';
       default:
         return status;
-    }
-  }
-
-  getStatusColor(status: string): string {
-    switch (status) {
-      case 'PENDING':
-        return 'primary';
-      case 'PARTIALLY_APPROVED':
-        return 'accent';
-      case 'EXECUTED':
-        return 'success';
-      default:
-        return '';
     }
   }
 }

@@ -17,17 +17,43 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+type CreateTransactionRequest struct {
+	TransactionID string   `json:"transaction_id"`
+	FromAccount   string   `json:"from_account"`
+	ToAccount     string   `json:"to_account"`
+	Amount        float64  `json:"amount"`
+	Approvers     []string `json:"approvers"`
+}
+
+type SupplierResponse struct {
+	Status      string `json:"status"`
+	SupplierRef string `json:"supplier_ref"`
+}
+
 func CreateTransaction(c *gin.Context) {
-	var tx models.Transaction
-	if err := c.ShouldBindJSON(&tx); err != nil {
+	var req CreateTransactionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	tx.ID = primitive.NewObjectID()
-	tx.Type = "CREATE"
-	tx.Status = models.StatusPending
-	tx.Timestamp = time.Now()
+	// Validate request
+	if req.TransactionID == "" || req.FromAccount == "" || req.ToAccount == "" || len(req.Approvers) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing required fields"})
+		return
+	}
+
+	// Tạo transaction CREATE
+	tx := models.Transaction{
+		ID:            primitive.NewObjectID(),
+		TransactionID: req.TransactionID,
+		FromAccount:   req.FromAccount,
+		ToAccount:     req.ToAccount,
+		Amount:        req.Amount,
+		Type:          "CREATE",
+		Status:        models.StatusPending,
+		Timestamp:     time.Now(),
+	}
 
 	// Lưu transaction
 	txColl := db.GetCollection("transactions")
@@ -37,14 +63,25 @@ func CreateTransaction(c *gin.Context) {
 		return
 	}
 
-	// Tạo world state
+	// Khởi tạo danh sách approvers
+	approvers := make([]models.Approver, 0)
+	for _, approverID := range req.Approvers {
+		approvers = append(approvers, models.Approver{
+			UserID:    approverID,
+			Status:    models.StatusPending,
+			Timestamp: time.Now(),
+		})
+	}
+
+	// Tạo world state với approvers
 	worldState := models.WorldState{
 		ID:            primitive.NewObjectID(),
-		TransactionID: tx.TransactionID,
-		FromAccount:   tx.FromAccount,
-		ToAccount:     tx.ToAccount,
-		Amount:        tx.Amount,
+		TransactionID: req.TransactionID,
+		FromAccount:   req.FromAccount,
+		ToAccount:     req.ToAccount,
+		Amount:        req.Amount,
 		Status:        models.StatusPending,
+		Approvers:     approvers,
 		ApprovalCount: 0,
 		LastUpdated:   time.Now(),
 	}
@@ -56,20 +93,36 @@ func CreateTransaction(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, tx)
+	c.JSON(http.StatusOK, worldState)
+}
+
+type ApproveRequest struct {
+	TransactionID string  `json:"transaction_id"`
+	ApproverID    string  `json:"approver_id"`
+	FromAccount   string  `json:"from_account"`
+	ToAccount     string  `json:"to_account"`
+	Amount        float64 `json:"amount"`
 }
 
 func ApproveTransaction(c *gin.Context) {
-	var tx models.Transaction
-	if err := c.ShouldBindJSON(&tx); err != nil {
+	var req ApproveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	tx.ID = primitive.NewObjectID()
-	tx.Type = "APPROVE"
-	tx.Status = models.StatusApproved
-	tx.Timestamp = time.Now()
+	// Tạo transaction approve
+	tx := models.Transaction{
+		ID:            primitive.NewObjectID(),
+		TransactionID: req.TransactionID,
+		FromAccount:   req.FromAccount,
+		ToAccount:     req.ToAccount,
+		Amount:        req.Amount,
+		Type:          "APPROVE",
+		Status:        models.StatusApproved,
+		ApproverID:    req.ApproverID,
+		Timestamp:     time.Now(),
+	}
 
 	// Lưu transaction approve
 	txColl := db.GetCollection("transactions")
@@ -82,26 +135,39 @@ func ApproveTransaction(c *gin.Context) {
 	// Cập nhật world state
 	wsColl := db.GetCollection("world_state")
 	filter := bson.M{"transaction_id": tx.TransactionID}
+
+	// Cập nhật trạng thái của approver
 	update := bson.M{
+		"$set": bson.M{
+			"last_updated":                time.Now(),
+			"approvers.$[elem].status":    models.StatusApproved,
+			"approvers.$[elem].timestamp": time.Now(),
+		},
 		"$inc": bson.M{"approval_count": 1},
-		"$set": bson.M{"last_updated": time.Now()},
 	}
 
-	var worldState models.WorldState
-	err = wsColl.FindOneAndUpdate(
-		context.Background(),
-		filter,
-		update,
-		options.FindOneAndUpdate().SetReturnDocument(options.After),
-	).Decode(&worldState)
+	arrayFilters := options.ArrayFilters{
+		Filters: []interface{}{
+			bson.M{"elem.user_id": tx.ApproverID, "elem.status": models.StatusPending},
+		},
+	}
 
+	opts := options.FindOneAndUpdate().
+		SetReturnDocument(options.After).
+		SetArrayFilters(arrayFilters)
+
+	var worldState models.WorldState
+	err = wsColl.FindOneAndUpdate(context.Background(), filter, update, opts).Decode(&worldState)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Kiểm tra số lượng approval
+	// Cập nhật trạng thái world state dựa trên số lượng approval
+	newStatus := models.StatusPartiallyApproved
 	if worldState.ApprovalCount >= config.ApprovalThreshold {
+		newStatus = models.StatusApproved
+
 		// Gọi supplier API
 		supplierReq := map[string]interface{}{
 			"transaction_id": tx.TransactionID,
@@ -118,7 +184,13 @@ func ApproveTransaction(c *gin.Context) {
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode == http.StatusOK {
+		var supplierResp SupplierResponse
+		if err := json.NewDecoder(resp.Body).Decode(&supplierResp); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		if supplierResp.Status == "SUCCESS" {
 			// Tạo transaction EXECUTE
 			executeTx := models.Transaction{
 				ID:            primitive.NewObjectID(),
@@ -137,22 +209,72 @@ func ApproveTransaction(c *gin.Context) {
 				return
 			}
 
-			// Cập nhật world state
+			// Cập nhật world state với supplier ref
 			update = bson.M{
 				"$set": bson.M{
 					"status":       models.StatusExecuted,
+					"supplier_ref": supplierResp.SupplierRef,
 					"last_updated": time.Now(),
 				},
 			}
-			err = wsColl.FindOneAndUpdate(context.Background(), filter, update).Err()
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
+		} else {
+			// Supplier failed
+			newStatus = models.StatusApprovedPendingExec
+		}
+
+		// Cập nhật trạng thái cuối cùng
+		update = bson.M{
+			"$set": bson.M{
+				"status":       newStatus,
+				"last_updated": time.Now(),
+			},
+		}
+		err = wsColl.FindOneAndUpdate(context.Background(), filter, update, options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&worldState)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 	}
 
 	c.JSON(http.StatusOK, worldState)
+}
+
+func GetPendingApprovals(c *gin.Context) {
+	// Lấy userID từ query param
+	userID := c.Query("user_id")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		return
+	}
+
+	// Tìm các world state có approver là userID và status là pending
+	wsColl := db.GetCollection("world_state")
+	filter := bson.M{
+		"approvers": bson.M{
+			"$elemMatch": bson.M{
+				"user_id": userID,
+				"status":  models.StatusPending,
+			},
+		},
+		"status": bson.M{
+			"$in": []string{models.StatusPending, models.StatusPartiallyApproved},
+		},
+	}
+
+	cursor, err := wsColl.Find(context.Background(), filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var pendingTransactions []models.WorldState
+	if err = cursor.All(context.Background(), &pendingTransactions); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, pendingTransactions)
 }
 
 func GetTransactionStatus(c *gin.Context) {

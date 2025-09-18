@@ -4,6 +4,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { UserService } from '../../services/user.service';
 import { TransferService } from '../../services/transfer.service';
 import { User } from '../../models/user.model';
+import { TransferRequest } from '../../models/transfer.model';
 
 @Component({
   selector: 'app-transfer-form',
@@ -24,7 +25,6 @@ export class TransferFormComponent implements OnInit {
     this.transferForm = this.fb.group({
       toAccount: ['', [Validators.required]],
       amount: ['', [Validators.required, Validators.min(0)]],
-      description: ['', [Validators.required]],
       approvers: [[], [Validators.required, Validators.minLength(1)]]
     });
   }
@@ -42,11 +42,11 @@ export class TransferFormComponent implements OnInit {
   onSubmit(): void {
     if (this.transferForm.valid) {
       const formValue = this.transferForm.value;
-      const request = {
-        fromUser: localStorage.getItem('currentUserId') || '',
+      const request: TransferRequest = {
+        transactionId: undefined,  // Sẽ được tạo bởi backend
+        fromAccount: localStorage.getItem('currentUserId') || '',
         toAccount: formValue.toAccount,
         amount: formValue.amount,
-        description: formValue.description,
         approvers: formValue.approvers.map((user: User) => user.id)
       };
 
@@ -56,6 +56,8 @@ export class TransferFormComponent implements OnInit {
             duration: 3000
           });
           this.transferForm.reset();
+          this.transferForm.markAsUntouched();
+          this.transferForm.markAsPristine();
         },
         error => {
           this.snackBar.open('Có lỗi xảy ra khi tạo giao dịch', 'Đóng', {

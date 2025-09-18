@@ -24,6 +24,14 @@ export class TransferService {
     return this.http.get<TransferStatus[]>(`${this.apiUrl}/list`);
   }
 
+  sortTransfersByDate(transfers: TransferStatus[]): TransferStatus[] {
+    return transfers.sort((a, b) => {
+      const dateA = new Date(a.lastUpdated).getTime();
+      const dateB = new Date(b.lastUpdated).getTime();
+      return dateB - dateA; // Sắp xếp giảm dần (mới nhất lên đầu)
+    });
+  }
+
   getPendingTransfers(approverId: string): Observable<TransferStatus[]> {
     return this.http.get<TransferStatus[]>(`${this.apiUrl}/list`, {
       params: {

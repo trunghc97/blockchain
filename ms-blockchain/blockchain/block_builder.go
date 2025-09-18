@@ -40,7 +40,7 @@ func buildBlock() {
 	}
 
 	// Lấy các transaction chưa được đưa vào block
-	filter := bson.M{"_id": bson.M{"$nin": getBlockedTransactionIDs()}}
+	filter := bson.M{"included": bson.M{"$ne": true}}
 	cursor, err := txColl.Find(context.Background(), filter)
 	if err != nil {
 		log.Printf("Error getting transactions: %v", err)
@@ -87,6 +87,22 @@ func buildBlock() {
 	_, err = blockColl.InsertOne(context.Background(), newBlock)
 	if err != nil {
 		log.Printf("Error saving block: %v", err)
+		return
+	}
+
+	// Cập nhật trạng thái included cho các transaction
+	var txIDs []primitive.ObjectID
+	for _, tx := range transactions {
+		txIDs = append(txIDs, tx.ID)
+	}
+
+	_, err = txColl.UpdateMany(
+		context.Background(),
+		bson.M{"_id": bson.M{"$in": txIDs}},
+		bson.M{"$set": bson.M{"included": true}},
+	)
+	if err != nil {
+		log.Printf("Error updating transactions included status: %v", err)
 		return
 	}
 

@@ -9,3 +9,8 @@ spring:
 blockchain:
   service:
     url: http://ms-blockchain:8081
+
+logging:
+  level:
+    com.example.blockchain: DEBUG
+    org.springframework.web.client.RestTemplate: DEBUG

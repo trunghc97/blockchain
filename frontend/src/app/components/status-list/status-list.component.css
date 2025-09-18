@@ -2,6 +2,15 @@ table {
   width: 100%;
 }
 
+.mat-column-transactionId {
+  width: 200px;
+}
+
+.mat-column-fromAccount,
+.mat-column-toAccount {
+  width: 180px;
+}
+
 .mat-column-amount {
   width: 120px;
   text-align: right;
@@ -9,6 +18,21 @@ table {
 
 .mat-column-status {
   width: 150px;
+}
+
+.mat-column-approvalCount {
+  width: 100px;
+  text-align: center;
+}
+
+.text-monospace {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.text-muted {
+  color: rgba(0, 0, 0, 0.54);
+  font-size: 0.85em;
 }
 
 .approvers-list {

@@ -6,7 +6,8 @@ import java.util.List;
 
 @Data
 public class TransferRequest {
-    private String fromUser;
+    private String transactionId;  // Thêm trường này
+    private String fromAccount;    // Đổi tên từ fromUser
     private String toAccount;
     private double amount;
     private String description;

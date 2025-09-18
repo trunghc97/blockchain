@@ -6,19 +6,27 @@
 
     <mat-card-content>
       <table mat-table [dataSource]="transfers" class="w-100">
-        <ng-container matColumnDef="reqId">
+        <ng-container matColumnDef="transactionId">
           <th mat-header-cell *matHeaderCellDef>Mã giao dịch</th>
-          <td mat-cell *matCellDef="let transfer">{{transfer.reqId}}</td>
+          <td mat-cell *matCellDef="let transfer">
+            <span class="text-monospace">{{transfer.transactionId}}</span>
+          </td>
         </ng-container>
 
-        <ng-container matColumnDef="fromUser">
-          <th mat-header-cell *matHeaderCellDef>Người gửi</th>
-          <td mat-cell *matCellDef="let transfer">{{getUserName(transfer.fromUser)}}</td>
+        <ng-container matColumnDef="fromAccount">
+          <th mat-header-cell *matHeaderCellDef>Tài khoản gửi</th>
+          <td mat-cell *matCellDef="let transfer">
+            <div>{{transfer.fromAccount}}</div>
+            <small class="text-muted">{{getUserName(transfer.fromAccount)}}</small>
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="toAccount">
           <th mat-header-cell *matHeaderCellDef>Tài khoản nhận</th>
-          <td mat-cell *matCellDef="let transfer">{{transfer.toAccount}}</td>
+          <td mat-cell *matCellDef="let transfer">
+            <div>{{transfer.toAccount}}</div>
+            <small class="text-muted">{{getUserName(transfer.toAccount)}}</small>
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="amount">
@@ -26,16 +34,14 @@
           <td mat-cell *matCellDef="let transfer">{{transfer.amount | number}}</td>
         </ng-container>
 
-        <ng-container matColumnDef="description">
-          <th mat-header-cell *matHeaderCellDef>Nội dung</th>
-          <td mat-cell *matCellDef="let transfer">{{transfer.description}}</td>
-        </ng-container>
-
         <ng-container matColumnDef="status">
           <th mat-header-cell *matHeaderCellDef>Trạng thái</th>
           <td mat-cell *matCellDef="let transfer">
             <span class="status-badge"
-                  [ngClass]="getStatusColor(transfer.status)">
+                  [class.accent]="transfer.status === 'PARTIALLY_APPROVED'"
+                  [class.primary]="transfer.status === 'PENDING'"
+                  [class.warn]="transfer.status === 'APPROVED_PENDING_EXEC'"
+                  [class.success]="transfer.status === 'EXECUTED'">
               {{getStatusLabel(transfer.status)}}
             </span>
           </td>
@@ -45,15 +51,20 @@
           <th mat-header-cell *matHeaderCellDef>Người phê duyệt</th>
           <td mat-cell *matCellDef="let transfer">
             <div class="approvers-list">
-              <div *ngFor="let approverId of transfer.approvers" class="approver-item">
-                {{getUserName(approverId)}}
-                <mat-icon *ngIf="transfer.approvedBy.includes(approverId)" 
+              <div *ngFor="let approver of transfer.approvers" class="approver-item">
+                {{getUserName(approver.userId)}}
+                <mat-icon *ngIf="approver.status === 'APPROVED'" 
                          class="approved-icon" color="primary">
                   check_circle
                 </mat-icon>
               </div>
             </div>
           </td>
+        </ng-container>
+
+        <ng-container matColumnDef="approvalCount">
+          <th mat-header-cell *matHeaderCellDef>Số lượng duyệt</th>
+          <td mat-cell *matCellDef="let transfer">{{transfer.approvalCount}}</td>
         </ng-container>
 
         <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>

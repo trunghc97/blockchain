@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { TransferService } from '../../services/transfer.service';
-import { TransferStatus } from '../../models/transfer.model';
+import { TransferStatus, ApproveRequest } from '../../models/transfer.model';
 
 @Component({
   selector: 'app-approver',
@@ -10,7 +10,10 @@ import { TransferStatus } from '../../models/transfer.model';
 })
 export class ApproverComponent implements OnInit {
   pendingTransfers: TransferStatus[] = [];
-  displayedColumns: string[] = ['reqId', 'fromUser', 'toAccount', 'amount', 'description', 'status', 'actions'];
+  displayedColumns = ['transactionId', 'fromAccount', 'toAccount', 'amount', 'status', 'approvalCount', 'actions'];
+  isApproved = (transfer: TransferStatus) => {
+    return transfer.approvers?.some(a => a.userId === this.currentUserId && a.status === 'APPROVED');
+  };
   currentUserId: string = '';
 
   constructor(
@@ -38,9 +41,16 @@ export class ApproverComponent implements OnInit {
     }
   }
 
-  onApprove(reqId: string): void {
+  onApprove(transfer: TransferStatus): void {
     if (this.currentUserId) {
-      this.transferService.approveTransfer({ reqId, approverId: this.currentUserId }).subscribe(
+      const approveRequest: ApproveRequest = {
+        transactionId: transfer.transactionId,
+        approverUserId: this.currentUserId,
+        fromAccount: transfer.fromAccount,
+        toAccount: transfer.toAccount,
+        amount: transfer.amount
+      };
+      this.transferService.approveTransfer(approveRequest).subscribe(
         () => {
           this.snackBar.open('Phê duyệt thành công', 'Đóng', {
             duration: 3000

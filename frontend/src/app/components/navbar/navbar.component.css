@@ -1,21 +1,34 @@
 .navbar {
-  padding: 1rem;
+  margin-bottom: 20px;
+  z-index: 1000;
 }
 
-mat-form-field {
+.mat-form-field {
   width: 200px;
-  margin-bottom: -1.25em;
 }
 
-::ng-deep .mat-form-field-wrapper {
-  margin-bottom: 0;
+::ng-deep .mat-select-panel {
+  z-index: 1001 !important;
 }
 
-::ng-deep .mat-form-field-underline {
+::ng-deep .mat-form-field-appearance-fill .mat-form-field-flex {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 0.5em 0.5em 0 0.5em !important;
+}
+
+::ng-deep .mat-form-field-appearance-fill .mat-form-field-underline {
   display: none;
 }
 
-::ng-deep .mat-select-value,
+::ng-deep .mat-form-field-appearance-fill .mat-form-field-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+::ng-deep .mat-select-value-text {
+  color: white;
+}
+
 ::ng-deep .mat-select-arrow {
-  color: white !important;
+  color: white;
 }

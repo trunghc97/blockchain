@@ -1,24 +1,34 @@
 export interface TransferRequest {
-  fromUser: string;
+  transactionId?: string;  // Optional vì sẽ được tạo tự động
+  fromAccount: string;     // Đổi tên từ fromUser
   toAccount: string;
   amount: number;
-  description: string;
   approvers: string[];
+}
+
+export interface Approver {
+  userId: string;
+  status: string;
+  timestamp: Date;
 }
 
 export interface TransferStatus {
-  reqId: string;
-  fromUser: string;
+  id: string;
+  transactionId: string;
+  fromAccount: string;
   toAccount: string;
   amount: number;
-  description: string;
-  status: 'PENDING' | 'PARTIALLY_APPROVED' | 'EXECUTED';
-  approvers: string[];
-  approvedBy: string[];
-  createdAt: Date;
+  status: 'PENDING' | 'PARTIALLY_APPROVED' | 'APPROVED' | 'APPROVED_PENDING_EXEC' | 'EXECUTED';
+  approvers: Approver[];
+  approvalCount: number;
+  supplierRef?: string;
+  lastUpdated: Date;
 }
 
 export interface ApproveRequest {
-  reqId: string;
-  approverId: string;
+  transactionId: string;
+  approverUserId: string;
+  fromAccount: string;
+  toAccount: string;
+  amount: number;
 }
