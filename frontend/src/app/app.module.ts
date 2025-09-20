@@ -1,54 +1,66 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { HttpClientModule } from '@angular/common/http';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { ReactiveFormsModule } from '@angular/forms';
+import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
 
+// Angular Material Modules
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { MatSelectModule } from '@angular/material/select';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatInputModule } from '@angular/material/input';
-import { MatButtonModule } from '@angular/material/button';
-import { MatTableModule } from '@angular/material/table';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTableModule } from '@angular/material/table';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
-import { MatFormFieldModule } from '@angular/material/form-field';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
+import { LoginComponent } from './components/login/login.component';
 import { NavbarComponent } from './components/navbar/navbar.component';
-import { TransferFormComponent } from './components/transfer-form/transfer-form.component';
-import { ApproverComponent } from './components/approver/approver.component';
-import { StatusListComponent } from './components/status-list/status-list.component';
+import { ContractFormComponent } from './components/contract-form/contract-form.component';
+import { ContractApprovalComponent } from './components/contract-approval/contract-approval.component';
+import { ContractStatusComponent } from './components/contract-status/contract-status.component';
+import { LedgerViewerComponent } from './components/ledger-viewer/ledger-viewer.component';
+import { AuthInterceptor } from './services/auth.interceptor';
 
 @NgModule({
   declarations: [
     AppComponent,
+    LoginComponent,
     NavbarComponent,
-    TransferFormComponent,
-    ApproverComponent,
-    StatusListComponent
+    ContractFormComponent,
+    ContractApprovalComponent,
+    ContractStatusComponent,
+    LedgerViewerComponent
   ],
   imports: [
     BrowserModule,
     BrowserAnimationsModule,
-    HttpClientModule,
-    FormsModule,
-    ReactiveFormsModule,
     AppRoutingModule,
+    ReactiveFormsModule,
+    HttpClientModule,
+    // Angular Material
     MatToolbarModule,
-    MatSelectModule,
+    MatButtonModule,
     MatCardModule,
     MatInputModule,
-    MatButtonModule,
-    MatTableModule,
+    MatFormFieldModule,
     MatIconModule,
+    MatTableModule,
+    MatProgressSpinnerModule,
+    MatChipsModule,
+    MatSelectModule,
     MatSnackBarModule,
-    MatTabsModule,
-    MatFormFieldModule
+    MatTabsModule
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true }
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

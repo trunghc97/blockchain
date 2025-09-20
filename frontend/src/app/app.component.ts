@@ -6,9 +6,5 @@ import { Component } from '@angular/core';
   styleUrls: ['./app.component.css']
 })
 export class AppComponent {
-  navLinks = [
-    { path: '/transfer', label: 'Chuyển tiền' },
-    { path: '/approve', label: 'Phê duyệt' },
-    { path: '/status', label: 'Trạng thái' }
-  ];
+  title = 'Supply Chain Finance';
 }

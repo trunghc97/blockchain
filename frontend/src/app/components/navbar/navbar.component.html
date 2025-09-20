@@ -1,16 +1,31 @@
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="#">Blockchain Demo</a>
-    
-    <div class="d-flex align-items-center">
-      <span class="text-white me-2">Người dùng:</span>
-      <mat-form-field appearance="fill">
-        <mat-select [(ngModel)]="selectedUser" (selectionChange)="onUserChange($event.value)">
-          <mat-option *ngFor="let user of users" [value]="user">
-            {{ user.name }}
-          </mat-option>
-        </mat-select>
-      </mat-form-field>
-    </div>
-  </div>
-</nav>
+<mat-toolbar color="primary">
+  <span>Blockchain SCF</span>
+  <span class="spacer"></span>
+
+  <ng-container *ngIf="userService.currentUser$ | async as user">
+    <button mat-button routerLink="/contracts/new" *ngIf="user.role === 'ANCHOR'">
+      <mat-icon>add</mat-icon>
+      Tạo hợp đồng
+    </button>
+
+    <button mat-button routerLink="/contracts/approve" *ngIf="user.role === 'SUPPLIER'">
+      <mat-icon>check_circle</mat-icon>
+      Phê duyệt
+    </button>
+
+    <button mat-button routerLink="/contracts/status">
+      <mat-icon>list</mat-icon>
+      Trạng thái
+    </button>
+
+    <button mat-button routerLink="/ledger">
+      <mat-icon>account_balance</mat-icon>
+      Ledger
+    </button>
+
+    <button mat-button (click)="onLogout()">
+      <mat-icon>exit_to_app</mat-icon>
+      Đăng xuất
+    </button>
+  </ng-container>
+</mat-toolbar>

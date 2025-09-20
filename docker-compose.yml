@@ -1,52 +1,57 @@
 version: '3.8'
 
 services:
-  mongo:
-    image: mongo:6
-    container_name: mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - ./data/mongodb:/data/db
-      # - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain
-
-  supplier-mock:
-    build:
-      context: ./supplier-mock
-      dockerfile: Dockerfile
-    ports:
-      - "8082:8082"
-    depends_on:
-      - mongo
-
-  ms-blockchain:
-    build:
-      context: ./ms-blockchain
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8081"
-    depends_on:
-      - mongo
-      - supplier-mock
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    depends_on:
-      - ms-blockchain
-
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    build: ./frontend
     ports:
       - "4200:80"
     depends_on:
       - backend
+    networks:
+      - blockchain-network
+
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATA_MONGODB_HOST=mongo
+      - SPRING_DATA_MONGODB_PORT=27017
+      - SPRING_DATA_MONGODB_DATABASE=blockchain
+      - SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE=admin
+      - SPRING_DATA_MONGODB_USERNAME=root
+      - SPRING_DATA_MONGODB_PASSWORD=example
+    depends_on:
+      - mongo
+      - ms-blockchain
+    networks:
+      - blockchain-network
+
+  ms-blockchain:
+    build: ./ms-blockchain
+    ports:
+      - "8081:8081"
+    environment:
+      - MONGO_URI=mongodb://root:example@mongo:27017/blockchain?authSource=admin
+    depends_on:
+      - mongo
+    networks:
+      - blockchain-network
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: blockchain
+    volumes:
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./data/mongodb:/data/db
+    networks:
+      - blockchain-network
+
+networks:
+  blockchain-network:
+    driver: bridge

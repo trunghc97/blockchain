@@ -1,5 +1,8 @@
+export type UserRole = 'ANCHOR' | 'SUPPLIER';
+
 export interface User {
-  id: string;
-  name: string;
-  accountNo: string;
+    id: string;
+    username: string;
+    role: UserRole;
+    password?: string;
 }

@@ -1,0 +1,91 @@
+<div class="contract-form-container">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>Tạo hợp đồng SCF mới</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+      <form [formGroup]="contractForm" (ngSubmit)="onSubmit()">
+        <!-- File Upload -->
+        <div class="file-upload-section">
+          <input
+            type="file"
+            #fileInput
+            style="display: none"
+            (change)="onFileSelected($event)"
+            accept=".pdf,.doc,.docx"
+          >
+          <button type="button" mat-stroked-button color="primary" (click)="fileInput.click()">
+            <mat-icon>attach_file</mat-icon>
+            Chọn file hợp đồng
+          </button>
+          <span class="file-name" *ngIf="selectedFile">
+            {{ selectedFile.name }}
+            <button mat-icon-button color="warn" (click)="removeFile()">
+              <mat-icon>close</mat-icon>
+            </button>
+          </span>
+        </div>
+
+        <!-- Mô tả -->
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Mô tả</mat-label>
+          <textarea matInput formControlName="description" rows="3" required></textarea>
+          <mat-error *ngIf="contractForm.get('description')?.hasError('required')">
+            Vui lòng nhập mô tả
+          </mat-error>
+        </mat-form-field>
+
+        <!-- Danh sách nhà cung cấp -->
+        <div class="suppliers-section">
+          <h3>Danh sách nhà cung cấp</h3>
+          
+          <div formArrayName="suppliers">
+            <div *ngFor="let supplier of suppliers.controls; let i=index" [formGroupName]="i" class="supplier-item">
+              <mat-form-field appearance="outline">
+                <mat-label>Nhà cung cấp</mat-label>
+                <mat-select formControlName="supplierId" required>
+                  <mat-option *ngFor="let s of supplierList" [value]="s.id">
+                    {{ s.username }}
+                  </mat-option>
+                </mat-select>
+                <mat-error *ngIf="supplier.get('supplierId')?.hasError('required')">
+                  Vui lòng chọn nhà cung cấp
+                </mat-error>
+              </mat-form-field>
+
+              <mat-form-field appearance="outline">
+                <mat-label>Số tiền</mat-label>
+                <input matInput type="number" formControlName="amount" required>
+                <span matSuffix>VND</span>
+                <mat-error *ngIf="supplier.get('amount')?.hasError('required')">
+                  Vui lòng nhập số tiền
+                </mat-error>
+                <mat-error *ngIf="supplier.get('amount')?.hasError('min')">
+                  Số tiền phải lớn hơn 0
+                </mat-error>
+              </mat-form-field>
+
+              <button mat-icon-button color="warn" type="button" (click)="removeSupplier(i)" [disabled]="suppliers.length === 1">
+                <mat-icon>delete</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <button mat-stroked-button type="button" (click)="addSupplier()" class="add-supplier-btn">
+            <mat-icon>add</mat-icon>
+            Thêm nhà cung cấp
+          </button>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="action-buttons">
+          <button mat-flat-button color="primary" type="submit" [disabled]="!contractForm.valid || loading">
+            <mat-spinner diameter="20" *ngIf="loading"></mat-spinner>
+            <span *ngIf="!loading">Tạo hợp đồng</span>
+          </button>
+        </div>
+      </form>
+    </mat-card-content>
+  </mat-card>
+</div>

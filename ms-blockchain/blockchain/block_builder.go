@@ -4,129 +4,112 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"log"
-	"ms-blockchain/db"
-	"ms-blockchain/models"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"ms-blockchain/models"
 )
 
-func StartBlockBuilder() {
-	ticker := time.NewTicker(10 * time.Second)
-	go func() {
-		for range ticker.C {
-			buildBlock()
-		}
-	}()
+type BlockBuilder struct {
+	db            *mongo.Database
+	maxTxPerBlock int
+	blockInterval time.Duration
 }
 
-func buildBlock() {
-	txColl := db.GetCollection("transactions")
-	blockColl := db.GetCollection("blocks")
-
-	// Lấy block cuối cùng
-	var lastBlock models.Block
-	opts := options.FindOne().SetSort(bson.M{"block_number": -1})
-	err := blockColl.FindOne(context.Background(), bson.M{}, opts).Decode(&lastBlock)
-	if err != nil {
-		lastBlock = models.Block{
-			BlockNumber:  0,
-			PreviousHash: "",
-		}
+func NewBlockBuilder(db *mongo.Database) *BlockBuilder {
+	return &BlockBuilder{
+		db:            db,
+		maxTxPerBlock: 10,
+		blockInterval: 30 * time.Second,
 	}
+}
 
-	// Lấy các transaction chưa được đưa vào block
-	filter := bson.M{"included": bson.M{"$ne": true}}
-	cursor, err := txColl.Find(context.Background(), filter)
+func (b *BlockBuilder) Start() {
+	go b.buildBlocksPeriodically()
+}
+
+func (b *BlockBuilder) buildBlocksPeriodically() {
+	ticker := time.NewTicker(b.blockInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		b.buildNextBlock()
+	}
+}
+
+func (b *BlockBuilder) buildNextBlock() {
+	// Get unincluded transactions
+	cur, err := b.db.Collection("transactions").Find(
+		context.Background(),
+		bson.M{"included": false},
+		options.Find().SetLimit(int64(b.maxTxPerBlock)),
+	)
 	if err != nil {
-		log.Printf("Error getting transactions: %v", err)
+		fmt.Printf("Error getting transactions: %v\n", err)
 		return
 	}
-	defer cursor.Close(context.Background())
+	defer cur.Close(context.Background())
 
 	var transactions []models.Transaction
-	if err = cursor.All(context.Background(), &transactions); err != nil {
-		log.Printf("Error decoding transactions: %v", err)
+	if err := cur.All(context.Background(), &transactions); err != nil {
+		fmt.Printf("Error decoding transactions: %v\n", err)
 		return
 	}
 
 	if len(transactions) == 0 {
-		return
+		return // No transactions to process
 	}
 
-	// Tạo block mới
-	newBlock := models.Block{
-		ID:           primitive.NewObjectID(),
-		BlockNumber:  lastBlock.BlockNumber + 1,
-		Timestamp:    time.Now(),
-		PreviousHash: lastBlock.Hash,
-		Transactions: transactions,
-	}
-
-	// Tính hash của block
-	blockData, _ := json.Marshal(struct {
-		BlockNumber  int64
-		Timestamp    time.Time
-		PreviousHash string
-		Transactions []models.Transaction
-	}{
-		BlockNumber:  newBlock.BlockNumber,
-		Timestamp:    newBlock.Timestamp,
-		PreviousHash: newBlock.PreviousHash,
-		Transactions: newBlock.Transactions,
-	})
-
-	hash := sha256.Sum256(blockData)
-	newBlock.Hash = hex.EncodeToString(hash[:])
-
-	// Lưu block mới
-	_, err = blockColl.InsertOne(context.Background(), newBlock)
-	if err != nil {
-		log.Printf("Error saving block: %v", err)
-		return
-	}
-
-	// Cập nhật trạng thái included cho các transaction
-	var txIDs []primitive.ObjectID
-	for _, tx := range transactions {
-		txIDs = append(txIDs, tx.ID)
-	}
-
-	_, err = txColl.UpdateMany(
+	// Get latest block
+	var latestBlock models.Block
+	err = b.db.Collection("blocks").FindOne(
 		context.Background(),
-		bson.M{"_id": bson.M{"$in": txIDs}},
+		bson.M{},
+		options.FindOne().SetSort(bson.M{"block_number": -1}),
+	).Decode(&latestBlock)
+
+	var blockNumber int64 = 1
+	var previousHash string = ""
+	if err != mongo.ErrNoDocuments {
+		blockNumber = latestBlock.BlockNumber + 1
+		previousHash = latestBlock.Hash
+	}
+
+	// Create block
+	txIDs := make([]string, len(transactions))
+	var dataToHash string
+	for i, tx := range transactions {
+		txIDs[i] = tx.ID.Hex()
+		dataToHash += tx.ID.Hex()
+	}
+	dataToHash += previousHash
+
+	hash := sha256.Sum256([]byte(dataToHash))
+	block := models.Block{
+		BlockNumber:  blockNumber,
+		Timestamp:    time.Now(),
+		PreviousHash: previousHash,
+		Hash:         hex.EncodeToString(hash[:]),
+		TxIDs:        txIDs,
+	}
+
+	// Save block
+	if _, err := b.db.Collection("blocks").InsertOne(context.Background(), block); err != nil {
+		fmt.Printf("Error saving block: %v\n", err)
+		return
+	}
+
+	// Mark transactions as included
+	_, err = b.db.Collection("transactions").UpdateMany(
+		context.Background(),
+		bson.M{"_id": bson.M{"$in": transactions}},
 		bson.M{"$set": bson.M{"included": true}},
 	)
 	if err != nil {
-		log.Printf("Error updating transactions included status: %v", err)
-		return
+		fmt.Printf("Error updating transactions: %v\n", err)
 	}
-
-	log.Printf("Created new block #%d with %d transactions", newBlock.BlockNumber, len(transactions))
-}
-
-func getBlockedTransactionIDs() []primitive.ObjectID {
-	blockColl := db.GetCollection("blocks")
-	cursor, err := blockColl.Find(context.Background(), bson.M{})
-	if err != nil {
-		return nil
-	}
-	defer cursor.Close(context.Background())
-
-	var blocks []models.Block
-	if err = cursor.All(context.Background(), &blocks); err != nil {
-		return nil
-	}
-
-	var ids []primitive.ObjectID
-	for _, block := range blocks {
-		for _, tx := range block.Transactions {
-			ids = append(ids, tx.ID)
-		}
-	}
-	return ids
 }

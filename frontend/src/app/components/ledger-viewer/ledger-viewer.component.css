@@ -1,0 +1,42 @@
+.container {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.loading-spinner {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+
+table {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.mat-column-type {
+  width: 150px;
+}
+
+.mat-column-status {
+  width: 100px;
+}
+
+.mat-column-timestamp {
+  width: 200px;
+}
+
+code {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.tx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

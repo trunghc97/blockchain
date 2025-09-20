@@ -4,9 +4,6 @@ import lombok.Data;
 
 @Data
 public class ApproveRequest {
-    private String transactionId;
-    private String approverUserId;
-    private String fromAccount;
-    private String toAccount;
-    private Double amount;
+    private String contractId;
+    private String approverId;
 }

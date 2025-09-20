@@ -4,13 +4,18 @@ server:
 spring:
   data:
     mongodb:
-      uri: mongodb://root:example@mongo:27017/blockchain?authSource=admin
+      host: mongo
+      port: 27017
+      database: blockchain
+      username: root
+      password: example
+  main:
+    allow-bean-definition-overriding: true
 
 blockchain:
-  service:
-    url: http://ms-blockchain:8081
+  url: http://ms-blockchain:8081
 
 logging:
   level:
+    org.springframework.security: DEBUG
     com.example.blockchain: DEBUG
-    org.springframework.web.client.RestTemplate: DEBUG

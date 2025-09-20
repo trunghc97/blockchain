@@ -1,14 +1,13 @@
 package com.example.blockchain.model;
 
 import lombok.Data;
-import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 @Data
-@Document(collection = "users")
+@Document(collection = "users")  // Chỉ định rõ collection name
 public class User {
-    @Id
     private String id;
-    private String name;
-    private String accountNo;
+    private String username;
+    private String password;
+    private String role; // "ANCHOR", "SUPPLIER"
 }
