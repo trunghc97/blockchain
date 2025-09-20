@@ -39,6 +39,14 @@ public class ContractController {
     ) {
         try {
             Contract contract = objectMapper.readValue(contractJson, Contract.class);
+
+            // Set buyer as current user
+            User currentUser = userService.getCurrentUser();
+            if (currentUser == null) {
+                return ResponseEntity.badRequest().body("User not authenticated");
+            }
+            contract.setBuyer(currentUser.getId());
+
             Contract created = contractService.createContract(contract, file);
             return ResponseEntity.ok(created);
         } catch (IllegalArgumentException e) {
@@ -53,7 +61,12 @@ public class ContractController {
     @GetMapping
     public ResponseEntity<?> getContracts() {
         try {
-            List<Contract> contracts = contractService.getContracts();
+            User currentUser = userService.getCurrentUser();
+            if (currentUser == null) {
+                return ResponseEntity.badRequest().body("User not authenticated");
+            }
+
+            List<Contract> contracts = contractService.getContractsByUser(currentUser.getId());
             return ResponseEntity.ok(contracts);
         } catch (Exception e) {
             logger.error("Error getting contracts", e);

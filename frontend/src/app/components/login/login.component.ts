@@ -34,11 +34,15 @@ export class LoginComponent {
 
     this.authService.login(this.loginForm.value)
       .subscribe({
-        next: () => {
-          this.router.navigate(['/']);
+        next: (response) => {
+          console.log('Login successful:', response);
+          this.loading = false;
+          // Redirect trực tiếp đến trang contracts
+          this.router.navigate(['/contracts']);
         },
         error: (error) => {
-          this.error = 'Invalid username or password';
+          console.error('Login error:', error);
+          this.error = error.error?.message || 'Đăng nhập thất bại';
           this.loading = false;
         }
       });

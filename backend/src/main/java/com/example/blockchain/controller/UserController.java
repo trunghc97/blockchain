@@ -19,7 +19,7 @@ public class UserController {
         this.userService = userService;
     }
 
-    @PostMapping("/login")
+    @PostMapping("/auth/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
         return ResponseEntity.ok(userService.login(request));
     }
@@ -27,5 +27,20 @@ public class UserController {
     @GetMapping("/users")
     public ResponseEntity<List<User>> getUsers() {
         return ResponseEntity.ok(userService.getUsers());
+    }
+
+    @GetMapping("/users/current")
+    public ResponseEntity<User> getCurrentUser(@RequestHeader("Authorization") String token) {
+        // Giả sử token format là "Bearer <token>"
+        String jwtToken = token.replace("Bearer ", "");
+        User user = userService.getCurrentUser(jwtToken);
+        return ResponseEntity.ok(user);
+    }
+
+    @GetMapping("/users/suppliers")
+    public ResponseEntity<List<User>> getSuppliers() {
+        return ResponseEntity.ok(userService.getUsers().stream()
+                .filter(user -> "SUPPLIER".equals(user.getRole()))
+                .toList());
     }
 }

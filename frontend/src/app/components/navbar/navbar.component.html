@@ -1,31 +1,31 @@
 <mat-toolbar color="primary">
-  <span>Blockchain SCF</span>
-  <span class="spacer"></span>
+  <button mat-button routerLink="/">
+    <mat-icon>account_balance</mat-icon>
+    Blockchain
+  </button>
 
   <ng-container *ngIf="userService.currentUser$ | async as user">
-    <button mat-button routerLink="/contracts/new" *ngIf="user.role === 'ANCHOR'">
+    <button mat-button routerLink="/contracts/new" *ngIf="user?.role === 'ANCHOR'">
       <mat-icon>add</mat-icon>
       Tạo hợp đồng
     </button>
 
-    <button mat-button routerLink="/contracts/approve" *ngIf="user.role === 'SUPPLIER'">
+    <button mat-button routerLink="/contracts/approve" *ngIf="user?.role === 'SUPPLIER'">
       <mat-icon>check_circle</mat-icon>
-      Phê duyệt
+      Duyệt hợp đồng
     </button>
 
-    <button mat-button routerLink="/contracts/status">
-      <mat-icon>list</mat-icon>
-      Trạng thái
+    <button mat-button routerLink="/contracts">
+      <mat-icon>description</mat-icon>
+      Danh sách hợp đồng
     </button>
 
-    <button mat-button routerLink="/ledger">
-      <mat-icon>account_balance</mat-icon>
-      Ledger
-    </button>
+    <span class="spacer"></span>
 
-    <button mat-button (click)="onLogout()">
+    <span class="username">{{user.username}}</span>
+
+    <button mat-icon-button (click)="onLogout()">
       <mat-icon>exit_to_app</mat-icon>
-      Đăng xuất
     </button>
   </ng-container>
 </mat-toolbar>

@@ -44,7 +44,7 @@ public class UserService {
 
         String token = generateToken(user);
         user.setPassword(null); // Don't send password back
-        
+
         return LoginResponse.builder()
             .token(token)
             .userId(user.getId())
@@ -66,6 +66,34 @@ public class UserService {
 
     public List<User> getUsers() {
         return mongoTemplate.findAll(User.class, "users");
+    }
+
+    public List<User> getSuppliers() {
+        return mongoTemplate.find(Query.query(Criteria.where("role").is("SUPPLIER")), User.class, "users");
+    }
+
+    public User getCurrentUser(String token) {
+        try {
+            // Remove "Bearer " prefix if present
+            if (token.startsWith("Bearer ")) {
+                token = token.substring(7);
+            }
+
+            Claims claims = Jwts.parser()
+                .setSigningKey(JWT_SECRET)
+                .parseClaimsJws(token)
+                .getBody();
+
+            String username = claims.getSubject();
+            return mongoTemplate.findOne(
+                Query.query(Criteria.where("username").is(username)),
+                User.class,
+                "users"
+            );
+        } catch (Exception e) {
+            logger.error("Error parsing token: ", e);
+            throw new RuntimeException("Invalid token");
+        }
     }
 
     public User getCurrentUser() {

@@ -1,7 +1,15 @@
 <div class="container">
   <mat-card>
     <mat-card-header>
-      <mat-card-title>Ledger Viewer - {{contractId}}</mat-card-title>
+      <mat-card-title>
+        <div class="title-container">
+          <mat-icon>account_balance</mat-icon>
+          <span>Ledger Viewer - {{contractId}}</span>
+          <button mat-icon-button color="primary" [routerLink]="['/contracts']" matTooltip="Quay lại">
+            <mat-icon>arrow_back</mat-icon>
+          </button>
+        </div>
+      </mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
@@ -10,81 +18,142 @@
       </div>
 
       <div *ngIf="!loading">
-        <mat-tab-group>
-          <mat-tab label="Transactions">
-            <table mat-table [dataSource]="transactions">
-              <ng-container matColumnDef="id">
-                <th mat-header-cell *matHeaderCellDef>Transaction ID</th>
-                <td mat-cell *matCellDef="let tx">{{tx.id}}</td>
-              </ng-container>
+        <mat-tab-group animationDuration="0ms">
+          <mat-tab>
+            <ng-template mat-tab-label>
+              <mat-icon class="tab-icon">swap_horiz</mat-icon>
+              Transactions
+            </ng-template>
 
-              <ng-container matColumnDef="type">
-                <th mat-header-cell *matHeaderCellDef>Type</th>
-                <td mat-cell *matCellDef="let tx">
-                  <mat-chip [color]="getTransactionTypeColor(tx.type)" selected>
-                    {{tx.type}}
-                  </mat-chip>
-                </td>
-              </ng-container>
+            <div class="table-container">
+              <table mat-table [dataSource]="transactions" matSort>
+                <ng-container matColumnDef="id">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Transaction ID</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <code>{{tx.id}}</code>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="approverID">
-                <th mat-header-cell *matHeaderCellDef>Approver</th>
-                <td mat-cell *matCellDef="let tx">{{tx.approverID || '-'}}</td>
-              </ng-container>
+                <ng-container matColumnDef="type">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Type</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div [ngClass]="'transaction-type-chip type-' + tx.type.toLowerCase()">
+                      {{tx.type}}
+                    </div>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="status">
-                <th mat-header-cell *matHeaderCellDef>Status</th>
-                <td mat-cell *matCellDef="let tx">{{tx.status}}</td>
-              </ng-container>
+                <ng-container matColumnDef="approverID">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Approver</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div class="approver-info" *ngIf="tx.approverID">
+                      <mat-icon>person</mat-icon>
+                      {{tx.approverID}}
+                    </div>
+                    <span *ngIf="!tx.approverID">-</span>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="timestamp">
-                <th mat-header-cell *matHeaderCellDef>Timestamp</th>
-                <td mat-cell *matCellDef="let tx">{{tx.timestamp | date:'medium'}}</td>
-              </ng-container>
+                <ng-container matColumnDef="status">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div [ngClass]="'status-chip status-' + tx.status.toLowerCase()">
+                      {{tx.status}}
+                    </div>
+                  </td>
+                </ng-container>
 
-              <tr mat-header-row *matHeaderRowDef="transactionColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: transactionColumns;"></tr>
-            </table>
+                <ng-container matColumnDef="timestamp">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Timestamp</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div class="timestamp">
+                      <mat-icon>schedule</mat-icon>
+                      {{tx.timestamp | date:'medium'}}
+                    </div>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="transactionColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: transactionColumns;"></tr>
+              </table>
+
+              <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
+            </div>
           </mat-tab>
 
-          <mat-tab label="Blocks">
-            <table mat-table [dataSource]="blocks">
-              <ng-container matColumnDef="blockNumber">
-                <th mat-header-cell *matHeaderCellDef>Block Number</th>
-                <td mat-cell *matCellDef="let block">{{block.blockNumber}}</td>
-              </ng-container>
+          <mat-tab>
+            <ng-template mat-tab-label>
+              <mat-icon class="tab-icon">view_module</mat-icon>
+              Blocks
+            </ng-template>
 
-              <ng-container matColumnDef="timestamp">
-                <th mat-header-cell *matHeaderCellDef>Timestamp</th>
-                <td mat-cell *matCellDef="let block">{{block.timestamp | date:'medium'}}</td>
-              </ng-container>
+            <div class="table-container">
+              <table mat-table [dataSource]="blocks" matSort>
+                <ng-container matColumnDef="blockNumber">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Block Number</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="block-number">
+                      <mat-icon>layers</mat-icon>
+                      {{block.blockNumber}}
+                    </div>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="hash">
-                <th mat-header-cell *matHeaderCellDef>Hash</th>
-                <td mat-cell *matCellDef="let block">
-                  <code>{{block.hash}}</code>
-                </td>
-              </ng-container>
+                <ng-container matColumnDef="timestamp">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header>Timestamp</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="timestamp">
+                      <mat-icon>schedule</mat-icon>
+                      {{block.timestamp | date:'medium'}}
+                    </div>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="previousHash">
-                <th mat-header-cell *matHeaderCellDef>Previous Hash</th>
-                <td mat-cell *matCellDef="let block">
-                  <code>{{block.previousHash || '-'}}</code>
-                </td>
-              </ng-container>
+                <ng-container matColumnDef="hash">
+                  <th mat-header-cell *matHeaderCellDef>Hash</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="hash-container" [matTooltip]="block.hash">
+                      <code>{{block.hash | slice:0:16}}...</code>
+                      <button mat-icon-button (click)="copyToClipboard(block.hash)">
+                        <mat-icon>content_copy</mat-icon>
+                      </button>
+                    </div>
+                  </td>
+                </ng-container>
 
-              <ng-container matColumnDef="txIds">
-                <th mat-header-cell *matHeaderCellDef>Transactions</th>
-                <td mat-cell *matCellDef="let block">
-                  <div class="tx-list">
-                    <code *ngFor="let txId of block.txIds">{{txId}}</code>
-                  </div>
-                </td>
-              </ng-container>
+                <ng-container matColumnDef="previousHash">
+                  <th mat-header-cell *matHeaderCellDef>Previous Hash</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="hash-container" *ngIf="block.previousHash">
+                      <code>{{block.previousHash | slice:0:16}}...</code>
+                      <button mat-icon-button (click)="copyToClipboard(block.previousHash)">
+                        <mat-icon>content_copy</mat-icon>
+                      </button>
+                    </div>
+                    <span *ngIf="!block.previousHash">-</span>
+                  </td>
+                </ng-container>
 
-              <tr mat-header-row *matHeaderRowDef="blockColumns"></tr>
-              <tr mat-row *matRowDef="let row; columns: blockColumns;"></tr>
-            </table>
+                <ng-container matColumnDef="txIds">
+                  <th mat-header-cell *matHeaderCellDef>Transactions</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="tx-list">
+                      <div *ngFor="let txId of block.txIds" class="tx-item">
+                        <code>{{txId | slice:0:16}}...</code>
+                        <button mat-icon-button (click)="copyToClipboard(txId)">
+                          <mat-icon>content_copy</mat-icon>
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="blockColumns"></tr>
+                <tr mat-row *matRowDef="let row; columns: blockColumns;"></tr>
+              </table>
+
+              <mat-paginator [pageSizeOptions]="[5, 10, 20]" showFirstLastButtons></mat-paginator>
+            </div>
           </mat-tab>
         </mat-tab-group>
       </div>

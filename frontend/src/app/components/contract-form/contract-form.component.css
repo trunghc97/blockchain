@@ -1,81 +1,146 @@
 .contract-form-container {
-  padding: 2rem;
+  padding: 24px;
   max-width: 800px;
   margin: 0 auto;
 }
 
-.full-width {
-  width: 100%;
+mat-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+}
+
+mat-card-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 16px;
+}
+
+mat-card-title {
+  font-size: 24px !important;
+  color: #2c3e50;
+  font-weight: 500;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
 }
 
 .file-upload-section {
-  margin: 1.5rem 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 2px dashed #bdc3c7;
+  border-radius: 8px;
+  background: #f8f9fa;
 }
 
 .file-name {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.suppliers-section {
-  margin: 2rem 0;
-}
-
-.suppliers-section h3 {
-  color: #333;
-  margin-bottom: 1rem;
+  gap: 8px;
+  color: #2c3e50;
   font-weight: 500;
 }
 
+.full-width {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.suppliers-section {
+  margin-bottom: 24px;
+}
+
+.suppliers-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2c3e50;
+  margin-bottom: 16px;
+  font-size: 18px;
+}
+
 .supplier-item {
-  display: grid;
-  grid-template-columns: 2fr 2fr auto;
-  gap: 1rem;
-  align-items: start;
-  margin-bottom: 1rem;
-  padding: 1rem;
-  background-color: #f8f9fa;
-  border-radius: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background: #f8f9fa;
+}
+
+.supplier-field {
+  flex: 2;
+}
+
+.amount-field {
+  flex: 1;
 }
 
 .add-supplier-btn {
-  margin: 1rem 0;
+  margin-top: 16px;
+  width: 100%;
 }
 
 .action-buttons {
   display: flex;
+  gap: 16px;
   justify-content: flex-end;
-  margin-top: 2rem;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
 }
 
-button[type="submit"] {
-  min-width: 150px;
-  height: 48px;
+.debug-info {
+  margin: 24px 0;
 }
 
-mat-spinner {
-  margin: 0 auto;
+.debug-content p {
+  margin: 4px 0;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 12px;
 }
 
-/* Responsive Design */
+.debug-content p:first-child {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+/* Responsive */
 @media (max-width: 768px) {
-  .contract-form-container {
-    padding: 1rem;
-  }
-
   .supplier-item {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 8px;
   }
 
-  .file-upload-section {
-    flex-direction: column;
-    align-items: stretch;
+  .supplier-field,
+  .amount-field {
+    flex: none;
+    width: 100%;
   }
+
+  .action-buttons {
+    flex-direction: column;
+  }
+
+  .contract-form-container {
+    padding: 16px;
+  }
+}
+
+/* Form validation states */
+.mat-form-field.mat-form-field-invalid .mat-form-field-outline {
+  color: #f44336 !important;
+}
+
+.mat-form-field.mat-form-field-invalid .mat-form-field-label {
+  color: #f44336 !important;
+}
+
+button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

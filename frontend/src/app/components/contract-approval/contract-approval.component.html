@@ -1,7 +1,10 @@
 <div class="container">
   <mat-card>
     <mat-card-header>
-      <mat-card-title>Phê duyệt hợp đồng</mat-card-title>
+      <mat-card-title>
+        <mat-icon>check_circle</mat-icon>
+        Duyệt hợp đồng
+      </mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
@@ -9,54 +12,79 @@
         <mat-spinner></mat-spinner>
       </div>
 
-      <table mat-table [dataSource]="contracts" *ngIf="!loading">
-        <ng-container matColumnDef="contractId">
-          <th mat-header-cell *matHeaderCellDef>Mã hợp đồng</th>
-          <td mat-cell *matCellDef="let contract">{{contract.contractId}}</td>
-        </ng-container>
+      <div *ngIf="!loading">
+        <table mat-table [dataSource]="contracts" class="mat-elevation-z8">
+          <ng-container matColumnDef="contractId">
+            <th mat-header-cell *matHeaderCellDef>Mã hợp đồng</th>
+            <td mat-cell *matCellDef="let contract">
+              <strong>{{contract.contractId}}</strong>
+            </td>
+          </ng-container>
 
-        <ng-container matColumnDef="buyer">
-          <th mat-header-cell *matHeaderCellDef>Buyer</th>
-          <td mat-cell *matCellDef="let contract">{{contract.buyer}}</td>
-        </ng-container>
+          <ng-container matColumnDef="description">
+            <th mat-header-cell *matHeaderCellDef>Mô tả</th>
+            <td mat-cell *matCellDef="let contract">{{contract.description}}</td>
+          </ng-container>
 
-        <ng-container matColumnDef="totalAmount">
-          <th mat-header-cell *matHeaderCellDef>Tổng số tiền</th>
-          <td mat-cell *matCellDef="let contract">{{formatAmount(contract.totalAmount)}}</td>
-        </ng-container>
+          <ng-container matColumnDef="supplierInfo">
+            <th mat-header-cell *matHeaderCellDef>Thông tin của bạn</th>
+            <td mat-cell *matCellDef="let contract">
+              <div class="supplier-info">
+                <div class="supplier-name">{{getCurrentUserSupplier(contract)?.name}}</div>
+                <div class="supplier-amount">{{formatAmount(getCurrentUserSupplier(contract)?.amount || 0)}}</div>
+              </div>
+            </td>
+          </ng-container>
 
-        <ng-container matColumnDef="description">
-          <th mat-header-cell *matHeaderCellDef>Mô tả</th>
-          <td mat-cell *matCellDef="let contract">{{contract.description}}</td>
-        </ng-container>
+          <ng-container matColumnDef="totalAmount">
+            <th mat-header-cell *matHeaderCellDef>Tổng số tiền</th>
+            <td mat-cell *matCellDef="let contract">
+              <div class="amount">{{formatAmount(contract.totalAmount || 0)}}</div>
+            </td>
+          </ng-container>
 
-        <ng-container matColumnDef="status">
-          <th mat-header-cell *matHeaderCellDef>Trạng thái</th>
-          <td mat-cell *matCellDef="let contract">
-            <mat-chip [color]="contract.status === 'PENDING' ? 'warn' : 'primary'" selected>
-              {{contract.status}}
-            </mat-chip>
-          </td>
-        </ng-container>
+          <ng-container matColumnDef="status">
+            <th mat-header-cell *matHeaderCellDef>Trạng thái</th>
+            <td mat-cell *matCellDef="let contract">
+              <div [ngClass]="'status-chip status-' + contract.status.toLowerCase()">
+                {{contract.status}}
+              </div>
+            </td>
+          </ng-container>
 
-        <ng-container matColumnDef="actions">
-          <th mat-header-cell *matHeaderCellDef>Thao tác</th>
-          <td mat-cell *matCellDef="let contract">
-            <button mat-raised-button color="primary" 
-                    (click)="approveContract(contract)"
-                    [disabled]="approving[contract.contractId]">
-              <mat-spinner diameter="20" *ngIf="approving[contract.contractId]"></mat-spinner>
-              <span *ngIf="!approving[contract.contractId]">Phê duyệt</span>
-            </button>
-          </td>
-        </ng-container>
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef>Thao tác</th>
+            <td mat-cell *matCellDef="let contract">
+              <div *ngIf="canApproveContract(contract); else cannotApprove">
+                <button mat-raised-button color="primary"
+                        (click)="approveContract(contract)"
+                        [disabled]="approving[contract.contractId]">
+                  <mat-spinner diameter="20" *ngIf="approving[contract.contractId]"></mat-spinner>
+                  <span *ngIf="!approving[contract.contractId]">Phê duyệt</span>
+                </button>
 
-        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
-      </table>
+                <button mat-button color="warn"
+                        (click)="rejectContract(contract)"
+                        [disabled]="approving[contract.contractId]"
+                        class="ml-2">
+                  Từ chối
+                </button>
+              </div>
 
-      <div class="no-data" *ngIf="!loading && contracts.length === 0">
-        Không có hợp đồng nào cần phê duyệt
+              <ng-template #cannotApprove>
+                <span class="text-muted">Đã xử lý</span>
+              </ng-template>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        </table>
+
+        <div class="no-data" *ngIf="contracts.length === 0">
+          <mat-icon>inbox</mat-icon>
+          <p>Không có hợp đồng nào cần duyệt</p>
+        </div>
       </div>
     </mat-card-content>
   </mat-card>

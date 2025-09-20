@@ -1,65 +1,92 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { ReactiveFormsModule } from '@angular/forms';
 import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { CommonModule, DatePipe } from '@angular/common';
 
-// Angular Material Modules
-import { MatToolbarModule } from '@angular/material/toolbar';
-import { MatButtonModule } from '@angular/material/button';
+// Routing
+import { RouterModule } from '@angular/router';
+
+// Material Modules
 import { MatCardModule } from '@angular/material/card';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
-import { MatTableModule } from '@angular/material/table';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatSelectModule } from '@angular/material/select';
-import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatTableModule } from '@angular/material/table';
+import { MatSortModule } from '@angular/material/sort';
+import { MatPaginatorModule } from '@angular/material/paginator';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTabsModule } from '@angular/material/tabs';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 
+// Routing
 import { AppRoutingModule } from './app-routing.module';
+
+// Interceptors
+import { ErrorInterceptor } from './interceptors/error.interceptor';
+
+// Components
 import { AppComponent } from './app.component';
-import { LoginComponent } from './components/login/login.component';
-import { NavbarComponent } from './components/navbar/navbar.component';
-import { ContractFormComponent } from './components/contract-form/contract-form.component';
-import { ContractApprovalComponent } from './components/contract-approval/contract-approval.component';
 import { ContractStatusComponent } from './components/contract-status/contract-status.component';
 import { LedgerViewerComponent } from './components/ledger-viewer/ledger-viewer.component';
-import { AuthInterceptor } from './services/auth.interceptor';
+import { ContractFormComponent } from './components/contract-form/contract-form.component';
+import { ContractApprovalComponent } from './components/contract-approval/contract-approval.component';
+import { LoginComponent } from './components/login/login.component';
+import { NavbarComponent } from './components/navbar/navbar.component';
 
 @NgModule({
   declarations: [
     AppComponent,
-    LoginComponent,
-    NavbarComponent,
+    ContractStatusComponent,
+    LedgerViewerComponent,
     ContractFormComponent,
     ContractApprovalComponent,
-    ContractStatusComponent,
-    LedgerViewerComponent
+    LoginComponent,
+    NavbarComponent
   ],
   imports: [
     BrowserModule,
     BrowserAnimationsModule,
-    AppRoutingModule,
-    ReactiveFormsModule,
+    CommonModule,
     HttpClientModule,
-    // Angular Material
-    MatToolbarModule,
-    MatButtonModule,
+    AppRoutingModule,
+    RouterModule,
+    FormsModule,
+    ReactiveFormsModule,
+    // Material Modules
     MatCardModule,
+    MatButtonModule,
+    MatIconModule,
     MatInputModule,
     MatFormFieldModule,
-    MatIconModule,
-    MatTableModule,
-    MatProgressSpinnerModule,
-    MatChipsModule,
     MatSelectModule,
+    MatTableModule,
+    MatSortModule,
+    MatPaginatorModule,
+    MatChipsModule,
+    MatProgressSpinnerModule,
+    MatTabsModule,
+    MatTooltipModule,
     MatSnackBarModule,
-    MatTabsModule
+    MatToolbarModule,
+    MatExpansionModule,
+    MatButtonToggleModule
   ],
   providers: [
-    { provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true }
+    DatePipe, // Add DatePipe provider
+    {
+      provide: HTTP_INTERCEPTORS,
+      useClass: ErrorInterceptor,
+      multi: true
+    }
   ],
   bootstrap: [AppComponent]
 })

@@ -1,7 +1,10 @@
 <div class="contract-form-container">
   <mat-card>
     <mat-card-header>
-      <mat-card-title>Tạo hợp đồng SCF mới</mat-card-title>
+      <mat-card-title>
+        <mat-icon>description</mat-icon>
+        Tạo hợp đồng SCF mới
+      </mat-card-title>
     </mat-card-header>
 
     <mat-card-content>
@@ -31,42 +34,46 @@
         <mat-form-field appearance="outline" class="full-width">
           <mat-label>Mô tả</mat-label>
           <textarea matInput formControlName="description" rows="3" required></textarea>
-          <mat-error *ngIf="contractForm.get('description')?.hasError('required')">
+          <mat-error *ngIf="contractForm.get('description')?.hasError('required') && contractForm.get('description')?.touched">
             Vui lòng nhập mô tả
           </mat-error>
         </mat-form-field>
 
         <!-- Danh sách nhà cung cấp -->
         <div class="suppliers-section">
-          <h3>Danh sách nhà cung cấp</h3>
-          
+          <h3>
+            <mat-icon>business</mat-icon>
+            Danh sách nhà cung cấp
+          </h3>
+
           <div formArrayName="suppliers">
             <div *ngFor="let supplier of suppliers.controls; let i=index" [formGroupName]="i" class="supplier-item">
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="supplier-field">
                 <mat-label>Nhà cung cấp</mat-label>
-                <mat-select formControlName="supplierId" required>
+                <mat-select formControlName="supplierId" required (selectionChange)="onSupplierSelected($event, i)">
                   <mat-option *ngFor="let s of supplierList" [value]="s.id">
                     {{ s.username }}
                   </mat-option>
                 </mat-select>
-                <mat-error *ngIf="supplier.get('supplierId')?.hasError('required')">
+                <mat-error *ngIf="supplier.get('supplierId')?.hasError('required') && supplier.get('supplierId')?.touched">
                   Vui lòng chọn nhà cung cấp
                 </mat-error>
               </mat-form-field>
 
-              <mat-form-field appearance="outline">
+              <mat-form-field appearance="outline" class="amount-field">
                 <mat-label>Số tiền</mat-label>
-                <input matInput type="number" formControlName="amount" required>
+                <input matInput type="number" formControlName="amount" required min="1">
                 <span matSuffix>VND</span>
-                <mat-error *ngIf="supplier.get('amount')?.hasError('required')">
+                <mat-error *ngIf="supplier.get('amount')?.hasError('required') && supplier.get('amount')?.touched">
                   Vui lòng nhập số tiền
                 </mat-error>
-                <mat-error *ngIf="supplier.get('amount')?.hasError('min')">
+                <mat-error *ngIf="supplier.get('amount')?.hasError('min') && supplier.get('amount')?.touched">
                   Số tiền phải lớn hơn 0
                 </mat-error>
               </mat-form-field>
 
-              <button mat-icon-button color="warn" type="button" (click)="removeSupplier(i)" [disabled]="suppliers.length === 1">
+              <button mat-icon-button color="warn" type="button" (click)="removeSupplier(i)"
+                      [disabled]="suppliers.length === 1" matTooltip="Xóa nhà cung cấp">
                 <mat-icon>delete</mat-icon>
               </button>
             </div>
@@ -78,11 +85,36 @@
           </button>
         </div>
 
+        <!-- Debug Info -->
+        <div class="debug-info" *ngIf="!contractForm.valid">
+          <mat-expansion-panel>
+            <mat-expansion-panel-header>
+              <mat-panel-title>Debug: Form Validation</mat-panel-title>
+            </mat-expansion-panel-header>
+            <div class="debug-content">
+              <p>Form Valid: {{contractForm.valid}}</p>
+              <p>Description Valid: {{contractForm.get('description')?.valid}}</p>
+              <p>Suppliers Count: {{suppliers.length}}</p>
+              <p>Suppliers Valid: {{suppliers.valid}}</p>
+              <div *ngFor="let supplier of suppliers.controls; let i=index">
+                <p>Supplier {{i+1}}: {{supplier.valid}}</p>
+                <p>  - SupplierId: {{supplier.get('supplierId')?.value}} (valid: {{supplier.get('supplierId')?.valid}})</p>
+                <p>  - Name: {{supplier.get('name')?.value}} (valid: {{supplier.get('name')?.valid}})</p>
+                <p>  - Amount: {{supplier.get('amount')?.value}} (valid: {{supplier.get('amount')?.valid}})</p>
+              </div>
+            </div>
+          </mat-expansion-panel>
+        </div>
+
         <!-- Submit Button -->
         <div class="action-buttons">
-          <button mat-flat-button color="primary" type="submit" [disabled]="!contractForm.valid || loading">
+          <button mat-flat-button color="primary" type="submit" [disabled]="!isFormValid()">
             <mat-spinner diameter="20" *ngIf="loading"></mat-spinner>
             <span *ngIf="!loading">Tạo hợp đồng</span>
+          </button>
+          <button mat-button type="button" routerLink="/contracts">
+            <mat-icon>arrow_back</mat-icon>
+            Quay lại
           </button>
         </div>
       </form>

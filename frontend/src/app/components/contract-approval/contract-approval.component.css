@@ -1,34 +1,336 @@
 .container {
-  padding: 20px;
-  max-width: 1200px;
+  padding: 24px;
+  max-width: 1400px;
   margin: 0 auto;
+}
+
+mat-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1) !important;
+}
+
+mat-card-header {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 16px;
+}
+
+mat-card-title {
+  font-size: 24px !important;
+  color: #2c3e50;
+  font-weight: 500;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
 }
 
 .loading-spinner {
   display: flex;
   justify-content: center;
-  padding: 20px;
+  padding: 48px;
 }
 
 table {
   width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: none !important;
 }
 
-.mat-column-actions {
-  width: 100px;
+.mat-header-cell {
+  background: #f8f9fa;
+  color: #2c3e50;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 16px;
+  border-bottom: 2px solid #dee2e6;
+  white-space: nowrap;
+}
+
+.mat-cell {
+  padding: 16px;
+  font-size: 14px;
+  color: #34495e;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.mat-row:hover {
+  background: #f8f9fa;
+}
+
+.supplier-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.supplier-name {
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.supplier-amount {
+  font-family: 'Roboto Mono', monospace;
+  color: #27ae60;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.amount {
+  font-family: 'Roboto Mono', monospace;
+  color: #2c3e50;
+  font-weight: 500;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.status-chip {
+  border-radius: 16px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 80px;
+  max-width: 100px;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
 }
 
-.mat-column-status {
-  width: 150px;
+.status-pending {
+  background: #f1c40f;
 }
 
-button mat-spinner {
-  margin: 0 auto;
+.status-approved {
+  background: #2ecc71;
+}
+
+.status-rejected {
+  background: #e74c3c;
+}
+
+.status-completed {
+  background: #3498db;
 }
 
 .no-data {
   text-align: center;
-  padding: 20px;
-  color: rgba(0, 0, 0, 0.54);
+  padding: 48px;
+  color: #7f8c8d;
+  font-size: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-top: 24px;
+}
+
+.no-data mat-icon {
+  font-size: 48px;
+  width: 48px;
+  height: 48px;
+  color: #bdc3c7;
+  display: block;
+  margin: 0 auto 16px;
+}
+
+button[mat-raised-button] {
+  min-width: 100px;
+  font-size: 14px;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+
+button[mat-raised-button] mat-spinner {
+  margin: 0 auto;
+}
+
+.ml-2 {
+  margin-left: 8px;
+}
+
+.text-muted {
+  color: #6c757d;
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* Table column widths with fixed ratios */
+.mat-column-contractId {
+  flex: 1.5;
+  min-width: 150px;
+}
+
+.mat-column-description {
+  flex: 2;
+  min-width: 200px;
+}
+
+.mat-column-supplierInfo {
+  flex: 2;
+  min-width: 180px;
+}
+
+.mat-column-totalAmount {
+  flex: 1.5;
+  min-width: 120px;
+}
+
+.mat-column-status {
+  flex: 1;
+  min-width: 100px;
+}
+
+.mat-column-actions {
+  flex: 1.5;
+  min-width: 140px;
+}
+
+/* Text overflow handling */
+.mat-column-contractId .mat-cell,
+.mat-column-description .mat-cell,
+.mat-column-supplierInfo .mat-cell {
+  overflow: hidden;
+}
+
+.mat-column-contractId .mat-cell strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.mat-column-description .mat-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .container {
+    padding: 20px;
+  }
+
+  .mat-column-contractId {
+    flex: 1.2;
+    min-width: 120px;
+  }
+
+  .mat-column-description {
+    flex: 1.5;
+    min-width: 150px;
+  }
+
+  .mat-column-supplierInfo {
+    flex: 1.8;
+    min-width: 150px;
+  }
+
+  .mat-column-actions {
+    flex: 1.2;
+    min-width: 120px;
+  }
+
+  .supplier-name {
+    max-width: 150px;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .supplier-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .supplier-name {
+    max-width: none;
+    white-space: normal;
+  }
+
+  table {
+    font-size: 12px;
+  }
+
+  .mat-header-cell,
+  .mat-cell {
+    padding: 8px;
+  }
+
+  .mat-column-contractId {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .mat-column-description {
+    flex: 1.5;
+    min-width: 120px;
+  }
+
+  .mat-column-supplierInfo {
+    flex: 1.5;
+    min-width: 120px;
+  }
+
+  .mat-column-totalAmount {
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .mat-column-status {
+    flex: 0.8;
+    min-width: 80px;
+  }
+
+  .mat-column-actions {
+    flex: 1.2;
+    min-width: 100px;
+  }
+
+  button[mat-raised-button] {
+    min-width: 80px;
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 12px;
+  }
+
+  .mat-column-contractId .mat-cell strong {
+    max-width: 100px;
+  }
+
+  .mat-column-description .mat-cell {
+    max-width: 120px;
+  }
+
+  .supplier-name {
+    max-width: 120px;
+  }
+
+  .status-chip {
+    min-width: 70px;
+    max-width: 80px;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
 }
