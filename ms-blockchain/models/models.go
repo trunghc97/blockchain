@@ -28,6 +28,40 @@ type Supplier struct {
 	SupplierRef     string  `bson:"supplier_ref,omitempty" json:"supplier_ref,omitempty"`
 }
 
+type ContractEvent struct {
+	EventID    string                 `bson:"event_id" json:"eventId"`
+	ContractID string                 `bson:"contract_id" json:"contractId"`
+	Type       string                 `bson:"type" json:"type"`
+	ActorID    string                 `bson:"actor_id" json:"actorId"`
+	Payload    map[string]interface{} `bson:"payload,omitempty" json:"payload,omitempty"`
+	Timestamp  time.Time              `bson:"timestamp" json:"timestamp"`
+	Included   bool                   `bson:"included" json:"included"`
+}
+
+type ContractEventInBlock struct {
+	ContractID string                 `bson:"contract_id" json:"contractId"`
+	EventID    string                 `bson:"event_id" json:"eventId"`
+	Type       string                 `bson:"type" json:"type"`
+	ActorID    string                 `bson:"actor_id" json:"actorId"`
+	Payload    map[string]interface{} `bson:"payload,omitempty" json:"payload,omitempty"`
+	Timestamp  time.Time              `bson:"timestamp" json:"timestamp"`
+}
+
+type Contract struct {
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ContractID  string             `bson:"contract_id" json:"contractId"`
+	Description string             `bson:"description" json:"description"`
+	Buyer       string             `bson:"buyer" json:"buyer"`
+	Suppliers   []Supplier         `bson:"suppliers" json:"suppliers"`
+	TotalAmount float64            `bson:"total_amount" json:"totalAmount"`
+	Status      string             `bson:"status" json:"status"`
+	FileURL     string             `bson:"file_url,omitempty" json:"fileUrl,omitempty"`
+	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
+	WordState   string             `bson:"word_state,omitempty" json:"wordState,omitempty"`
+	History     []ContractEvent    `bson:"history,omitempty" json:"history,omitempty"`
+}
+
 type Transaction struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	ContractID  string             `bson:"contract_id" json:"contract_id"`
@@ -44,12 +78,13 @@ type Transaction struct {
 }
 
 type Block struct {
-	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	BlockNumber  int64              `bson:"block_number" json:"block_number"`
-	Timestamp    time.Time          `bson:"timestamp" json:"timestamp"`
-	PreviousHash string             `bson:"previous_hash" json:"previous_hash"`
-	Hash         string             `bson:"hash" json:"hash"`
-	TxIDs        []string           `bson:"tx_ids" json:"tx_ids"`
+	ID             primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
+	BlockNumber    int64                  `bson:"block_number" json:"blockNumber"`
+	Timestamp      time.Time              `bson:"timestamp" json:"timestamp"`
+	ContractEvents []ContractEventInBlock `bson:"contract_events" json:"contractEvents"`
+	PreviousHash   string                 `bson:"previous_hash" json:"previousHash"`
+	Hash           string                 `bson:"hash" json:"hash"`
+	MerkleRoot     string                 `bson:"merkle_root" json:"merkleRoot"`
 }
 
 type Approver struct {

@@ -19,4 +19,5 @@ public class Contract {
     private String fileUrl;
     private Date createdAt;
     private Date updatedAt;
+    private String wordState;
 }

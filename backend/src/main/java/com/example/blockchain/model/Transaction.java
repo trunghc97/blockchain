@@ -17,4 +17,5 @@ public class Transaction {
     private String status;
     private String timestamp;
     private boolean included;
+    private String wordState;
 }

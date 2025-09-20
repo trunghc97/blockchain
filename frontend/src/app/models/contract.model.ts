@@ -16,4 +16,5 @@ export interface Contract {
   fileUrl?: string;
   createdAt: Date;
   updatedAt: Date;
+  wordState?: string;
 }

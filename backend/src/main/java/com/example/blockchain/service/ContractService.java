@@ -11,17 +11,19 @@ import org.springframework.util.StringUtils;
 
 import java.util.Date;
 import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.UUID;
+import java.util.Objects;
 
 @Service
 public class ContractService {
     private final MongoTemplate mongoTemplate;
+    private final BlockchainService blockchainService;
 
-    public ContractService(MongoTemplate mongoTemplate) {
+    public ContractService(MongoTemplate mongoTemplate, BlockchainService blockchainService) {
         this.mongoTemplate = mongoTemplate;
+        this.blockchainService = blockchainService;
     }
 
     public Contract createContract(Contract contract, MultipartFile file) {
@@ -38,11 +40,10 @@ public class ContractService {
             contract.setTotalAmount(total);
         }
 
-        // Get supplier names before saving
-        enrichContractWithSupplierNames(contract);
-
         // Set initial values
-        contract.setContractId(UUID.randomUUID().toString());
+        if (contract.getContractId() == null || contract.getContractId().isEmpty()) {
+            contract.setContractId(UUID.randomUUID().toString());
+        }
         contract.setStatus("PENDING");
         contract.setCreatedAt(new Date());
         contract.setUpdatedAt(new Date());
@@ -63,14 +64,34 @@ public class ContractService {
             contract.setFileUrl("/uploads/" + fileName);
         }
 
-        return mongoTemplate.save(contract);
+        try {
+            // Prepare contract data for blockchain service
+            Map<String, Object> contractData = new HashMap<>();
+            contractData.put("contractId", contract.getContractId());
+            contractData.put("description", contract.getDescription());
+            contractData.put("buyer", contract.getBuyer());
+            contractData.put("suppliers", contract.getSuppliers());
+            contractData.put("totalAmount", contract.getTotalAmount());
+            contractData.put("fileUrl", contract.getFileUrl());
+
+            // Call blockchain service to create contract
+            Map<String, Object> blockchainResponse = blockchainService.createContract(contractData);
+
+            if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
+                // Save contract locally for quick access
+                return mongoTemplate.save(contract);
+            } else {
+                throw new RuntimeException("Failed to create contract on blockchain");
+            }
+        } catch (Exception e) {
+            System.err.println("Error calling blockchain service: " + e.getMessage());
+            throw new RuntimeException("Blockchain service unavailable", e);
+        }
     }
 
+
     public List<Contract> getContracts() {
-        List<Contract> contracts = mongoTemplate.findAll(Contract.class);
-        return contracts.stream()
-            .map(this::enrichContractWithSupplierNames)
-            .collect(Collectors.toList());
+        return mongoTemplate.findAll(Contract.class);
     }
 
     public List<Contract> getContractsByUser(String userId) {
@@ -83,11 +104,7 @@ public class ContractService {
         Criteria supplierCriteria = Criteria.where("suppliers.supplierId").is(userId);
 
         Query query = new Query(new Criteria().orOperator(buyerCriteria, supplierCriteria));
-
-        List<Contract> contracts = mongoTemplate.find(query, Contract.class);
-        return contracts.stream()
-            .map(this::enrichContractWithSupplierNames)
-            .collect(Collectors.toList());
+        return mongoTemplate.find(query, Contract.class);
     }
 
     public Contract getContract(String contractId) {
@@ -95,58 +112,12 @@ public class ContractService {
             throw new IllegalArgumentException("Contract ID cannot be empty");
         }
 
-        Contract contract = mongoTemplate.findOne(
+        return mongoTemplate.findOne(
             Query.query(Criteria.where("contractId").is(contractId)),
             Contract.class
         );
-
-        if (contract != null) {
-            return enrichContractWithSupplierNames(contract);
-        }
-
-        return contract;
     }
 
-    private Contract enrichContractWithSupplierNames(Contract contract) {
-        if (contract == null || contract.getSuppliers() == null) {
-            return contract;
-        }
-
-        // Get all supplier IDs from the contract
-        List<String> supplierIds = contract.getSuppliers().stream()
-            .filter(Objects::nonNull)
-            .map(supplier -> supplier.getSupplierId())
-            .filter(StringUtils::hasText)
-            .distinct()
-            .collect(Collectors.toList());
-
-        if (supplierIds.isEmpty()) {
-            return contract;
-        }
-
-        // Fetch all suppliers in one query
-        List<User> suppliers = mongoTemplate.find(
-            Query.query(Criteria.where("id").in(supplierIds)),
-            User.class
-        );
-
-        // Create a map for quick lookup
-        Map<String, String> supplierIdToNameMap = suppliers.stream()
-            .filter(Objects::nonNull)
-            .collect(Collectors.toMap(User::getId, User::getUsername));
-
-        // Update supplier names in contract
-        contract.getSuppliers().forEach(supplier -> {
-            if (supplier != null && supplier.getSupplierId() != null) {
-                String supplierName = supplierIdToNameMap.get(supplier.getSupplierId());
-                if (supplierName != null) {
-                    supplier.setName(supplierName);
-                }
-            }
-        });
-
-        return contract;
-    }
 
     public Contract approveContract(String contractId, String supplierId) {
         if (!StringUtils.hasText(contractId)) {
@@ -161,34 +132,38 @@ public class ContractService {
             throw new RuntimeException("Contract not found: " + contractId);
         }
 
-        if (contract.getSuppliers() == null || contract.getSuppliers().isEmpty()) {
-            throw new RuntimeException("Contract has no suppliers");
-        }
+        try {
+            // Call blockchain service to approve contract
+            Map<String, Object> blockchainResponse = blockchainService.approveContract(contractId, supplierId);
 
-        // Update supplier status
-        boolean supplierFound = false;
-        for (var supplier : contract.getSuppliers()) {
-            if (supplier != null && supplierId.equals(supplier.getSupplierId())) {
-                supplier.setStatus("APPROVED");
-                supplierFound = true;
-                break;
+            if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
+                // Update local contract status for quick access
+                if (contract.getSuppliers() != null) {
+                    for (var supplier : contract.getSuppliers()) {
+                        if (supplier != null && supplierId.equals(supplier.getSupplierId())) {
+                            supplier.setStatus("APPROVED");
+                            break;
+                        }
+                    }
+
+                    // Check if all suppliers approved
+                    boolean allApproved = contract.getSuppliers().stream()
+                        .filter(Objects::nonNull)
+                        .allMatch(s -> "APPROVED".equals(s.getStatus()));
+
+                    if (allApproved) {
+                        contract.setStatus("APPROVED");
+                    }
+                }
+
+                contract.setUpdatedAt(new Date());
+                return mongoTemplate.save(contract);
+            } else {
+                throw new RuntimeException("Failed to approve contract on blockchain");
             }
+        } catch (Exception e) {
+            System.err.println("Error calling blockchain service: " + e.getMessage());
+            throw new RuntimeException("Blockchain service unavailable", e);
         }
-
-        if (!supplierFound) {
-            throw new RuntimeException("Supplier not found in contract: " + supplierId);
-        }
-
-        // Check if all suppliers approved
-        boolean allApproved = contract.getSuppliers().stream()
-            .filter(Objects::nonNull)
-            .allMatch(s -> "APPROVED".equals(s.getStatus()));
-
-        if (allApproved) {
-            contract.setStatus("APPROVED");
-        }
-
-        contract.setUpdatedAt(new Date());
-        return mongoTemplate.save(contract);
     }
 }

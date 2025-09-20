@@ -38,8 +38,9 @@ func main() {
 	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
 	router.HandleFunc("/contract/approve", handler.ApproveContract).Methods("POST")
 	router.HandleFunc("/contract/list", handler.ListContracts).Methods("GET")
+	router.HandleFunc("/contract/{id}/ledger", handler.QueryContractLedger).Methods("GET")
 
-	// Ledger query endpoint
+	// Ledger query endpoint (legacy)
 	router.HandleFunc("/ledger/query", handler.QueryLedger).Methods("GET")
 
 	// User endpoints

@@ -11,15 +11,29 @@ export interface Transaction {
   status: string;
   timestamp: string;
   included: boolean;
+  wordState?: string;
+  blockNumber?: number;
+  blockHash?: string;
+  merkleRoot?: string;
+}
+
+export interface ContractEventInBlock {
+  contractId: string;
+  eventId: string;
+  type: string;
+  actorId: string;
+  payload: any;
+  timestamp: string;
 }
 
 export interface Block {
   id: string;
   blockNumber: number;
   timestamp: string;
-  previousHash: string;
+  contractEvents: ContractEventInBlock[];
+  prevHash: string;
   hash: string;
-  txIds: string[];
+  merkleRoot: string;
 }
 
 export interface LedgerResponse {

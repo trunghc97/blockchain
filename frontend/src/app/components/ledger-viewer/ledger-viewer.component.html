@@ -73,6 +73,30 @@
                   </td>
                 </ng-container>
 
+                <ng-container matColumnDef="blockNumber">
+                  <th mat-header-cell *matHeaderCellDef>Block #</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div class="block-number" *ngIf="tx.blockNumber">
+                      <mat-icon>layers</mat-icon>
+                      {{tx.blockNumber}}
+                    </div>
+                    <span *ngIf="!tx.blockNumber">-</span>
+                  </td>
+                </ng-container>
+
+                <ng-container matColumnDef="wordState">
+                  <th mat-header-cell *matHeaderCellDef>Word State</th>
+                  <td mat-cell *matCellDef="let tx">
+                    <div class="word-state-container" *ngIf="tx.wordState">
+                      <button mat-icon-button [matTooltip]="tx.wordState" (click)="copyToClipboard(tx.wordState)">
+                        <mat-icon>description</mat-icon>
+                      </button>
+                      <code class="word-state-preview">{{tx.wordState | slice:0:50}}...</code>
+                    </div>
+                    <span *ngIf="!tx.wordState">-</span>
+                  </td>
+                </ng-container>
+
                 <tr mat-header-row *matHeaderRowDef="transactionColumns"></tr>
                 <tr mat-row *matRowDef="let row; columns: transactionColumns;"></tr>
               </table>
@@ -134,13 +158,27 @@
                   </td>
                 </ng-container>
 
+                <ng-container matColumnDef="merkleRoot">
+                  <th mat-header-cell *matHeaderCellDef>Merkle Root</th>
+                  <td mat-cell *matCellDef="let block">
+                    <div class="hash-container" *ngIf="block.merkleRoot">
+                      <code>{{block.merkleRoot | slice:0:16}}...</code>
+                      <button mat-icon-button (click)="copyToClipboard(block.merkleRoot)">
+                        <mat-icon>content_copy</mat-icon>
+                      </button>
+                    </div>
+                    <span *ngIf="!block.merkleRoot">-</span>
+                  </td>
+                </ng-container>
+
                 <ng-container matColumnDef="txIds">
-                  <th mat-header-cell *matHeaderCellDef>Transactions</th>
+                  <th mat-header-cell *matHeaderCellDef>Events</th>
                   <td mat-cell *matCellDef="let block">
                     <div class="tx-list">
-                      <div *ngFor="let txId of block.txIds" class="tx-item">
-                        <code>{{txId | slice:0:16}}...</code>
-                        <button mat-icon-button (click)="copyToClipboard(txId)">
+                      <div *ngFor="let event of block.contractEvents" class="tx-item">
+                        <code>{{event.eventId | slice:0:16}}...</code>
+                        <span class="event-type">{{event.type}}</span>
+                        <button mat-icon-button (click)="copyToClipboard(event.eventId)">
                           <mat-icon>content_copy</mat-icon>
                         </button>
                       </div>

@@ -3,6 +3,7 @@ package com.example.blockchain.controller;
 import com.example.blockchain.model.Contract;
 import com.example.blockchain.service.ContractService;
 import com.example.blockchain.service.UserService;
+import com.example.blockchain.service.BlockchainService;
 import com.example.blockchain.model.User;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/contracts")
@@ -20,15 +23,18 @@ public class ContractController {
     private static final Logger logger = LoggerFactory.getLogger(ContractController.class);
     private final ContractService contractService;
     private final UserService userService;
+    private final BlockchainService blockchainService;
     private final ObjectMapper objectMapper;
 
     public ContractController(
         ContractService contractService,
         UserService userService,
+        BlockchainService blockchainService,
         ObjectMapper objectMapper
     ) {
         this.contractService = contractService;
         this.userService = userService;
+        this.blockchainService = blockchainService;
         this.objectMapper = objectMapper;
     }
 
@@ -110,6 +116,26 @@ public class ContractController {
         } catch (Exception e) {
             logger.error("Error approving contract", e);
             return ResponseEntity.internalServerError().body("Error approving contract: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/{id}/ledger")
+    public ResponseEntity<?> getContractLedger(@PathVariable("id") String contractId) {
+        try {
+            // Call blockchain service to get ledger data
+            com.example.blockchain.model.LedgerResponse ledgerResponse = blockchainService.queryLedger(contractId);
+
+            if (ledgerResponse == null || ledgerResponse.getData() == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            return ResponseEntity.ok(ledgerResponse.getData());
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid contract ID: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            logger.error("Error getting contract ledger", e);
+            return ResponseEntity.internalServerError().body("Error getting contract ledger: " + e.getMessage());
         }
     }
 }

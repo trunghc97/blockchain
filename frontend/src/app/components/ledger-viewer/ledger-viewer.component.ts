@@ -15,8 +15,8 @@ export class LedgerViewerComponent implements OnInit {
   contractId: string = '';
   loading = false;
   
-  transactionColumns: string[] = ['id', 'type', 'approverID', 'status', 'timestamp'];
-  blockColumns: string[] = ['blockNumber', 'timestamp', 'hash', 'previousHash', 'txIds'];
+  transactionColumns: string[] = ['id', 'type', 'approverID', 'status', 'timestamp', 'blockNumber', 'wordState'];
+  blockColumns: string[] = ['blockNumber', 'timestamp', 'hash', 'previousHash', 'merkleRoot', 'txIds'];
   
   transactions = new MatTableDataSource<any>([]);
   blocks = new MatTableDataSource<any>([]);
@@ -51,8 +51,8 @@ export class LedgerViewerComponent implements OnInit {
     this.loading = true;
     this.contractService.getLedgerData(this.contractId).subscribe({
       next: (data) => {
-        this.transactions.data = data.transactions;
-        this.blocks.data = data.blocks;
+        this.transactions.data = data.transactions || [];
+        this.blocks.data = data.blocks || [];
         this.loading = false;
       },
       error: (error) => {
@@ -80,6 +80,8 @@ export class LedgerViewerComponent implements OnInit {
         return 'accent';
       case 'REJECT':
         return 'warn';
+      case 'CURRENT_STATE':
+        return 'primary';
       default:
         return '';
     }

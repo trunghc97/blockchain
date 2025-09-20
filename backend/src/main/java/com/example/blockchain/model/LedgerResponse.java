@@ -1,10 +1,9 @@
 package com.example.blockchain.model;
 
 import lombok.Data;
-import java.util.List;
+import java.util.Map;
 
 @Data
 public class LedgerResponse {
-    private List<Transaction> transactions;
-    private List<Block> blocks;
+    private Map<String, Object> data;
 }
