@@ -92,17 +92,13 @@ public class ContractService {
 
 
     public List<Contract> getContracts() {
-        return mongoTemplate.findAll(Contract.class);
+        return mongoTemplate.findAll(Contract.class, "contracts");
     }
 
-    public List<Contract> getContractsByUser(String userId) {
-        if (!StringUtils.hasText(userId)) {
-            throw new IllegalArgumentException("User ID cannot be empty");
-        }
-
+    public List<Contract> getContractsByUser(String username) {
         // Find contracts where user is either buyer (anchor) or a supplier
-        Criteria buyerCriteria = Criteria.where("buyer").is(userId);
-        Criteria supplierCriteria = Criteria.where("suppliers.supplierId").is(userId);
+        Criteria buyerCriteria = Criteria.where("buyer").is(username);
+        Criteria supplierCriteria = Criteria.where("suppliers.name").is(username);
 
         Query query = new Query(new Criteria().orOperator(buyerCriteria, supplierCriteria));
         return mongoTemplate.find(query, Contract.class);

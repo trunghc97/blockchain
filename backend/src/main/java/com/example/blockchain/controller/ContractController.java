@@ -46,8 +46,9 @@ public class ContractController {
         try {
             Contract contract = objectMapper.readValue(contractJson, Contract.class);
 
-            // TEMP: Set buyer to anchor for testing
-            contract.setBuyer("anchor");
+            // Set buyer as current user (using username)
+            User currentUser = userService.getCurrentUser();
+            contract.setBuyer(currentUser.getUsername());
 
             Contract created = contractService.createContract(contract, file);
             return ResponseEntity.ok(created);
@@ -77,10 +78,12 @@ public class ContractController {
         try {
             User currentUser = userService.getCurrentUser();
             if (currentUser == null) {
+                System.out.println("ContractController: currentUser is null");
                 return ResponseEntity.badRequest().body("User not authenticated");
             }
 
-            List<Contract> contracts = contractService.getContractsByUser(currentUser.getId());
+            // TEMP: Test with all contracts
+            List<Contract> contracts = contractService.getContractsByUser(currentUser.getUsername());
             return ResponseEntity.ok(contracts);
         } catch (Exception e) {
             logger.error("Error getting contracts", e);

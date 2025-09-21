@@ -89,11 +89,9 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 
 	_, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc)
 	if err != nil {
-		fmt.Printf("Error inserting event: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Printf("Successfully inserted event: %s\n", createEvent.EventID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

@@ -20,21 +20,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        
+
         String token = extractToken(request);
-        
+
         if (token != null && validateToken(token)) {
             Claims claims = extractClaims(token);
             String username = claims.getSubject();
             String role = claims.get("role", String.class);
-            
+
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                 username, null, List.of(new SimpleGrantedAuthority("ROLE_" + role))
             );
-            
+
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
-        
+
         filterChain.doFilter(request, response);
     }
 
@@ -48,7 +48,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private boolean validateToken(String token) {
         try {
-            Jwts.parser().setSigningKey(JWT_SECRET).parseClaimsJws(token);
+            Jwts.parser().setSigningKey(JWT_SECRET.getBytes()).parseClaimsJws(token);
             return true;
         } catch (Exception e) {
             return false;
@@ -57,7 +57,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private Claims extractClaims(String token) {
         return Jwts.parser()
-            .setSigningKey(JWT_SECRET)
+            .setSigningKey(JWT_SECRET.getBytes())
             .parseClaimsJws(token)
             .getBody();
     }

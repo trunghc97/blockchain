@@ -60,7 +60,7 @@ public class UserService {
             .claim("role", user.getRole())
             .setIssuedAt(new Date())
             .setExpiration(new Date(System.currentTimeMillis() + JWT_EXPIRATION))
-            .signWith(SignatureAlgorithm.HS512, JWT_SECRET)
+            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_SECRET.getBytes())
             .compact();
     }
 
@@ -80,7 +80,7 @@ public class UserService {
             }
 
             Claims claims = Jwts.parser()
-                .setSigningKey(JWT_SECRET)
+                .setSigningKey(JWT_SECRET.getBytes())
                 .parseClaimsJws(token)
                 .getBody();
 
@@ -107,7 +107,7 @@ public class UserService {
 
     public static Claims parseToken(String token) {
         return Jwts.parser()
-            .setSigningKey(JWT_SECRET)
+            .setSigningKey("blockchain-secret-key".getBytes())
             .parseClaimsJws(token)
             .getBody();
     }
