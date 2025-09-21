@@ -42,30 +42,18 @@ func (b *BlockBuilder) buildBlocksPeriodically() {
 }
 
 func (b *BlockBuilder) buildNextBlock() {
-	// Get unincluded contract events
-	pipeline := mongo.Pipeline{
-		{{"$unwind", "$history"}},
-		{{"$match", bson.M{"history.included": false}}},
-		{{"$project", bson.M{
-			"_id":         0,
-			"contract_id": "$contract_id",
-			"event_id":    "$history.event_id",
-			"type":        "$history.type",
-			"actor_id":    "$history.actor_id",
-			"payload":     "$history.payload",
-			"timestamp":   "$history.timestamp",
-		}}},
-		{{"$limit", b.maxTxPerBlock}},
-	}
+	// Get unincluded contract events from events collection
+	filter := bson.M{"included": false}
+	opts := options.Find().SetLimit(int64(b.maxTxPerBlock))
 
-	cur, err := b.db.Collection("contracts").Aggregate(context.Background(), pipeline)
+	cur, err := b.db.Collection("events").Find(context.Background(), filter, opts)
 	if err != nil {
 		fmt.Printf("Error getting contract events: %v\n", err)
 		return
 	}
 	defer cur.Close(context.Background())
 
-	var events []bson.M
+	var events []models.ContractEvent
 	if err := cur.All(context.Background(), &events); err != nil {
 		fmt.Printf("Error decoding events: %v\n", err)
 		return
@@ -100,26 +88,16 @@ func (b *BlockBuilder) buildNextBlock() {
 
 	for _, event := range events {
 		contractEvent := models.ContractEventInBlock{
-			ContractID: event["contract_id"].(string),
-			EventID:    event["event_id"].(string),
-			Type:       event["type"].(string),
-			ActorID:    event["actor_id"].(string),
+			ContractID: event.ContractID,
+			EventID:    event.EventID,
+			Type:       event.Type,
+			ActorID:    event.ActorID,
+			Payload:    event.Payload,
 			Timestamp:  timestamp,
 		}
 
-		// Handle payload if exists
-		if payload, ok := event["payload"]; ok && payload != nil {
-			if payloadMap, ok := payload.(bson.M); ok {
-				payloadInterface := make(map[string]interface{})
-				for k, v := range payloadMap {
-					payloadInterface[k] = v
-				}
-				contractEvent.Payload = payloadInterface
-			}
-		}
-
 		contractEvents = append(contractEvents, contractEvent)
-		eventIds = append(eventIds, event["event_id"].(string))
+		eventIds = append(eventIds, event.EventID)
 	}
 
 	// Calculate merkle root
@@ -150,15 +128,15 @@ func (b *BlockBuilder) buildNextBlock() {
 	// Mark events as included
 	for _, eventId := range eventIds {
 		filter := bson.M{
-			"history.event_id": eventId,
+			"event_id": eventId,
 		}
 		update := bson.M{
 			"$set": bson.M{
-				"history.$.included": true,
+				"included": true,
 			},
 		}
 
-		_, err = b.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+		_, err = b.db.Collection("events").UpdateOne(context.Background(), filter, update)
 		if err != nil {
 			fmt.Printf("Error updating event %s: %v\n", eventId, err)
 		}

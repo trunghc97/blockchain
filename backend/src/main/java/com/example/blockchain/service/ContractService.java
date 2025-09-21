@@ -45,6 +45,7 @@ public class ContractService {
             contract.setContractId(UUID.randomUUID().toString());
         }
         contract.setStatus("PENDING");
+        contract.setWordState("CREATED"); // Set initial word state
         contract.setCreatedAt(new Date());
         contract.setUpdatedAt(new Date());
 

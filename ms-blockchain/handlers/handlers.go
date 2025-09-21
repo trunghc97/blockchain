@@ -76,16 +76,28 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 		History:     []models.ContractEvent{createEvent},
 	}
 
-	// Insert contract
-	result, err := h.db.Collection("contracts").InsertOne(context.Background(), contract)
+	// Insert contract event only (remove contract storage from blockchain service)
+	eventDoc := bson.M{
+		"event_id":    createEvent.EventID,
+		"contract_id": createEvent.ContractID,
+		"type":        createEvent.Type,
+		"actor_id":    createEvent.ActorID,
+		"payload":     createEvent.Payload,
+		"timestamp":   createEvent.Timestamp,
+		"included":    false,
+	}
+
+	_, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc)
 	if err != nil {
+		fmt.Printf("Error inserting event: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	fmt.Printf("Successfully inserted event: %s\n", createEvent.EventID)
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"contract_id": contract.ContractID,
-		"id":          result.InsertedID,
 		"status":      "success",
 	})
 }
@@ -178,6 +190,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
@@ -332,6 +345,7 @@ func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"transactions": transactions,
 		"blocks":       blocks,
@@ -369,6 +383,7 @@ func (h *Handler) ListContracts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(contracts)
 }
 
@@ -386,5 +401,6 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
 }

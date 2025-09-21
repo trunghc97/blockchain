@@ -15,7 +15,6 @@ const (
 	StatusFailed              = "FAILED"
 
 	TxTypeCreate          = "CREATE"
-	TxTypeApproveBank     = "APPROVE_BANK"
 	TxTypeApproveSupplier = "APPROVE_SUPPLIER"
 	TxTypeExecute         = "EXECUTE"
 )
@@ -62,21 +61,6 @@ type Contract struct {
 	History     []ContractEvent    `bson:"history,omitempty" json:"history,omitempty"`
 }
 
-type Transaction struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	ContractID  string             `bson:"contract_id" json:"contract_id"`
-	Type        string             `bson:"type" json:"type"`
-	Buyer       string             `bson:"buyer" json:"buyer"`
-	Bank        string             `bson:"bank" json:"bank"`
-	Suppliers   []Supplier         `bson:"suppliers,omitempty" json:"suppliers,omitempty"`
-	TotalAmount float64            `bson:"total_amount" json:"total_amount"`
-	Description string             `bson:"description" json:"description"`
-	ApproverID  string             `bson:"approver_id,omitempty" json:"approver_id,omitempty"`
-	Status      string             `bson:"status" json:"status"`
-	Timestamp   time.Time          `bson:"timestamp" json:"timestamp"`
-	Included    bool               `bson:"included" json:"included"`
-}
-
 type Block struct {
 	ID             primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
 	BlockNumber    int64                  `bson:"block_number" json:"blockNumber"`
@@ -85,25 +69,6 @@ type Block struct {
 	PreviousHash   string                 `bson:"previous_hash" json:"previousHash"`
 	Hash           string                 `bson:"hash" json:"hash"`
 	MerkleRoot     string                 `bson:"merkle_root" json:"merkleRoot"`
-}
-
-type Approver struct {
-	ID        string    `bson:"id" json:"id"`
-	Type      string    `bson:"type" json:"type"` // "BANK" or "SUPPLIER"
-	Status    string    `bson:"status" json:"status"`
-	Timestamp time.Time `bson:"timestamp" json:"timestamp"`
-}
-
-type WorldState struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	ContractID  string             `bson:"contract_id" json:"contract_id"`
-	Buyer       string             `bson:"buyer" json:"buyer"`
-	Bank        Approver           `bson:"bank" json:"bank"`
-	Suppliers   []Supplier         `bson:"suppliers" json:"suppliers"`
-	TotalAmount float64            `bson:"total_amount" json:"total_amount"`
-	Description string             `bson:"description" json:"description"`
-	Status      string             `bson:"status" json:"status"`
-	LastUpdated time.Time          `bson:"last_updated" json:"last_updated"`
 }
 
 type User struct {
