@@ -171,6 +171,22 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	contract.History = append(contract.History, approveEvent)
 	contract.UpdatedAt = time.Now()
 
+	// Insert event to events collection
+	eventDoc := bson.M{
+		"eventId":    approveEvent.EventID,
+		"contractId": approveEvent.ContractID,
+		"type":       approveEvent.Type,
+		"actorId":    approveEvent.ActorID,
+		"payload":    approveEvent.Payload,
+		"timestamp":  approveEvent.Timestamp,
+		"included":   false,
+	}
+
+	if _, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Update contract status if all approved
 	if allApproved {
 		contract.Status = models.StatusReadyToExecute
@@ -251,6 +267,22 @@ func (h *Handler) executeContract(contractID string) {
 	// Add event to history
 	contract.History = append(contract.History, executeEvent)
 	contract.UpdatedAt = time.Now()
+
+	// Insert event to events collection
+	eventDoc := bson.M{
+		"eventId":    executeEvent.EventID,
+		"contractId": executeEvent.ContractID,
+		"type":       executeEvent.Type,
+		"actorId":    executeEvent.ActorID,
+		"payload":    executeEvent.Payload,
+		"timestamp":  executeEvent.Timestamp,
+		"included":   false,
+	}
+
+	if _, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc); err != nil {
+		fmt.Printf("Error inserting execute event to events collection: %v\n", err)
+		return
+	}
 
 	// Update contract
 	if _, err := h.db.Collection("contracts").ReplaceOne(
