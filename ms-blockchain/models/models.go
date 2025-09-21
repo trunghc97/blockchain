@@ -20,44 +20,44 @@ const (
 )
 
 type Supplier struct {
-	ID              string  `bson:"id" json:"id"`
+	SupplierID      string  `bson:"supplierId" json:"supplierId"`
 	Name            string  `bson:"name" json:"name"`
-	AllocatedAmount float64 `bson:"allocated_amount" json:"allocated_amount"`
+	AllocatedAmount float64 `bson:"allocatedAmount" json:"allocatedAmount"`
 	Status          string  `bson:"status" json:"status"`
-	SupplierRef     string  `bson:"supplier_ref,omitempty" json:"supplier_ref,omitempty"`
+	SupplierRef     string  `bson:"supplierRef,omitempty" json:"supplierRef,omitempty"`
 }
 
 type ContractEvent struct {
-	EventID    string                 `bson:"event_id" json:"eventId"`
-	ContractID string                 `bson:"contract_id" json:"contractId"`
+	EventID    string                 `bson:"eventId" json:"eventId"`
+	ContractID string                 `bson:"contractId" json:"contractId"`
 	Type       string                 `bson:"type" json:"type"`
-	ActorID    string                 `bson:"actor_id" json:"actorId"`
+	ActorID    string                 `bson:"actorId" json:"actorId"`
 	Payload    map[string]interface{} `bson:"payload,omitempty" json:"payload,omitempty"`
 	Timestamp  time.Time              `bson:"timestamp" json:"timestamp"`
 	Included   bool                   `bson:"included" json:"included"`
 }
 
 type ContractEventInBlock struct {
-	ContractID string                 `bson:"contract_id" json:"contractId"`
-	EventID    string                 `bson:"event_id" json:"eventId"`
+	ContractID string                 `bson:"contractId" json:"contractId"`
+	EventID    string                 `bson:"eventId" json:"eventId"`
 	Type       string                 `bson:"type" json:"type"`
-	ActorID    string                 `bson:"actor_id" json:"actorId"`
+	ActorID    string                 `bson:"actorId" json:"actorId"`
 	Payload    map[string]interface{} `bson:"payload,omitempty" json:"payload,omitempty"`
 	Timestamp  time.Time              `bson:"timestamp" json:"timestamp"`
 }
 
 type Contract struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	ContractID  string             `bson:"contract_id" json:"contractId"`
+	ContractID  string             `bson:"contractId" json:"contractId"`
 	Description string             `bson:"description" json:"description"`
 	Buyer       string             `bson:"buyer" json:"buyer"`
 	Suppliers   []Supplier         `bson:"suppliers" json:"suppliers"`
-	TotalAmount float64            `bson:"total_amount" json:"totalAmount"`
+	TotalAmount float64            `bson:"totalAmount" json:"totalAmount"`
 	Status      string             `bson:"status" json:"status"`
-	FileURL     string             `bson:"file_url,omitempty" json:"fileUrl,omitempty"`
-	CreatedAt   time.Time          `bson:"created_at" json:"createdAt"`
-	UpdatedAt   time.Time          `bson:"updated_at" json:"updatedAt"`
-	WordState   string             `bson:"word_state,omitempty" json:"wordState,omitempty"`
+	FileURL     string             `bson:"fileUrl,omitempty" json:"fileUrl,omitempty"`
+	CreatedAt   time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
+	WordState   string             `bson:"wordState,omitempty" json:"wordState,omitempty"`
 	History     []ContractEvent    `bson:"history,omitempty" json:"history,omitempty"`
 }
 

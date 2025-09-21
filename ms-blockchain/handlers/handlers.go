@@ -78,13 +78,13 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 
 	// Insert contract event only (remove contract storage from blockchain service)
 	eventDoc := bson.M{
-		"event_id":    createEvent.EventID,
-		"contract_id": createEvent.ContractID,
-		"type":        createEvent.Type,
-		"actor_id":    createEvent.ActorID,
-		"payload":     createEvent.Payload,
-		"timestamp":   createEvent.Timestamp,
-		"included":    false,
+		"eventId":    createEvent.EventID,
+		"contractId": createEvent.ContractID,
+		"type":       createEvent.Type,
+		"actorId":    createEvent.ActorID,
+		"payload":    createEvent.Payload,
+		"timestamp":  createEvent.Timestamp,
+		"included":   false,
 	}
 
 	_, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc)
@@ -95,8 +95,8 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"contract_id": contract.ContractID,
-		"status":      "success",
+		"contractId": contract.ContractID,
+		"status":     "success",
 	})
 }
 
@@ -119,7 +119,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	// Get contract
 	var contract models.Contract
 	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contract_id": req.ContractID,
+		"contractId": req.ContractID,
 	}).Decode(&contract)
 	if err != nil {
 		http.Error(w, "Contract not found", http.StatusNotFound)
@@ -129,7 +129,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	// Find and update supplier status
 	supplierFound := false
 	for i, supplier := range contract.Suppliers {
-		if supplier.ID == req.SupplierID {
+		if supplier.SupplierID == req.SupplierID {
 			contract.Suppliers[i].Status = models.StatusReadyToExecute
 			supplierFound = true
 			break
@@ -181,7 +181,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	// Update contract
 	if _, err := h.db.Collection("contracts").ReplaceOne(
 		context.Background(),
-		bson.M{"contract_id": req.ContractID},
+		bson.M{"contractId": req.ContractID},
 		contract,
 	); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -196,7 +196,7 @@ func (h *Handler) executeContract(contractID string) {
 	// Get contract
 	var contract models.Contract
 	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contract_id": contractID,
+		"contractId": contractID,
 	}).Decode(&contract)
 	if err != nil {
 		fmt.Printf("Error getting contract for execution: %v\n", err)
@@ -215,11 +215,11 @@ func (h *Handler) executeContract(contractID string) {
 		if result.Status == "SUCCESS" {
 			contract.Suppliers[i].SupplierRef = result.SupplierRef
 			contract.Suppliers[i].Status = models.StatusExecuted
-			executedSuppliers = append(executedSuppliers, contract.Suppliers[i].ID)
+			executedSuppliers = append(executedSuppliers, contract.Suppliers[i].SupplierID)
 		} else {
 			allSuccess = false
 			contract.Suppliers[i].Status = models.StatusFailed
-			failedSuppliers = append(failedSuppliers, contract.Suppliers[i].ID)
+			failedSuppliers = append(failedSuppliers, contract.Suppliers[i].SupplierID)
 		}
 	}
 
@@ -255,7 +255,7 @@ func (h *Handler) executeContract(contractID string) {
 	// Update contract
 	if _, err := h.db.Collection("contracts").ReplaceOne(
 		context.Background(),
-		bson.M{"contract_id": contractID},
+		bson.M{"contractId": contractID},
 		contract,
 	); err != nil {
 		fmt.Printf("Error updating contract after execution: %v\n", err)
@@ -271,15 +271,15 @@ func (h *Handler) mockExecuteSupplierFunding() models.ExecutionResult {
 }
 
 func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
-	contractID := r.URL.Query().Get("contract_id")
+	contractID := r.URL.Query().Get("contractId")
 	if contractID == "" {
-		http.Error(w, "contract_id is required", http.StatusBadRequest)
+		http.Error(w, "contractId is required", http.StatusBadRequest)
 		return
 	}
 
 	// Get blocks containing events for this contract
 	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{
-		"contract_events.contract_id": contractID,
+		"contractEvents.contractId": contractID,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -296,7 +296,7 @@ func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
 	// Get contract for additional info
 	var contract models.Contract
 	err = h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contract_id": contractID,
+		"contractId": contractID,
 	}).Decode(&contract)
 
 	contractInfo := map[string]interface{}{
@@ -368,21 +368,10 @@ func (h *Handler) QueryContractLedger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListContracts(w http.ResponseWriter, r *http.Request) {
-	cur, err := h.db.Collection("contracts").Find(context.Background(), bson.M{})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer cur.Close(context.Background())
-
-	var contracts []models.Contract
-	if err := cur.All(context.Background(), &contracts); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	// Note: This method may not be used anymore since contracts are managed by backend
+	// Return empty array for compatibility
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(contracts)
+	json.NewEncoder(w).Encode([]models.Contract{})
 }
 
 func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {

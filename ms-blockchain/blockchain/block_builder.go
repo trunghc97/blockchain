@@ -128,7 +128,7 @@ func (b *BlockBuilder) buildNextBlock() {
 	// Mark events as included
 	for _, eventId := range eventIds {
 		filter := bson.M{
-			"event_id": eventId,
+			"eventId": eventId,
 		}
 		update := bson.M{
 			"$set": bson.M{
