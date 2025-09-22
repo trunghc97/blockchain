@@ -1,198 +1,421 @@
-# Blockchain Transfer System PoC
+# Blockchain Supply Chain Finance (SCF) System
 
-Hệ thống chuyển tiền có nhiều cấp duyệt sử dụng blockchain, được xây dựng với các công nghệ:
-- Frontend: Angular + Angular Material
-- Backend: Spring Boot + Spring Security + JWT
-- Blockchain Service: Golang + MongoDB
+Hệ thống blockchain permissioned cho Supply Chain Finance, cho phép các bên tham gia (Buyer, Bank, Supplier) thực hiện các giao dịch tài trợ chuỗi cung ứng một cách minh bạch và bất biến.
 
-## Thông tin đăng nhập
+## Mục lục
 
-Hệ thống tự động tạo sẵn các tài khoản sau khi khởi động lần đầu:
+1. [Giới thiệu](#giới-thiệu)
+2. [Kiến trúc tổng quan](#kiến-trúc-tổng-quan)
+3. [Mô hình dữ liệu](#mô-hình-dữ-liệu)
+4. [Luồng nghiệp vụ](#luồng-nghiệp-vụ)
+5. [Sơ đồ Sequence](#sơ-đồ-sequence)
+6. [API chính](#api-chính)
+7. [Frontend](#frontend)
+8. [Thiết kế blockchain](#thiết-kế-blockchain)
+9. [Cách chạy hệ thống](#cách-chạy-hệ-thống)
 
-1. Tài khoản Anchor:
-   - Username: anchor
-   - Password: 123456
-   - Role: ANCHOR
+## Giới thiệu
 
-2. Tài khoản Supplier (10 tài khoản):
-   - Username: supplier1, supplier2, ..., supplier10
-   - Password: 123456
-   - Role: SUPPLIER
+### Mục tiêu hệ thống
 
-## Yêu cầu hệ thống
+Hệ thống blockchain SCF permissioned được thiết kế để:
 
-1. **Docker & Docker Compose**
-   - Docker version 20.10.0 trở lên
-   - Docker Compose version 2.0.0 trở lên
+- **Minh bạch**: Tất cả giao dịch được ghi nhận trên blockchain và có thể truy vết
+- **Bất biến**: Dữ liệu đã ghi không thể thay đổi
+- **Phân quyền**: Chỉ các bên được ủy quyền mới có thể tham gia
+- **Tự động hóa**: Quy trình phê duyệt và thực thi hợp đồng được tự động hóa
 
-2. **Môi trường phát triển (nếu cần)**
-   - Node.js 18.x
-   - Java JDK 17
-   - Go 1.21
-   - MongoDB 6.0
+### Các bên tham gia
 
-## Cài đặt và chạy
+- **Buyer (Người mua)**: Khởi tạo hợp đồng SCF, yêu cầu tài trợ
+- **Bank (Ngân hàng)**: Cung cấp tài trợ, phê duyệt hợp đồng
+- **Supplier (Người bán)**: Nhận tài trợ, phê duyệt hợp đồng
 
-### Sử dụng Docker (Khuyến nghị)
+## Kiến trúc tổng quan
 
-1. Clone repository:
-   ```bash
-   git clone <repository-url>
-   cd blockchain
-   ```
+Hệ thống được xây dựng theo kiến trúc microservices với 4 thành phần chính:
 
-2. Build và chạy các services:
-   ```bash
-   docker-compose up --build
-   ```
+### Frontend (Angular)
+- **Công nghệ**: Angular framework
+- **Chức năng**: Giao diện người dùng cho tất cả các bên tham gia
+- **Port**: 4200 (qua nginx proxy)
 
-3. Truy cập các endpoints:
-   - Frontend: http://localhost:4200
-   - Backend: http://localhost:8080
-   - MS Blockchain: http://localhost:8081
-   - Supplier Mock: http://localhost:8082
+### Backend (Spring Boot)
+- **Công nghệ**: Java Spring Boot với JWT authentication
+- **Chức năng**:
+  - Quản lý người dùng và xác thực
+  - Lưu trữ metadata hợp đồng
+  - Upload và quản lý file hợp đồng
+  - Tích hợp với blockchain service
+- **Port**: 8080
 
-### Phát triển local
+### ms-blockchain (Go)
+- **Công nghệ**: Golang với MongoDB
+- **Chức năng**:
+  - Quản lý blockchain ledger
+  - Tạo và xác thực blocks
+  - API truy vấn blockchain data
+  - Block builder tự động
+- **Port**: 8081
 
-1. **Frontend (Angular)**
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
+### MongoDB
+- **Chức năng**: Cơ sở dữ liệu lưu trữ tất cả dữ liệu
+- **Collections**:
+  - `users`: Thông tin người dùng
+  - `contracts`: Metadata hợp đồng
+  - `events`: Sự kiện blockchain
+  - `blocks`: Blocks của blockchain
+- **Port**: 27017
 
-2. **Backend (Spring Boot)**
-   ```bash
-   cd backend
-   ./mvnw spring-boot:run
-   ```
+### Docker Compose
+Tất cả services được orchestrate bởi Docker Compose với network chung `blockchain-network` để đảm bảo kết nối an toàn giữa các services.
 
-3. **MS Blockchain (Go)**
-   ```bash
-   cd ms-blockchain
-   go mod download
-   go run main.go
-   ```
+## Mô hình dữ liệu
 
-4. **Supplier Mock (Go)**
-   ```bash
-   cd supplier-mock
-   go mod download
-   go run main.go
-   ```
-
-5. **MongoDB**
-   ```bash
-   mongod --dbpath=./data/mongodb
-   ```
-
-## Kiến trúc hệ thống
-
+### Contracts Collection
+Lưu trữ metadata của hợp đồng SCF:
+```json
+{
+  "contractId": "string",
+  "description": "string",
+  "buyer": "string",
+  "suppliers": [
+    {
+      "supplierId": "string",
+      "name": "string",
+      "allocatedAmount": 100000.0,
+      "status": "PENDING|READY_TO_EXECUTE|EXECUTED|FAILED"
+    }
+  ],
+  "totalAmount": 500000.0,
+  "status": "PENDING|PARTIALLY_APPROVED|READY_TO_EXECUTE|EXECUTED",
+  "fileUrl": "string",
+  "createdAt": "timestamp",
+  "updatedAt": "timestamp",
+  "history": [...]
+}
 ```
-Frontend (Angular) -> Backend (Spring Boot) -> MS Blockchain (Go) -> Supplier Mock (Go)
-                                                    |
-                                                MongoDB
+
+### Events Collection
+Lưu trữ các sự kiện blockchain chưa được include vào block:
+```json
+{
+  "eventId": "string",
+  "contractId": "string",
+  "type": "CREATE|APPROVE_SUPPLIER|EXECUTE",
+  "actorId": "string",
+  "payload": {...},
+  "timestamp": "timestamp",
+  "included": false
+}
 ```
 
-## Các thành phần
+### Blocks Collection
+Lưu trữ các block của blockchain (immutable):
+```json
+{
+  "blockNumber": 1,
+  "timestamp": "timestamp",
+  "events": [...],
+  "prevHash": "string",
+  "hash": "string",
+  "merkleRoot": "string"
+}
+```
 
-1. **Frontend (port 4200)**
-   - Giao diện đăng nhập và xác thực
-   - Giao diện tạo giao dịch chuyển tiền
-   - Giao diện approve giao dịch
-   - Hiển thị trạng thái giao dịch
-   - Xem lịch sử blockchain
+### Mối quan hệ dữ liệu
 
-2. **Backend (port 8080)**
-   - Xác thực và phân quyền với JWT
-   - REST API cho Frontend
-   - Chuyển tiếp request tới MS Blockchain
-   - Tự động tạo user mẫu khi khởi động
+- **Contracts ↔ Events**: Mỗi contract có history events
+- **Events → Blocks**: Events được gom nhóm thành blocks
+- **Blocks**: Chuỗi liên kết qua hash, tạo thành immutable ledger
+- **World State**: Trạng thái hiện tại của contracts được derive từ events trong blocks
 
-3. **MS Blockchain (port 8081)**
-   - Xử lý các giao dịch blockchain
-   - Lưu trữ transaction và block trong MongoDB
-   - Gọi Supplier API khi đủ số lượng approve
+## Luồng nghiệp vụ
 
-4. **Supplier Mock (port 8082)**
-   - Mock API của hệ thống Supplier
-   - Luôn trả về kết quả thành công
+### 1. Buyer tạo hợp đồng
+1. Buyer đăng nhập và tạo hợp đồng mới
+2. Hệ thống tạo event `CREATE` trong collection `events`
+3. Contract được lưu với status `PENDING`
 
-5. **MongoDB (port 27017)**
-   - Lưu trữ users và thông tin xác thực
-   - Lưu trữ transactions, blocks và world state
+### 2. Suppliers phê duyệt
+1. Suppliers xem danh sách hợp đồng cần phê duyệt
+2. Mỗi supplier approve → tạo event `APPROVE_SUPPLIER`
+3. Khi tất cả suppliers đã approve → contract status = `READY_TO_EXECUTE`
 
-## Cache Docker
+### 3. Hệ thống thực thi tự động
+1. Khi đủ điều kiện, hệ thống tự động thực thi
+2. Tạo event `EXECUTE` với kết quả thực thi
+3. Cập nhật status contract và suppliers
 
-Hệ thống đã được cấu hình cache Docker cơ bản:
+### 4. Block builder tạo blocks
+1. Block builder chạy định kỳ mỗi 10 giây
+2. Gom tối đa 10 events chưa included
+3. Tạo block mới với:
+   - Merkle root từ SHA256 các event IDs
+   - Block hash = SHA256(prevHash + merkleRoot + timestamp)
+4. Đánh dấu events đã included
 
-- **Frontend**: Cache npm dependencies và node_modules
-- **Backend**: Cache Maven dependencies
-- **MS Blockchain & Supplier Mock**: Cache Go modules
+### 5. Immutable ledger
+- Blocks được append-only, không thể modify
+- Ledger = chuỗi blocks + events bên trong
+- World state được tính toán từ events trong tất cả blocks
 
-**Lợi ích**:
-- Giảm thời gian build cho lần rebuild
-- Tận dụng lại Docker layers đã build trước đó
+## Sơ đồ Sequence
 
-## Luồng hoạt động
+Dưới đây là sơ đồ sequence mô tả luồng tương tác đầy đủ của hệ thống SCF:
 
-1. **Đăng nhập**
-   - User nhập username/password
-   - Backend xác thực và trả về JWT token
-   - Frontend lưu token và thêm vào header
+```mermaid
+sequenceDiagram
+    participant U as User (Buyer/Supplier)
+    participant FE as Frontend (Angular)
+    participant BE as Backend (Spring Boot)
+    participant BC as Blockchain Service (Go)
+    participant DB as MongoDB
 
-2. **Tạo giao dịch**
-   - User nhập thông tin chuyển tiền trên Frontend
-   - Frontend gọi Backend API `/transfer/create`
-   - Backend chuyển tiếp tới MS Blockchain `/tx/create`
-   - MS Blockchain tạo transaction và world state
+    %% 1. Tạo hợp đồng
+    rect rgb(240, 248, 255)
+        Note over U,DB: Tạo hợp đồng mới
+        U->>FE: Submit contract form
+        FE->>BE: POST /api/contracts (with file)
+        BE->>DB: Save contract metadata
+        BE->>BC: POST /contract/create
+        BC->>DB: Insert CREATE event
+        BC-->>BE: Success response
+        BE-->>FE: Contract created
+        FE-->>U: Success message
+    end
 
-3. **Approve giao dịch**
-   - Approver nhập Transaction ID và Approver ID
-   - Frontend gọi Backend API `/transfer/approve`
-   - Backend chuyển tiếp tới MS Blockchain `/tx/approve`
-   - MS Blockchain kiểm tra số lượng approve
-   - Nếu đủ số approve, gọi Supplier API
-   - Nếu Supplier trả về thành công, tạo transaction EXECUTE
+    %% 2. Phê duyệt hợp đồng
+    rect rgb(255, 248, 240)
+        Note over U,DB: Suppliers phê duyệt
+        U->>FE: Click approve button
+        FE->>BE: POST /api/contracts/{id}/approve
+        BE->>BC: POST /contract/approve
+        BC->>DB: Check contract status
+        BC->>DB: Insert APPROVE_SUPPLIER event
 
-4. **Kiểm tra trạng thái**
-   - Frontend gọi Backend API `/transfer/status/{id}`
-   - Backend chuyển tiếp tới MS Blockchain `/tx/status/{id}`
-   - MS Blockchain trả về world state của giao dịch
+        alt All suppliers approved
+            BC->>BC: Auto-execute contract
+            BC->>DB: Insert EXECUTE event
+            BC->>DB: Update contract status
+        end
 
-## Cấu trúc dữ liệu
+        BC-->>BE: Success response
+        BE-->>FE: Updated contract
+        FE-->>U: Approval confirmed
+    end
 
-1. **User**
-   - ID: string
-   - Username: string
-   - Password: string (đã mã hóa)
-   - Role: string (ANCHOR/SUPPLIER)
+    %% 3. Block building (chạy định kỳ)
+    rect rgb(248, 255, 240)
+        Note over BC,DB: Block Builder (mỗi 10s)
+        loop Every 10 seconds
+            BC->>DB: Find unincluded events
+            alt Events found (max 10)
+                BC->>BC: Calculate Merkle root
+                BC->>BC: Calculate block hash
+                BC->>DB: Insert new block
+                BC->>DB: Mark events as included
+            end
+        end
+    end
 
-2. **Transaction**
-   - ID: ObjectID
-   - TransactionID: string
-   - FromAccount: string
-   - ToAccount: string
-   - Amount: float64
-   - Status: string (PENDING/APPROVED/EXECUTED)
-   - Type: string (CREATE/APPROVE/EXECUTE)
-   - ApproverID: string
-   - Timestamp: datetime
+    %% 4. Truy vấn ledger
+    rect rgb(255, 240, 248)
+        Note over U,DB: Xem ledger
+        U->>FE: Click ledger view
+        FE->>BE: GET /api/contracts/{id}/ledger
+        BE->>BC: GET /contract/{id}/ledger
+        BC->>DB: Query blocks with contract events
+        DB-->>BC: Return block data
+        BC-->>BE: Formatted ledger response
+        BE-->>FE: Ledger data
+        FE-->>U: Display events & blocks
+    end
+```
 
-3. **Block**
-   - ID: ObjectID
-   - BlockNumber: int64
-   - Timestamp: datetime
-   - PreviousHash: string
-   - Hash: string
-   - Transactions: []Transaction
+## API chính
 
-4. **World State**
-   - ID: ObjectID
-   - TransactionID: string
-   - FromAccount: string
-   - ToAccount: string
-   - Amount: float64
-   - Status: string
-   - ApprovalCount: int
-   - LastUpdated: datetime
+### Backend APIs (Spring Boot)
+
+#### Tạo hợp đồng
+```
+POST /api/contracts
+Content-Type: multipart/form-data
+- file: MultipartFile (optional)
+- contract: JSON string
+
+Response: Contract object
+```
+
+#### Lấy danh sách hợp đồng
+```
+GET /api/contracts
+Authorization: Bearer {token}
+
+Response: Array of contracts
+```
+
+#### Phê duyệt hợp đồng
+```
+POST /api/contracts/{id}/approve
+Authorization: Bearer {token}
+
+Response: Updated contract
+```
+
+#### Lấy ledger của hợp đồng
+```
+GET /api/contracts/{id}/ledger
+Authorization: Bearer {token}
+
+Response: Ledger data với events và blocks
+```
+
+### Blockchain APIs (Go service)
+
+#### Tạo contract event
+```
+POST /contract/create
+{
+  "contractId": "string",
+  "description": "string",
+  "buyer": "string",
+  "suppliers": [...],
+  "totalAmount": number
+}
+
+Response: {"contractId": "string", "status": "success"}
+```
+
+#### Phê duyệt contract
+```
+POST /contract/approve
+{
+  "contractId": "string",
+  "supplierId": "string"
+}
+
+Response: {"status": "success"}
+```
+
+#### Lấy ledger của contract
+```
+GET /contract/{id}/ledger
+
+Response: {
+  "contractId": "string",
+  "events": [...],
+  "total": number
+}
+```
+
+#### Lấy danh sách blocks
+```
+GET /ledger/blocks
+
+Response: Array of block info
+```
+
+## Frontend
+
+Giao diện web được chia thành 4 tab chính:
+
+### Tab 1: Tạo hợp đồng (`/contracts/new`)
+- Form tạo hợp đồng mới
+- Upload file hợp đồng (PDF)
+- Chọn suppliers và phân bổ số tiền
+- Chỉ Buyer có quyền truy cập
+
+### Tab 2: Phê duyệt hợp đồng (`/contracts/approve`)
+- Hiển thị danh sách hợp đồng chờ phê duyệt
+- Suppliers có thể approve/reject
+- Theo dõi tiến độ phê duyệt
+
+### Tab 3: Trạng thái hợp đồng (`/contracts`)
+- Dashboard tổng quan
+- Danh sách tất cả hợp đồng
+- Chi tiết status và history
+
+### Tab 4: Ledger Viewer (`/ledger`)
+- Truy cập blockchain ledger
+- Xem chi tiết các blocks
+- Audit trail của tất cả transactions
+
+## Thiết kế blockchain
+
+### Permissioned Blockchain
+- Chỉ các node được ủy quyền mới tham gia
+- Mỗi bên (Bank, Buyer, Supplier) giữ bản sao ledger
+- Consensus dựa trên sự đồng thuận của các bên
+
+### Event Sourcing Architecture
+- Tất cả thay đổi trạng thái được ghi thành events
+- Events là nguồn sự thật duy nhất
+- World state được rebuild từ events
+
+### Block Structure
+- **Block Number**: Số thứ tự block
+- **Timestamp**: Thời gian tạo block
+- **Events**: Mảng các events được include
+- **PrevHash**: Hash của block trước
+- **Hash**: SHA256(prevHash + merkleRoot + timestamp)
+- **Merkle Root**: Merkle tree root của các event IDs
+
+### Immutable Ledger
+- Blocks chỉ có thể append, không modify
+- Mỗi block tham chiếu đến block trước qua hash
+- Tạo thành chuỗi hash liên kết bất biến
+
+### World State Derivation
+- Trạng thái hiện tại của contracts được tính từ events
+- Không lưu state riêng biệt, chỉ derive khi cần
+- Đảm bảo tính nhất quán và audit-able
+
+## Cách chạy hệ thống
+
+### Yêu cầu hệ thống
+- Docker và Docker Compose
+- Ít nhất 4GB RAM
+- Port 4200, 8080, 8081, 27017 khả dụng
+
+### Lệnh chạy
+```bash
+# Clone repository (nếu có)
+# git clone <repository-url>
+# cd blockchain
+
+# Build và chạy tất cả services
+docker-compose up --build
+
+# Chạy background
+docker-compose up -d --build
+```
+
+### Truy cập hệ thống
+- **Frontend**: http://localhost:4200
+- **Backend API**: http://localhost:8080
+- **Blockchain API**: http://localhost:8081
+- **MongoDB**: localhost:27017
+
+### Tài khoản test
+- **Anchor (Buyer)**: username: `anchor`, password: `123456`
+- **Supplier 1-10**: username: `supplier1` đến `supplier10`, password: `123456`
+
+### Kiểm tra logs
+```bash
+# Xem logs tất cả services
+docker-compose logs -f
+
+# Xem logs cụ thể service
+docker-compose logs -f backend
+docker-compose logs -f ms-blockchain
+```
+
+### Dừng hệ thống
+```bash
+# Dừng và xóa containers
+docker-compose down
+
+# Dừng và xóa volumes (xóa data)
+docker-compose down -v
+```
