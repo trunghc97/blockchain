@@ -47,9 +47,43 @@ export class ContractService {
 
   // Transform new API format to old format for frontend compatibility
   transformLedgerData(apiResponse: any): any {
+    const events = apiResponse.events || [];
+
+    // Extract unique blocks from events
+    const blockMap = new Map();
+    events.forEach((event: any) => {
+      if (event.blockNumber && !blockMap.has(event.blockNumber)) {
+        blockMap.set(event.blockNumber, {
+          blockNumber: event.blockNumber,
+          hash: event.blockHash,
+          merkleRoot: event.merkleRoot,
+          timestamp: event.timestamp, // Use event timestamp as block timestamp
+          contractEvents: [{
+            eventId: event.eventId,
+            type: event.type,
+            actorId: event.actorId,
+            contractId: event.contractId
+          }]
+        });
+      } else if (event.blockNumber) {
+        // Add event to existing block
+        const block = blockMap.get(event.blockNumber);
+        if (block && !block.contractEvents.some((e: any) => e.eventId === event.eventId)) {
+          block.contractEvents.push({
+            eventId: event.eventId,
+            type: event.type,
+            actorId: event.actorId,
+            contractId: event.contractId
+          });
+        }
+      }
+    });
+
+    const blocks = Array.from(blockMap.values());
+
     return {
-      transactions: apiResponse.events || [],
-      blocks: [], // Will be populated from ledger blocks API if needed
+      transactions: events,
+      blocks: blocks,
       contractId: apiResponse.contractId
     };
   }
