@@ -15,7 +15,7 @@ export class LedgerViewerComponent implements OnInit {
   contractId: string = '';
   loading = false;
   
-  transactionColumns: string[] = ['id', 'type', 'approverID', 'status', 'timestamp', 'blockNumber', 'wordState'];
+  transactionColumns: string[] = ['id', 'type', 'approverID', 'status', 'timestamp', 'blockNumber', 'payload'];
   blockColumns: string[] = ['blockNumber', 'timestamp', 'hash', 'previousHash', 'merkleRoot', 'txIds'];
   
   transactions = new MatTableDataSource<any>([]);
@@ -51,8 +51,10 @@ export class LedgerViewerComponent implements OnInit {
     this.loading = true;
     this.contractService.getLedgerData(this.contractId).subscribe({
       next: (data) => {
-        this.transactions.data = data.transactions || [];
-        this.blocks.data = data.blocks || [];
+        // Transform new API format to old format for frontend compatibility
+        const transformedData = this.contractService.transformLedgerData(data);
+        this.transactions.data = transformedData.transactions || [];
+        this.blocks.data = transformedData.blocks || [];
         this.loading = false;
       },
       error: (error) => {
@@ -70,6 +72,14 @@ export class LedgerViewerComponent implements OnInit {
         verticalPosition: 'bottom'
       });
     });
+  }
+
+  hasPayload(payload: any): boolean {
+    return payload && typeof payload === 'object' && Object.keys(payload).length > 0;
+  }
+
+  formatPayload(payload: any): string {
+    return JSON.stringify(payload, null, 2);
   }
 
   getTransactionTypeColor(type: string): string {

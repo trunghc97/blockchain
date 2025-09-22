@@ -45,6 +45,15 @@ export class ContractService {
     );
   }
 
+  // Transform new API format to old format for frontend compatibility
+  transformLedgerData(apiResponse: any): any {
+    return {
+      transactions: apiResponse.events || [],
+      blocks: [], // Will be populated from ledger blocks API if needed
+      contractId: apiResponse.contractId
+    };
+  }
+
   createContract(contract: Partial<Contract>): Observable<Contract> {
     const formData = new FormData();
     formData.append('contract', JSON.stringify(contract));

@@ -37,11 +37,10 @@ type ContractEvent struct {
 	Included   bool                   `bson:"included" json:"included"`
 }
 
-type ContractEventInBlock struct {
-	ContractID string                 `bson:"contractId" json:"contractId"`
+type BlockEvent struct {
 	EventID    string                 `bson:"eventId" json:"eventId"`
+	ContractID string                 `bson:"contractId" json:"contractId"`
 	Type       string                 `bson:"type" json:"type"`
-	ActorID    string                 `bson:"actorId" json:"actorId"`
 	Payload    map[string]interface{} `bson:"payload,omitempty" json:"payload,omitempty"`
 	Timestamp  time.Time              `bson:"timestamp" json:"timestamp"`
 }
@@ -62,13 +61,13 @@ type Contract struct {
 }
 
 type Block struct {
-	ID             primitive.ObjectID     `bson:"_id,omitempty" json:"id"`
-	BlockNumber    int64                  `bson:"block_number" json:"blockNumber"`
-	Timestamp      time.Time              `bson:"timestamp" json:"timestamp"`
-	ContractEvents []ContractEventInBlock `bson:"contract_events" json:"contractEvents"`
-	PreviousHash   string                 `bson:"previous_hash" json:"previousHash"`
-	Hash           string                 `bson:"hash" json:"hash"`
-	MerkleRoot     string                 `bson:"merkle_root" json:"merkleRoot"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	BlockNumber int64              `bson:"blockNumber" json:"blockNumber"`
+	Timestamp   time.Time          `bson:"timestamp" json:"timestamp"`
+	Events      []BlockEvent       `bson:"events" json:"events"`
+	PrevHash    string             `bson:"prevHash" json:"prevHash"`
+	Hash        string             `bson:"hash" json:"hash"`
+	MerkleRoot  string             `bson:"merkleRoot" json:"merkleRoot"`
 }
 
 type User struct {

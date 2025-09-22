@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"ms-blockchain/models"
 )
@@ -311,7 +311,7 @@ func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
 
 	// Get blocks containing events for this contract
 	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{
-		"contractEvents.contractId": contractID,
+		"events.contractId": contractID,
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -349,8 +349,8 @@ func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
 	// Convert blocks to transaction format for frontend compatibility
 	var transactions []map[string]interface{}
 	for _, block := range blocks {
-		if block.ContractEvents != nil {
-			for _, event := range block.ContractEvents {
+		if block.Events != nil {
+			for _, event := range block.Events {
 				if event.ContractID == contractID {
 					transaction := map[string]interface{}{
 						"id":          event.EventID,
@@ -361,7 +361,7 @@ func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
 						"suppliers":   []interface{}{},
 						"totalAmount": contractInfo["totalAmount"],
 						"description": contractInfo["description"],
-						"approverID":  event.ActorID,
+						"approverID":  "", // ActorID removed from BlockEvent
 						"status":      contractInfo["status"],
 						"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
 						"included":    true,
@@ -392,10 +392,50 @@ func (h *Handler) QueryContractLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use the same logic as QueryLedger but with contract ID from path
-	h.QueryLedger(w, &http.Request{
-		Method: "GET",
-		URL:    &url.URL{RawQuery: "contract_id=" + contractID},
+	// Get all blocks containing events for this contract
+	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{
+		"events.contractId": contractID,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cur.Close(context.Background())
+
+	var blocks []models.Block
+	if err := cur.All(context.Background(), &blocks); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Extract events for this contract from all blocks
+	var events []map[string]interface{}
+	for _, block := range blocks {
+		for _, event := range block.Events {
+			if event.ContractID == contractID {
+				eventInfo := map[string]interface{}{
+					"eventId":     event.EventID,
+					"contractId":  event.ContractID,
+					"type":        event.Type,
+					"payload":     event.Payload,
+					"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+					"blockNumber": block.BlockNumber,
+					"blockHash":   block.Hash,
+					"merkleRoot":  block.MerkleRoot,
+				}
+				events = append(events, eventInfo)
+			}
+		}
+	}
+
+	// Sort events by timestamp
+	// Note: In a real implementation, you'd want to sort by block number and then by event order within block
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"contractId": contractID,
+		"events":     events,
+		"total":      len(events),
 	})
 }
 
@@ -422,4 +462,37 @@ func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+}
+
+func (h *Handler) GetLedgerBlocks(w http.ResponseWriter, r *http.Request) {
+	// Get all blocks sorted by block number
+	opts := options.Find().SetSort(bson.M{"blockNumber": 1})
+	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{}, opts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cur.Close(context.Background())
+
+	var blocks []models.Block
+	if err := cur.All(context.Background(), &blocks); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to response format
+	var response []map[string]interface{}
+	for _, block := range blocks {
+		blockInfo := map[string]interface{}{
+			"blockNumber": block.BlockNumber,
+			"hash":        block.Hash,
+			"prevHash":    block.PrevHash,
+			"merkleRoot":  block.MerkleRoot,
+			"eventCount":  len(block.Events),
+		}
+		response = append(response, blockInfo)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

@@ -40,7 +40,8 @@ func main() {
 	router.HandleFunc("/contract/list", handler.ListContracts).Methods("GET")
 	router.HandleFunc("/contract/{id}/ledger", handler.QueryContractLedger).Methods("GET")
 
-	// Ledger query endpoint (legacy)
+	// Ledger endpoints
+	router.HandleFunc("/ledger/blocks", handler.GetLedgerBlocks).Methods("GET")
 	router.HandleFunc("/ledger/query", handler.QueryLedger).Methods("GET")
 
 	// User endpoints

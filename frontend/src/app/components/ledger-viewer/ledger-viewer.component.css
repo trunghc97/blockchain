@@ -163,3 +163,22 @@ code {
   font-weight: 500;
   color: #2c3e50;
 }
+
+.payload-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.payload-preview {
+  font-size: 11px !important;
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-confirmed {
+  background-color: #4caf50 !important;
+  color: white !important;
+}

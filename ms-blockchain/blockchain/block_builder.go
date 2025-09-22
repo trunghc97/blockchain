@@ -24,7 +24,7 @@ func NewBlockBuilder(db *mongo.Database) *BlockBuilder {
 	return &BlockBuilder{
 		db:            db,
 		maxTxPerBlock: 10,
-		blockInterval: 30 * time.Second,
+		blockInterval: 10 * time.Second,
 	}
 }
 
@@ -71,49 +71,48 @@ func (b *BlockBuilder) buildNextBlock() {
 	err = b.db.Collection("blocks").FindOne(
 		context.Background(),
 		bson.M{},
-		options.FindOne().SetSort(bson.M{"block_number": -1}),
+		options.FindOne().SetSort(bson.M{"blockNumber": -1}),
 	).Decode(&latestBlock)
 
 	var blockNumber int64 = 1
-	var previousHash string = "0" // Genesis block
+	var prevHash string = "0" // Genesis block
 	if err != mongo.ErrNoDocuments {
 		blockNumber = latestBlock.BlockNumber + 1
-		previousHash = latestBlock.Hash
+		prevHash = latestBlock.Hash
 	}
 
-	// Convert events to ContractEventInBlock
-	var contractEvents []models.ContractEventInBlock
+	// Convert events to BlockEvent
+	var blockEvents []models.BlockEvent
 	var eventIds []string
 	timestamp := time.Now()
 
 	for _, event := range events {
-		contractEvent := models.ContractEventInBlock{
-			ContractID: event.ContractID,
+		blockEvent := models.BlockEvent{
 			EventID:    event.EventID,
+			ContractID: event.ContractID,
 			Type:       event.Type,
-			ActorID:    event.ActorID,
 			Payload:    event.Payload,
-			Timestamp:  timestamp,
+			Timestamp:  event.Timestamp, // Use original event timestamp
 		}
 
-		contractEvents = append(contractEvents, contractEvent)
+		blockEvents = append(blockEvents, blockEvent)
 		eventIds = append(eventIds, event.EventID)
 	}
 
 	// Calculate merkle root
 	merkleRoot := b.calculateMerkleRoot(eventIds)
 
-	// Calculate block hash: SHA-256(prevHash + merkleRoot + timestamp)
-	hashInput := previousHash + merkleRoot + fmt.Sprintf("%d", timestamp.Unix())
+	// Calculate block hash: SHA256(prevHash + merkleRoot + timestamp)
+	hashInput := prevHash + merkleRoot + fmt.Sprintf("%d", timestamp.Unix())
 	blockHash := sha256.Sum256([]byte(hashInput))
 
 	block := models.Block{
-		BlockNumber:    blockNumber,
-		Timestamp:      timestamp,
-		ContractEvents: contractEvents,
-		PreviousHash:   previousHash,
-		Hash:           hex.EncodeToString(blockHash[:]),
-		MerkleRoot:     merkleRoot,
+		BlockNumber: blockNumber,
+		Timestamp:   timestamp,
+		Events:      blockEvents,
+		PrevHash:    prevHash,
+		Hash:        hex.EncodeToString(blockHash[:]),
+		MerkleRoot:  merkleRoot,
 	}
 
 	// Save block
