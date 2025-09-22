@@ -36,16 +36,17 @@ func main() {
 
 	// Contract endpoints
 	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
-	router.HandleFunc("/contract/approve", handler.ApproveContract).Methods("POST")
-	router.HandleFunc("/contract/list", handler.ListContracts).Methods("GET")
-	router.HandleFunc("/contract/{id}/ledger", handler.QueryContractLedger).Methods("GET")
+	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
+	router.HandleFunc("/contract/list", handler.GetContracts).Methods("GET")
+	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
 
-	// Ledger endpoints
-	router.HandleFunc("/ledger/blocks", handler.GetLedgerBlocks).Methods("GET")
-	router.HandleFunc("/ledger/query", handler.QueryLedger).Methods("GET")
+	// Token endpoints
+	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
+	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
+	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
 
-	// User endpoints
-	router.HandleFunc("/users", handler.GetUsers).Methods("GET")
+	// Supplier endpoints
+	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")
 
 	// Configure CORS
 	c := cors.New(cors.Options{

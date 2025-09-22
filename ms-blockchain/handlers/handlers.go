@@ -17,87 +17,42 @@ import (
 	"ms-blockchain/models"
 )
 
+type SupplierDTO struct {
+	SupplierId string  `json:"supplierId"`
+	Name       string  `json:"name"`
+	Amount     float64 `json:"amount"`
+	Status     string  `json:"status"`
+}
+
 type Handler struct {
 	db *mongo.Database
 }
 
-func NewHandler(db *mongo.Database) *Handler {
-	return &Handler{db: db}
+func generateEventID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
 }
 
-func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		ContractID  string            `json:"contractId"`
-		Description string            `json:"description"`
-		Buyer       string            `json:"buyer"`
-		Suppliers   []models.Supplier `json:"suppliers"`
-		TotalAmount float64           `json:"totalAmount"`
-		FileURL     string            `json:"fileUrl,omitempty"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Set supplier statuses to PENDING
-	for i := range req.Suppliers {
-		req.Suppliers[i].Status = models.StatusPending
-	}
-
-	// Generate unique contract ID if not provided
-	if req.ContractID == "" {
-		bytes := make([]byte, 16)
-		rand.Read(bytes)
-		req.ContractID = hex.EncodeToString(bytes)
-	}
-
-	// Create CREATE event
-	eventId := h.generateEventID()
-	createEvent := models.ContractEvent{
-		EventID:    eventId,
-		ContractID: req.ContractID,
-		Type:       "CREATE",
-		ActorID:    req.Buyer,
-		Timestamp:  time.Now(),
-		Included:   false,
-	}
-
-	contract := models.Contract{
-		ContractID:  req.ContractID,
-		Description: req.Description,
-		Buyer:       req.Buyer,
-		Suppliers:   req.Suppliers,
-		TotalAmount: req.TotalAmount,
-		Status:      models.StatusPending,
-		FileURL:     req.FileURL,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		History:     []models.ContractEvent{createEvent},
-	}
-
-	// Insert contract event only (remove contract storage from blockchain service)
-	eventDoc := bson.M{
-		"eventId":    createEvent.EventID,
-		"contractId": createEvent.ContractID,
-		"type":       createEvent.Type,
-		"actorId":    createEvent.ActorID,
-		"payload":    createEvent.Payload,
-		"timestamp":  createEvent.Timestamp,
-		"included":   false,
-	}
-
-	_, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc)
+func (h *Handler) getNextBlockNumber() int64 {
+	// Get the highest block number and increment
+	var lastBlock map[string]interface{}
+	err := h.db.Collection("blocks").FindOne(context.Background(), bson.M{}, options.FindOne().SetSort(bson.M{"blockNumber": -1})).Decode(&lastBlock)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		if err == mongo.ErrNoDocuments {
+			return 1 // First block
+		}
+		return 1 // Default to 1 on error
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"contractId": contract.ContractID,
-		"status":     "success",
-	})
+	if blockNum, ok := lastBlock["blockNumber"].(int64); ok {
+		return blockNum + 1
+	}
+	return 1
+}
+
+func NewHandler(db *mongo.Database) *Handler {
+	return &Handler{db: db}
 }
 
 func (h *Handler) generateEventID() string {
@@ -106,393 +61,406 @@ func (h *Handler) generateEventID() string {
 	return hex.EncodeToString(bytes)
 }
 
-func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
+// CreateContract creates a new contract (Anchor) - New Contract-Token Implementation
+func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ContractID string `json:"contractId"`
-		SupplierID string `json:"supplierId"`
+		ID          string        `json:"id"`
+		Description string        `json:"description"`
+		AnchorId    string        `json:"anchorId"`
+		SupplierId  string        `json:"supplierId"` // Primary supplier for token transfer
+		BankId      string        `json:"bankId"`
+		Amount      float64       `json:"amount"`
+		Suppliers   []SupplierDTO `json:"suppliers"` // All suppliers with details
+		Approvers   []string      `json:"approvers"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Get contract
+	// Generate unique contract ID if not provided
+	if req.ID == "" {
+		bytes := make([]byte, 16)
+		rand.Read(bytes)
+		req.ID = hex.EncodeToString(bytes)
+	}
+
+	// Create contract with suppliers array
+	contract := map[string]interface{}{
+		"_id":         req.ID,
+		"description": req.Description,
+		"anchorId":    req.AnchorId,
+		"supplierId":  req.SupplierId, // Primary supplier for token transfer
+		"bankId":      req.BankId,
+		"amount":      req.Amount,
+		"suppliers":   req.Suppliers, // All suppliers with details
+		"approvers":   req.Approvers,
+		"approved":    false,
+		"createdAt":   time.Now().Format(time.RFC3339),
+	}
+
+	// Save contract to MongoDB
+	fmt.Printf("DEBUG: Attempting to save contract with ID: %s\n", contract["_id"])
+	_, err := h.db.Collection("contracts").InsertOne(context.Background(), contract)
+	if err != nil {
+		fmt.Printf("DEBUG: Error saving contract: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Printf("DEBUG: Contract saved successfully\n")
+
+	// Calculate total amount from all suppliers
+	totalAmount := 0.0
+	for _, supplier := range req.Suppliers {
+		totalAmount += supplier.Amount
+	}
+
+	// Auto-issue token when contract is created
+	tokenId := fmt.Sprintf("token_%s", req.ID)
+	symbol := fmt.Sprintf("TK%s", req.ID[len(req.ID)-4:]) // Last 4 chars of contract ID
+
+	fmt.Printf("DEBUG: Creating token with ID: %s, total: %f\n", tokenId, totalAmount)
+	token := models.Token{
+		ID:         tokenId,
+		ContractId: req.ID,
+		Symbol:     symbol,
+		Total:      totalAmount,
+		Issuer:     req.BankId,
+		Owner:      req.AnchorId, // Initially owned by anchor (not bank)
+		CreatedAt:  time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("tokens").InsertOne(context.Background(), token)
+	if err != nil {
+		fmt.Printf("DEBUG: Error saving token: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Printf("DEBUG: Token saved successfully\n")
+
+	// Create initial balance for anchor (not bank)
+	balance := models.Balance{
+		TokenId: tokenId,
+		Account: req.AnchorId,
+		Balance: totalAmount,
+	}
+
+	_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Log event
+	event := map[string]interface{}{
+		"eventId":     generateEventID(),
+		"eventType":   "CONTRACT_CREATED",
+		"contractId":  req.ID,
+		"tokenId":     tokenId,
+		"anchorId":    req.AnchorId,
+		"bankId":      req.BankId,
+		"totalAmount": totalAmount,
+		"description": req.Description,
+		"suppliers":   req.Suppliers,
+		"timestamp":   time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
+	if err != nil {
+		// Log error but don't fail the contract creation
+		fmt.Printf("Failed to log event: %v\n", err)
+	}
+
+	// Create block entry
+	block := map[string]interface{}{
+		"blockNumber":  h.getNextBlockNumber(),
+		"timestamp":    time.Now().Format(time.RFC3339),
+		"events":       []string{event["eventId"].(string)},
+		"previousHash": "", // Simplified - in real blockchain this would be hash of previous block
+		"hash":         "", // Simplified
+	}
+
+	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
+	if err != nil {
+		// Log error but don't fail the contract creation
+		fmt.Printf("Failed to create block: %v\n", err)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"contractId": req.ID,
+		"tokenId":    tokenId,
+		"status":     "success",
+	})
+}
+
+// ApproveContract allows suppliers to approve contracts
+func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	contractId := vars["id"]
+
+	var req struct {
+		SupplierId string `json:"supplierId"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("DEBUG: Approving contract %s for supplier %s\n", contractId, req.SupplierId)
+
+	// Update contract approval status
+	filter := bson.M{"_id": contractId}
+	update := bson.M{"$set": bson.M{"approved": true}}
+	_, err := h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		fmt.Printf("DEBUG: Error updating contract: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transfer token ownership from anchor to supplier
+	tokenId := fmt.Sprintf("token_%s", contractId)
+	tokenFilter := bson.M{"_id": tokenId}
+	tokenUpdate := bson.M{"$set": bson.M{"owner": req.SupplierId}}
+	_, err = h.db.Collection("tokens").UpdateOne(context.Background(), tokenFilter, tokenUpdate)
+	if err != nil {
+		fmt.Printf("DEBUG: Error updating token owner: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Transfer balance from anchor to supplier
+	balanceFilter := bson.M{"tokenId": tokenId, "account": "ANCHOR001"}
+	balanceUpdate := bson.M{"$set": bson.M{"account": req.SupplierId}}
+	_, err = h.db.Collection("balances").UpdateOne(context.Background(), balanceFilter, balanceUpdate)
+	if err != nil {
+		fmt.Printf("DEBUG: Error updating balance: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Log approval event
+	event := map[string]interface{}{
+		"eventId":    generateEventID(),
+		"eventType":  "CONTRACT_APPROVED",
+		"contractId": contractId,
+		"tokenId":    tokenId,
+		"supplierId": req.SupplierId,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
+	if err != nil {
+		fmt.Printf("DEBUG: Error logging event: %v\n", err)
+		// Don't fail the approval for logging errors
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "approved",
+		"message": "Contract approved successfully",
+	})
+}
+
+// GetContracts returns all contracts
+func (h *Handler) GetContracts(w http.ResponseWriter, r *http.Request) {
+	cursor, err := h.db.Collection("contracts").Find(context.Background(), bson.M{})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var contracts []map[string]interface{}
+	if err = cursor.All(context.Background(), &contracts); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(contracts)
+}
+
+// GetContract returns contract details
+func (h *Handler) GetContract(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	contractId := vars["id"]
+
 	var contract models.Contract
-	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contractId": req.ContractID,
-	}).Decode(&contract)
+	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&contract)
 	if err != nil {
 		http.Error(w, "Contract not found", http.StatusNotFound)
 		return
 	}
 
-	// Find and update supplier status
-	supplierFound := false
-	for i, supplier := range contract.Suppliers {
-		if supplier.SupplierID == req.SupplierID {
-			contract.Suppliers[i].Status = models.StatusReadyToExecute
-			supplierFound = true
-			break
-		}
-	}
-
-	if !supplierFound {
-		http.Error(w, "Supplier not found in contract", http.StatusBadRequest)
-		return
-	}
-
-	// Check if all suppliers approved
-	allApproved := true
-	for _, supplier := range contract.Suppliers {
-		if supplier.Status != models.StatusReadyToExecute {
-			allApproved = false
-			break
-		}
-	}
-
-	// Create APPROVE_SUPPLIER event
-	eventId := h.generateEventID()
-	payload := map[string]interface{}{
-		"supplierId":  req.SupplierID,
-		"allApproved": allApproved,
-	}
-
-	approveEvent := models.ContractEvent{
-		EventID:    eventId,
-		ContractID: req.ContractID,
-		Type:       "APPROVE_SUPPLIER",
-		ActorID:    req.SupplierID,
-		Payload:    payload,
-		Timestamp:  time.Now(),
-		Included:   false,
-	}
-
-	// Add event to history
-	contract.History = append(contract.History, approveEvent)
-	contract.UpdatedAt = time.Now()
-
-	// Insert event to events collection
-	eventDoc := bson.M{
-		"eventId":    approveEvent.EventID,
-		"contractId": approveEvent.ContractID,
-		"type":       approveEvent.Type,
-		"actorId":    approveEvent.ActorID,
-		"payload":    approveEvent.Payload,
-		"timestamp":  approveEvent.Timestamp,
-		"included":   false,
-	}
-
-	if _, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Update contract status if all approved
-	if allApproved {
-		contract.Status = models.StatusReadyToExecute
-		// Trigger execution
-		go h.executeContract(req.ContractID)
-	}
-
-	// Update contract
-	if _, err := h.db.Collection("contracts").ReplaceOne(
-		context.Background(),
-		bson.M{"contractId": req.ContractID},
-		contract,
-	); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
+	json.NewEncoder(w).Encode(contract)
 }
 
-func (h *Handler) executeContract(contractID string) {
-	// Get contract
-	var contract models.Contract
-	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contractId": contractID,
-	}).Decode(&contract)
-	if err != nil {
-		fmt.Printf("Error getting contract for execution: %v\n", err)
-		return
-	}
-
-	// Mock execution for each supplier
-	allSuccess := true
-	var executedSuppliers []string
-	var failedSuppliers []string
-
-	for i := range contract.Suppliers {
-		// Mock external call
-		result := h.mockExecuteSupplierFunding()
-
-		if result.Status == "SUCCESS" {
-			contract.Suppliers[i].SupplierRef = result.SupplierRef
-			contract.Suppliers[i].Status = models.StatusExecuted
-			executedSuppliers = append(executedSuppliers, contract.Suppliers[i].SupplierID)
-		} else {
-			allSuccess = false
-			contract.Suppliers[i].Status = models.StatusFailed
-			failedSuppliers = append(failedSuppliers, contract.Suppliers[i].SupplierID)
-		}
-	}
-
-	// Update contract status
-	if allSuccess {
-		contract.Status = models.StatusExecuted
-	} else {
-		contract.Status = models.StatusApprovedPendingExec
-	}
-
-	// Create EXECUTE event
-	eventId := h.generateEventID()
-	payload := map[string]interface{}{
-		"executedSuppliers": executedSuppliers,
-		"failedSuppliers":   failedSuppliers,
-		"allSuccess":        allSuccess,
-	}
-
-	executeEvent := models.ContractEvent{
-		EventID:    eventId,
-		ContractID: contractID,
-		Type:       "EXECUTE",
-		ActorID:    "SYSTEM", // System triggered execution
-		Payload:    payload,
-		Timestamp:  time.Now(),
-		Included:   false,
-	}
-
-	// Add event to history
-	contract.History = append(contract.History, executeEvent)
-	contract.UpdatedAt = time.Now()
-
-	// Insert event to events collection
-	eventDoc := bson.M{
-		"eventId":    executeEvent.EventID,
-		"contractId": executeEvent.ContractID,
-		"type":       executeEvent.Type,
-		"actorId":    executeEvent.ActorID,
-		"payload":    executeEvent.Payload,
-		"timestamp":  executeEvent.Timestamp,
-		"included":   false,
-	}
-
-	if _, err := h.db.Collection("events").InsertOne(context.Background(), eventDoc); err != nil {
-		fmt.Printf("Error inserting execute event to events collection: %v\n", err)
-		return
-	}
-
-	// Update contract
-	if _, err := h.db.Collection("contracts").ReplaceOne(
-		context.Background(),
-		bson.M{"contractId": contractID},
-		contract,
-	); err != nil {
-		fmt.Printf("Error updating contract after execution: %v\n", err)
-	}
-}
-
-func (h *Handler) mockExecuteSupplierFunding() models.ExecutionResult {
-	// Mock success - always success for demo
-	return models.ExecutionResult{
-		Status:      "SUCCESS",
-		SupplierRef: fmt.Sprintf("SCF-%d", time.Now().Unix()),
-	}
-}
-
-func (h *Handler) QueryLedger(w http.ResponseWriter, r *http.Request) {
-	contractID := r.URL.Query().Get("contractId")
-	if contractID == "" {
-		http.Error(w, "contractId is required", http.StatusBadRequest)
-		return
-	}
-
-	// Get blocks containing events for this contract
-	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{
-		"events.contractId": contractID,
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer cur.Close(context.Background())
-
-	var blocks []models.Block
-	if err := cur.All(context.Background(), &blocks); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Get contract for additional info
-	var contract models.Contract
-	err = h.db.Collection("contracts").FindOne(context.Background(), bson.M{
-		"contractId": contractID,
-	}).Decode(&contract)
-
-	contractInfo := map[string]interface{}{
-		"contractId":  contractID,
-		"description": "",
-		"status":      "UNKNOWN",
-		"buyer":       "",
-		"totalAmount": 0.0,
-	}
-
-	if err == nil {
-		contractInfo["description"] = contract.Description
-		contractInfo["status"] = contract.Status
-		contractInfo["buyer"] = contract.Buyer
-		contractInfo["totalAmount"] = contract.TotalAmount
-	}
-
-	// Convert blocks to transaction format for frontend compatibility
-	var transactions []map[string]interface{}
-	for _, block := range blocks {
-		if block.Events != nil {
-			for _, event := range block.Events {
-				if event.ContractID == contractID {
-					transaction := map[string]interface{}{
-						"id":          event.EventID,
-						"contractId":  event.ContractID,
-						"type":        event.Type,
-						"buyer":       contractInfo["buyer"],
-						"bank":        "",
-						"suppliers":   []interface{}{},
-						"totalAmount": contractInfo["totalAmount"],
-						"description": contractInfo["description"],
-						"approverID":  "", // ActorID removed from BlockEvent
-						"status":      contractInfo["status"],
-						"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
-						"included":    true,
-						"blockNumber": block.BlockNumber,
-						"blockHash":   block.Hash,
-						"merkleRoot":  block.MerkleRoot,
-					}
-					transactions = append(transactions, transaction)
-				}
-			}
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"transactions": transactions,
-		"blocks":       blocks,
-		"contractId":   contractID,
-	})
-}
-
-func (h *Handler) QueryContractLedger(w http.ResponseWriter, r *http.Request) {
+// GetToken returns token information
+func (h *Handler) GetToken(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	contractID := vars["id"]
+	tokenId := vars["id"]
 
-	if contractID == "" {
-		http.Error(w, "Contract ID is required", http.StatusBadRequest)
+	var token models.Token
+	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": tokenId}).Decode(&token)
+	if err != nil {
+		http.Error(w, "Token not found", http.StatusNotFound)
 		return
 	}
 
-	// Get all blocks containing events for this contract
-	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{
-		"events.contractId": contractID,
-	})
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(token)
+}
+
+// TransferToken allows suppliers to transfer tokens
+func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TokenId string  `json:"tokenId"`
+		From    string  `json:"from"`
+		To      string  `json:"to"`
+		Amount  float64 `json:"amount"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Get token info
+	var token models.Token
+	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": req.TokenId}).Decode(&token)
+	if err != nil {
+		http.Error(w, "Token not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if sender is the current owner
+	if token.Owner != req.From {
+		http.Error(w, "Sender is not the current owner", http.StatusForbidden)
+		return
+	}
+
+	// Get sender balance
+	var fromBalance models.Balance
+	err = h.db.Collection("balances").FindOne(
+		context.Background(),
+		bson.M{"tokenId": req.TokenId, "account": req.From},
+	).Decode(&fromBalance)
+	if err != nil {
+		http.Error(w, "Sender has no balance", http.StatusBadRequest)
+		return
+	}
+
+	if fromBalance.Balance < req.Amount {
+		http.Error(w, "Insufficient balance", http.StatusBadRequest)
+		return
+	}
+
+	// Update sender balance
+	_, err = h.db.Collection("balances").UpdateOne(
+		context.Background(),
+		bson.M{"tokenId": req.TokenId, "account": req.From},
+		bson.M{"$set": bson.M{"balance": fromBalance.Balance - req.Amount}},
+	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer cur.Close(context.Background())
 
-	var blocks []models.Block
-	if err := cur.All(context.Background(), &blocks); err != nil {
+	// Update receiver balance
+	var toBalance models.Balance
+	err = h.db.Collection("balances").FindOne(
+		context.Background(),
+		bson.M{"tokenId": req.TokenId, "account": req.To},
+	).Decode(&toBalance)
+
+	if err == mongo.ErrNoDocuments {
+		// Create new balance entry for receiver
+		receiverBalance := models.Balance{
+			TokenId: req.TokenId,
+			Account: req.To,
+			Balance: req.Amount,
+		}
+		_, err = h.db.Collection("balances").InsertOne(context.Background(), receiverBalance)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	} else if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	// Extract events for this contract from all blocks
-	var events []map[string]interface{}
-	for _, block := range blocks {
-		for _, event := range block.Events {
-			if event.ContractID == contractID {
-				eventInfo := map[string]interface{}{
-					"eventId":     event.EventID,
-					"contractId":  event.ContractID,
-					"type":        event.Type,
-					"payload":     event.Payload,
-					"timestamp":   event.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
-					"blockNumber": block.BlockNumber,
-					"blockHash":   block.Hash,
-					"merkleRoot":  block.MerkleRoot,
-				}
-				events = append(events, eventInfo)
-			}
+	} else {
+		// Update existing balance
+		_, err = h.db.Collection("balances").UpdateOne(
+			context.Background(),
+			bson.M{"tokenId": req.TokenId, "account": req.To},
+			bson.M{"$set": bson.M{"balance": toBalance.Balance + req.Amount}},
+		)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	}
 
-	// Sort events by timestamp
-	// Note: In a real implementation, you'd want to sort by block number and then by event order within block
+	// Update token ownership to receiver
+	_, err = h.db.Collection("tokens").UpdateOne(
+		context.Background(),
+		bson.M{"_id": req.TokenId},
+		bson.M{"$set": bson.M{"owner": req.To}},
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"contractId": contractID,
-		"events":     events,
-		"total":      len(events),
+		"status":  "transferred",
+		"message": "Token transferred successfully",
 	})
 }
 
-func (h *Handler) ListContracts(w http.ResponseWriter, r *http.Request) {
-	// Note: This method may not be used anymore since contracts are managed by backend
-	// Return empty array for compatibility
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode([]models.Contract{})
-}
+// GetTokensIssuedByBank returns all tokens issued by a specific bank
+func (h *Handler) GetTokensIssuedByBank(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	bankId := vars["bankId"]
 
-func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
-	cur, err := h.db.Collection("users").Find(context.Background(), bson.M{})
+	cursor, err := h.db.Collection("tokens").Find(context.Background(), bson.M{"issuer": bankId})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer cur.Close(context.Background())
+	defer cursor.Close(context.Background())
 
-	var users []models.User
-	if err := cur.All(context.Background(), &users); err != nil {
+	var tokens []models.Token
+	if err = cursor.All(context.Background(), &tokens); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(users)
+	json.NewEncoder(w).Encode(tokens)
 }
 
-func (h *Handler) GetLedgerBlocks(w http.ResponseWriter, r *http.Request) {
-	// Get all blocks sorted by block number
-	opts := options.Find().SetSort(bson.M{"blockNumber": 1})
-	cur, err := h.db.Collection("blocks").Find(context.Background(), bson.M{}, opts)
+// GetSuppliers returns all users with role SUPPLIER
+func (h *Handler) GetSuppliers(w http.ResponseWriter, r *http.Request) {
+	cursor, err := h.db.Collection("users").Find(context.Background(), bson.M{"role": "SUPPLIER"})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer cur.Close(context.Background())
+	defer cursor.Close(context.Background())
 
-	var blocks []models.Block
-	if err := cur.All(context.Background(), &blocks); err != nil {
+	var suppliers []map[string]interface{}
+	if err = cursor.All(context.Background(), &suppliers); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Convert to response format
-	var response []map[string]interface{}
-	for _, block := range blocks {
-		blockInfo := map[string]interface{}{
-			"blockNumber": block.BlockNumber,
-			"hash":        block.Hash,
-			"prevHash":    block.PrevHash,
-			"merkleRoot":  block.MerkleRoot,
-			"eventCount":  len(block.Events),
-		}
-		response = append(response, blockInfo)
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(suppliers)
 }

@@ -5,19 +5,32 @@
   </button>
 
   <ng-container *ngIf="userService.currentUser$ | async as user">
+    <!-- Contract-Token Management Navigation -->
+    <button mat-button routerLink="/bank" *ngIf="user?.role === 'BANK'">
+      <mat-icon>account_balance</mat-icon>
+      Bank Dashboard
+    </button>
+
+    <button mat-button routerLink="/supplier" *ngIf="user?.role === 'SUPPLIER'">
+      <mat-icon>shopping_cart</mat-icon>
+      Supplier Dashboard
+    </button>
+
+    <!-- Main Navigation -->
     <button mat-button routerLink="/contracts/new" *ngIf="user?.role === 'ANCHOR'">
       <mat-icon>add</mat-icon>
       Tạo hợp đồng
     </button>
 
+    <button mat-button routerLink="/contracts" *ngIf="user?.role === 'ANCHOR' || user?.role === 'SUPPLIER'">
+      <mat-icon>description</mat-icon>
+      Quản lý hợp đồng
+    </button>
+
+    <!-- Legacy Navigation (keeping for compatibility) -->
     <button mat-button routerLink="/contracts/approve" *ngIf="user?.role === 'SUPPLIER'">
       <mat-icon>check_circle</mat-icon>
       Duyệt hợp đồng
-    </button>
-
-    <button mat-button routerLink="/contracts">
-      <mat-icon>description</mat-icon>
-      Danh sách hợp đồng
     </button>
 
     <span class="spacer"></span>

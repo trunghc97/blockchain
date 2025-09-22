@@ -77,6 +77,22 @@ type User struct {
 	Role     string `bson:"role" json:"role"` // "BUYER", "BANK", "SUPPLIER"
 }
 
+type Token struct {
+	ID         string  `bson:"_id" json:"id"`
+	ContractId string  `bson:"contractId" json:"contractId"`
+	Symbol     string  `bson:"symbol" json:"symbol"`
+	Total      float64 `bson:"total" json:"total"`
+	Issuer     string  `bson:"issuer" json:"issuer"`
+	Owner      string  `bson:"owner" json:"owner"`
+	CreatedAt  string  `bson:"createdAt" json:"createdAt"`
+}
+
+type Balance struct {
+	TokenId string  `bson:"tokenId" json:"tokenId"`
+	Account string  `bson:"account" json:"account"`
+	Balance float64 `bson:"balance" json:"balance"`
+}
+
 type ExecutionResult struct {
 	Status      string `json:"status"`
 	SupplierRef string `json:"supplier_ref"`

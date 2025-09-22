@@ -1,5 +1,6 @@
 package com.example.blockchain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -8,6 +9,7 @@ import java.util.List;
 
 @Data
 @Document(collection = "contracts")
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Contract {
     private String id;
     private String contractId;
@@ -17,7 +19,7 @@ public class Contract {
     private Double totalAmount; // Total amount of all suppliers
     private String status;
     private String fileUrl;
-    private Date createdAt;
-    private Date updatedAt;
+    private String createdAt;
+    private String updatedAt;
     private String wordState;
 }

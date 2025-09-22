@@ -1,0 +1,113 @@
+<div class="container mt-4">
+  <h2 class="mb-4">Supplier Dashboard - Token Management</h2>
+
+  <div class="row">
+    <!-- My Tokens -->
+    <div class="col-lg-8">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">My Tokens</h5>
+          <button class="btn btn-primary btn-sm" (click)="loadMyTokens()" [disabled]="loading">
+            <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+            Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Token ID</th>
+                  <th>Contract ID</th>
+                  <th>Symbol</th>
+                  <th>Amount</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let token of tokens">
+                  <td>{{ token.id }}</td>
+                  <td>{{ token.contractId }}</td>
+                  <td>
+                    <span class="badge bg-secondary">{{ token.symbol }}</span>
+                  </td>
+                  <td>{{ token.total | currency }}</td>
+                  <td>
+                    <button class="btn btn-success btn-sm me-2" (click)="transferForm.patchValue({tokenId: token.id})">
+                      Transfer
+                    </button>
+                    <button class="btn btn-warning btn-sm" (click)="onPayBack(token)">
+                      Pay Back
+                    </button>
+                  </td>
+                </tr>
+                <tr *ngIf="tokens.length === 0 && !loading">
+                  <td colspan="5" class="text-center text-muted">No tokens received yet</td>
+                </tr>
+                <tr *ngIf="loading">
+                  <td colspan="5" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transfer Form -->
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header">
+          <h5>Transfer Token</h5>
+        </div>
+        <div class="card-body">
+          <form [formGroup]="transferForm" (ngSubmit)="onTransfer()">
+            <div class="mb-3">
+              <label for="tokenId" class="form-label">Token ID</label>
+              <select class="form-select" id="tokenId" formControlName="tokenId" required>
+                <option value="">Select a token</option>
+                <option *ngFor="let token of availableTokens" [value]="token.id">
+                  {{ token.symbol }} - {{ token.total | currency }}
+                </option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label for="to" class="form-label">Transfer To (Supplier ID)</label>
+              <input type="text" class="form-control" id="to" formControlName="to"
+                     placeholder="Enter recipient supplier ID" required>
+            </div>
+
+            <div class="mb-3">
+              <label for="amount" class="form-label">Amount</label>
+              <input type="number" class="form-control" id="amount" formControlName="amount"
+                     step="0.01" min="0" required>
+            </div>
+
+            <button type="submit" class="btn btn-success w-100" [disabled]="transferForm.invalid || loading">
+              <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+              Transfer Token
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pay Back Info -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h6>Pay Back to Bank</h6>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small">
+            Use the "Pay Back" button next to any token to return it to the issuing bank.
+            This performs early payment for the contract.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

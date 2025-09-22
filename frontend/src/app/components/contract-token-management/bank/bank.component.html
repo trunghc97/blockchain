@@ -1,0 +1,88 @@
+<div class="container mt-4">
+  <h2 class="mb-4">Bank Dashboard - Token Management</h2>
+
+  <!-- Token Overview -->
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-white bg-primary">
+        <div class="card-body">
+          <h5 class="card-title">Total Tokens Issued</h5>
+          <h3>{{ tokens.length }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-success">
+        <div class="card-body">
+          <h5 class="card-title">Tokens Transferred</h5>
+          <h3>{{ transferredTokensCount }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-info">
+        <div class="card-body">
+          <h5 class="card-title">Tokens Held</h5>
+          <h3>{{ heldTokensCount }}</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token List -->
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Issued Tokens</h5>
+      <button class="btn btn-primary btn-sm" (click)="loadTokens()" [disabled]="loading">
+        <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+        Refresh
+      </button>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Token ID</th>
+              <th>Contract ID</th>
+              <th>Symbol</th>
+              <th>Total Amount</th>
+              <th>Current Owner</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let token of tokens">
+              <td>{{ token.id }}</td>
+              <td>{{ token.contractId }}</td>
+              <td>
+                <span class="badge bg-secondary">{{ token.symbol }}</span>
+              </td>
+              <td>{{ token.total | currency }}</td>
+              <td>{{ token.owner }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadgeClass(token)">
+                  {{ getTokenStatus(token) }}
+                </span>
+              </td>
+              <td>{{ token.createdAt | date:'short' }}</td>
+            </tr>
+            <tr *ngIf="tokens.length === 0 && !loading">
+              <td colspan="7" class="text-center text-muted">No tokens issued yet</td>
+            </tr>
+            <tr *ngIf="loading">
+              <td colspan="7" class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Token Details Modal would go here if needed -->
+</div>

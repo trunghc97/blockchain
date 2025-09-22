@@ -42,6 +42,11 @@ import { ContractApprovalComponent } from './components/contract-approval/contra
 import { LoginComponent } from './components/login/login.component';
 import { NavbarComponent } from './components/navbar/navbar.component';
 
+// Contract-Token Management Components
+import { AnchorComponent } from './components/contract-token-management/anchor/anchor.component';
+import { BankComponent } from './components/contract-token-management/bank/bank.component';
+import { SupplierComponent } from './components/contract-token-management/supplier/supplier.component';
+
 @NgModule({
   declarations: [
     AppComponent,
@@ -50,7 +55,11 @@ import { NavbarComponent } from './components/navbar/navbar.component';
     ContractFormComponent,
     ContractApprovalComponent,
     LoginComponent,
-    NavbarComponent
+    NavbarComponent,
+    // Contract-Token Management Components
+    AnchorComponent,
+    BankComponent,
+    SupplierComponent
   ],
   imports: [
     BrowserModule,

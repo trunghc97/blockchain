@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +48,11 @@ public class ContractService {
         }
         contract.setStatus("PENDING");
         contract.setWordState("CREATED"); // Set initial word state
-        contract.setCreatedAt(new Date());
-        contract.setUpdatedAt(new Date());
+
+        // Set timestamps as ISO string format
+        String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
+        contract.setCreatedAt(now);
+        contract.setUpdatedAt(now);
 
         // Set initial supplier status
         if (contract.getSuppliers() != null) {
@@ -68,15 +73,22 @@ public class ContractService {
         try {
             // Prepare contract data for blockchain service
             Map<String, Object> contractData = new HashMap<>();
-            contractData.put("contractId", contract.getContractId());
+            contractData.put("id", contract.getContractId());
             contractData.put("description", contract.getDescription());
-            contractData.put("buyer", contract.getBuyer());
+            contractData.put("anchorId", contract.getBuyer()); // buyer is anchor
+            contractData.put("supplierId", contract.getSuppliers() != null && !contract.getSuppliers().isEmpty()
+                ? contract.getSuppliers().get(0).getSupplierId() : ""); // primary supplier
+            contractData.put("bankId", "BANK001"); // hardcoded for now
+            contractData.put("amount", contract.getTotalAmount());
             contractData.put("suppliers", contract.getSuppliers());
-            contractData.put("totalAmount", contract.getTotalAmount());
-            contractData.put("fileUrl", contract.getFileUrl());
+            contractData.put("approvers", contract.getSuppliers() != null
+                ? contract.getSuppliers().stream().map(s -> s.getSupplierId()).toList()
+                : java.util.Collections.emptyList());
 
+            System.out.println("DEBUG: Calling blockchain service with data: " + contractData);
             // Call blockchain service to create contract
             Map<String, Object> blockchainResponse = blockchainService.createContract(contractData);
+            System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
             if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
                 // Save contract locally for quick access
@@ -86,6 +98,7 @@ public class ContractService {
             }
         } catch (Exception e) {
             System.err.println("Error calling blockchain service: " + e.getMessage());
+            e.printStackTrace();
             throw new RuntimeException("Blockchain service unavailable", e);
         }
     }
@@ -98,7 +111,7 @@ public class ContractService {
     public List<Contract> getContractsByUser(String username) {
         // Find contracts where user is either buyer (anchor) or a supplier
         Criteria buyerCriteria = Criteria.where("buyer").is(username);
-        Criteria supplierCriteria = Criteria.where("suppliers.name").is(username);
+        Criteria supplierCriteria = Criteria.where("suppliers.supplierid").is(username);
 
         Query query = new Query(new Criteria().orOperator(buyerCriteria, supplierCriteria));
         return mongoTemplate.find(query, Contract.class);
@@ -153,7 +166,8 @@ public class ContractService {
                     }
                 }
 
-                contract.setUpdatedAt(new Date());
+                String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
+                contract.setUpdatedAt(now);
                 return mongoTemplate.save(contract);
             } else {
                 throw new RuntimeException("Failed to approve contract on blockchain");

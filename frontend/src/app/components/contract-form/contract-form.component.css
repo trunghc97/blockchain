@@ -48,41 +48,97 @@ mat-card-title {
   margin-bottom: 24px;
 }
 
-.suppliers-section {
+.info-display {
+  display: flex;
+  justify-content: center;
   margin-bottom: 24px;
 }
 
-.suppliers-section h3 {
+.info-item {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
+  text-align: center;
+}
+
+.info-item label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.info-value {
+  padding: 12px 16px;
+  background-color: #e9ecef;
+  border-radius: 8px;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 600;
   color: #2c3e50;
-  margin-bottom: 16px;
+  border: 1px solid #ced4da;
+  min-width: 200px;
+}
+
+.suppliers-section {
+  margin-top: 24px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.suppliers-section h4 {
+  margin: 0 0 16px 0;
+  color: #2c3e50;
   font-size: 18px;
+  font-weight: 600;
 }
 
 .supplier-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
   margin-bottom: 16px;
   padding: 16px;
+  background-color: #ffffff;
+  border-radius: 6px;
   border: 1px solid #e9ecef;
-  border-radius: 8px;
-  background: #f8f9fa;
 }
 
-.supplier-field {
-  flex: 2;
+.supplier-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: start;
 }
 
-.amount-field {
-  flex: 1;
-}
-
-.add-supplier-btn {
-  margin-top: 16px;
+.supplier-row mat-form-field {
   width: 100%;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .supplier-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .supplier-row mat-form-field {
+    margin-bottom: 8px;
+  }
+
+  .info-display {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .info-value {
+    min-width: 150px;
+  }
+
+  .contract-form-container {
+    padding: 16px;
+  }
+
+  .action-buttons {
+    flex-direction: column;
+  }
 }
 
 .action-buttons {
@@ -92,43 +148,6 @@ mat-card-title {
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid #eee;
-}
-
-.debug-info {
-  margin: 24px 0;
-}
-
-.debug-content p {
-  margin: 4px 0;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-}
-
-.debug-content p:first-child {
-  font-weight: bold;
-  color: #2c3e50;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .supplier-item {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .supplier-field,
-  .amount-field {
-    flex: none;
-    width: 100%;
-  }
-
-  .action-buttons {
-    flex-direction: column;
-  }
-
-  .contract-form-container {
-    padding: 16px;
-  }
 }
 
 /* Form validation states */

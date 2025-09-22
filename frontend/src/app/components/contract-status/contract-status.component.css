@@ -636,3 +636,252 @@ button:focus {
   outline: 2px solid #007bff;
   outline-offset: 2px;
 }
+
+/* Contract Creation Form Styles */
+.card-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
+
+.contract-form-section {
+  margin-bottom: 32px;
+}
+
+.form-card {
+  margin: 0;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.form-card mat-card-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  margin-bottom: 24px;
+}
+
+.form-row {
+  margin-bottom: 16px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.info-display {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.info-item label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.info-value {
+  padding: 12px 16px;
+  background-color: #e9ecef;
+  border-radius: 8px;
+  font-family: 'Roboto Mono', monospace;
+  font-weight: 600;
+  color: #2c3e50;
+  text-align: center;
+  border: 1px solid #ced4da;
+}
+
+.total-amount-display {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.total-amount-display label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+}
+
+.total-amount {
+  font-size: 24px;
+  font-weight: bold;
+  color: #28a745;
+  background-color: #e8f5e8;
+  padding: 12px 16px;
+  border-radius: 8px;
+  text-align: center;
+  border: 2px solid #28a745;
+}
+
+/* Suppliers Section */
+.suppliers-section {
+  margin-top: 24px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.suppliers-section h4 {
+  margin: 0 0 16px 0;
+  color: #2c3e50;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.supplier-item {
+  margin-bottom: 16px;
+  padding: 16px;
+  background-color: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.supplier-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.supplier-row mat-form-field {
+  width: 100%;
+}
+
+/* Approvers Section */
+.approvers-section {
+  margin-top: 24px;
+  padding: 20px;
+  background-color: #fff3cd;
+  border-radius: 8px;
+  border: 1px solid #ffeaa7;
+}
+
+.approvers-section h4 {
+  margin: 0 0 16px 0;
+  color: #856404;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.approver-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.approver-input mat-form-field {
+  flex: 1;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+}
+
+/* Responsive adjustments for form */
+@media (max-width: 768px) {
+  .supplier-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .supplier-row mat-form-field {
+    margin-bottom: 8px;
+  }
+
+  .info-display {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .info-value {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .total-amount {
+    font-size: 20px;
+    padding: 10px 12px;
+  }
+}
+
+/* Token Status Styles */
+.supplier-token-header,
+.supplier-token {
+  text-align: center;
+}
+
+.token-received {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+}
+
+.token-pending {
+  background: linear-gradient(135deg, #f39c12, #e67e22);
+}
+
+.token-transferred {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+}
+
+.token-loading {
+  background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+}
+
+/* Update grid layout for token column */
+.supplier-table-header {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+}
+
+.supplier-row {
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+}
+
+.supplier-token {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Responsive adjustments for token column */
+@media (max-width: 1024px) {
+  .supplier-table-header,
+  .supplier-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr 0.8fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .supplier-table-header {
+    display: none;
+  }
+
+  .supplier-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .supplier-token {
+    justify-content: flex-start;
+    align-self: flex-start;
+  }
+
+  .supplier-info-message {
+    grid-column: 1;
+    text-align: left;
+    margin-top: 8px;
+  }
+}
