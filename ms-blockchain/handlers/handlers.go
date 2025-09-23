@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -373,9 +374,10 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	if err == mongo.ErrNoDocuments {
 		// Create new balance entry for receiver
 		receiverBalance := models.Balance{
-			TokenId: req.TokenId,
-			Account: req.To,
-			Balance: req.Amount,
+			TokenId:         req.TokenId,
+			Account:         req.To,
+			Balance:         req.Amount,
+			TransferredFrom: req.From,
 		}
 		_, err = h.db.Collection("balances").InsertOne(context.Background(), receiverBalance)
 		if err != nil {
@@ -390,7 +392,10 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 		_, err = h.db.Collection("balances").UpdateOne(
 			context.Background(),
 			bson.M{"tokenId": req.TokenId, "account": req.To},
-			bson.M{"$set": bson.M{"balance": toBalance.Balance + req.Amount}},
+			bson.M{"$set": bson.M{
+				"balance":         toBalance.Balance + req.Amount,
+				"transferredFrom": req.From,
+			}},
 		)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -398,8 +403,59 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Note: Token ownership is not transferred - only balances are updated
-	// Token ownership typically remains with the issuer or last full owner
+	// Log transfer event
+	event := map[string]interface{}{
+		"eventId":   generateEventID(),
+		"eventType": "TOKEN_TRANSFERRED",
+		"tokenId":   req.TokenId,
+		"from":      req.From,
+		"to":        req.To,
+		"amount":    req.Amount,
+		"timestamp": time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
+	if err != nil {
+		// Log error but don't fail the transfer
+		fmt.Printf("Failed to log transfer event: %v\n", err)
+	}
+
+	// Create block entry
+	block := map[string]interface{}{
+		"blockNumber":  h.getNextBlockNumber(),
+		"timestamp":    time.Now().Format(time.RFC3339),
+		"events":       []string{event["eventId"].(string)},
+		"previousHash": "", // Simplified - in real blockchain this would be hash of previous block
+		"hash":         "", // Simplified
+	}
+
+	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
+	if err != nil {
+		// Log error but don't fail the transfer
+		fmt.Printf("Failed to create transfer block: %v\n", err)
+	}
+
+	// Check if anchor has no more balance for this token
+	// If so, automatically approve the contract
+	anchorBalanceFilter := bson.M{"tokenId": req.TokenId, "account": "ANCHOR001"}
+	var anchorBalance models.Balance
+	err = h.db.Collection("balances").FindOne(context.Background(), anchorBalanceFilter).Decode(&anchorBalance)
+
+	// If anchor has no balance or balance is 0, approve the contract
+	if err == mongo.ErrNoDocuments || anchorBalance.Balance <= 0 {
+		// Extract contract ID from token ID (format: token_{contractId})
+		contractId := strings.TrimPrefix(req.TokenId, "token_")
+
+		// Update contract status to approved
+		contractFilter := bson.M{"_id": contractId}
+		contractUpdate := bson.M{"$set": bson.M{"approved": true, "status": "APPROVED"}}
+		_, err = h.db.Collection("contracts").UpdateOne(context.Background(), contractFilter, contractUpdate)
+		if err != nil {
+			fmt.Printf("Failed to auto-approve contract %s: %v\n", contractId, err)
+		} else {
+			fmt.Printf("Auto-approved contract %s after complete token transfer\n", contractId)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

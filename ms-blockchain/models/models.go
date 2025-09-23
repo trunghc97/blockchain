@@ -88,9 +88,10 @@ type Token struct {
 }
 
 type Balance struct {
-	TokenId string  `bson:"tokenId" json:"tokenId"`
-	Account string  `bson:"account" json:"account"`
-	Balance float64 `bson:"balance" json:"balance"`
+	TokenId         string  `bson:"tokenId" json:"tokenId"`
+	Account         string  `bson:"account" json:"account"`
+	Balance         float64 `bson:"balance" json:"balance"`
+	TransferredFrom string  `bson:"transferredFrom,omitempty" json:"transferredFrom,omitempty"`
 }
 
 type ExecutionResult struct {
