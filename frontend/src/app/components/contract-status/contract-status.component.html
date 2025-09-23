@@ -94,7 +94,10 @@
                   </span>
                 </div>
                 <div class="supplier-token">
-                  <span [ngClass]="'status-chip ' + getTokenStatusClass(getTokenStatusForSupplier(contract, supplier))">
+                  <span [ngClass]="'status-chip ' + getTokenStatusClass(getTokenStatusForSupplier(contract, supplier))"
+                        (click)="showTokenDetails(contract)"
+                        style="cursor: pointer;"
+                        matTooltip="Click to view token ownership details">
                     {{getTokenStatusForSupplier(contract, supplier)}}
                   </span>
                 </div>

@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ContractTokenService } from '../../../services/contract-token.service';
+import { UserService } from '../../../services/user.service';
+import { firstValueFrom, Observable, startWith, map } from 'rxjs';
 
 @Component({
   selector: 'app-supplier',
@@ -11,11 +13,15 @@ export class SupplierComponent implements OnInit {
   tokens: any[] = [];
   transferForm: FormGroup;
   loading = false;
-  supplierId = 'SUPPLIER001'; // This should come from authentication context
+  supplierId = ''; // Will be set from current user
+  suppliers: any[] = []; // List of all suppliers for autocomplete
+  filteredSuppliers: any[] = []; // Filtered suppliers for autocomplete
+  balances: any[] = []; // User's token balances
 
   constructor(
     private fb: FormBuilder,
-    private contractTokenService: ContractTokenService
+    private contractTokenService: ContractTokenService,
+    private userService: UserService
   ) {
     this.transferForm = this.fb.group({
       tokenId: ['', Validators.required],
@@ -24,18 +30,27 @@ export class SupplierComponent implements OnInit {
     });
   }
 
-  ngOnInit(): void {
-    this.loadMyTokens();
+  async ngOnInit(): Promise<void> {
+    try {
+      const currentUser = await firstValueFrom(this.userService.getCurrentUser());
+      this.supplierId = currentUser.id;
+      console.log('Current supplier:', this.supplierId);
+      this.loadSuppliers();
+      this.loadMyTokens();
+      this.loadBalances();
+      this.setupAutocomplete();
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
   }
 
   loadMyTokens(): void {
     this.loading = true;
-    // This is a simplified approach - in real implementation,
-    // we'd need an API to get tokens by owner
-    // For now, we'll simulate by getting all tokens and filtering
+    // Load all tokens since ownership no longer determines who can transfer balances
+    // The transfer validation will check if user has sufficient balance for the token
     this.contractTokenService.getAllTokens().subscribe({
       next: (allTokens) => {
-        this.tokens = allTokens.filter((token: any) => token.owner === this.supplierId);
+        this.tokens = allTokens; // Show all available tokens
         this.loading = false;
       },
       error: (error) => {
@@ -61,11 +76,24 @@ export class SupplierComponent implements OnInit {
           console.log('Token transferred:', response);
           alert('Token transferred successfully!');
           this.transferForm.reset();
-          this.loadMyTokens();
+          this.loadBalances();
         },
         error: (error) => {
           console.error('Error transferring token:', error);
-          alert('Error transferring token: ' + error.message);
+
+          // Provide more user-friendly error messages
+          let errorMessage = 'Error transferring token';
+          if (error.error?.includes('Insufficient balance')) {
+            errorMessage = 'Insufficient balance for this transfer';
+          } else if (error.error?.includes('Sender is not the current owner')) {
+            errorMessage = 'You are not the current owner of this token';
+          } else if (error.error?.includes('Token not found')) {
+            errorMessage = 'Token not found';
+          } else if (error.status === 400) {
+            errorMessage = 'Invalid transfer request. Please check your input.';
+          }
+
+          alert(errorMessage);
         },
         complete: () => {
           this.loading = false;
@@ -101,7 +129,71 @@ export class SupplierComponent implements OnInit {
     }
   }
 
+  loadSuppliers(): void {
+    this.userService.getSuppliers().subscribe({
+      next: (suppliers) => {
+        // Filter out current user from the list
+        this.suppliers = suppliers.filter(supplier => supplier.id !== this.supplierId);
+        console.log('Loaded suppliers for autocomplete:', this.suppliers);
+      },
+      error: (error) => {
+        console.error('Error loading suppliers:', error);
+      }
+    });
+  }
+
+  loadBalances(): void {
+    this.contractTokenService.getBalancesByAccount(this.supplierId).subscribe({
+      next: (balances) => {
+        this.balances = balances;
+        console.log('Loaded balances:', this.balances);
+      },
+      error: (error) => {
+        console.error('Error loading balances:', error);
+        this.balances = [];
+      }
+    });
+  }
+
+  setupAutocomplete(): void {
+    // Set up autocomplete filtering
+    this.transferForm.get('to')?.valueChanges.pipe(
+      startWith(''),
+      map(value => this._filterSuppliers(value || ''))
+    ).subscribe(filtered => {
+      this.filteredSuppliers = filtered;
+    });
+  }
+
+  private _filterSuppliers(value: string): any[] {
+    const filterValue = value.toLowerCase();
+    return this.suppliers.filter(supplier =>
+      supplier.id.toLowerCase().includes(filterValue) ||
+      supplier.username.toLowerCase().includes(filterValue) ||
+      (supplier.name && supplier.name.toLowerCase().includes(filterValue))
+    );
+  }
+
+  displaySupplier(supplier: any): string {
+    return supplier ? supplier.id : '';
+  }
+
+  selectSupplier(event: any): void {
+    const selectedSupplier = event.option.value;
+    if (selectedSupplier) {
+      this.transferForm.patchValue({
+        to: selectedSupplier.id
+      });
+    }
+  }
+
   get availableTokens(): any[] {
-    return this.tokens.filter(token => token.owner === this.supplierId);
+    // Return all tokens since any token can be transferred if user has balance
+    return this.tokens;
+  }
+
+  getTokenBalance(tokenId: string): number {
+    const balanceEntry = this.balances.find(b => b.tokenId === tokenId);
+    return balanceEntry ? balanceEntry.balance : 0;
   }
 }

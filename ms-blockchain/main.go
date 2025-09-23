@@ -44,6 +44,9 @@ func main() {
 	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
 	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
 	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
+	router.HandleFunc("/tokens", handler.GetAllTokens).Methods("GET")
+	router.HandleFunc("/balances/account/{accountId}", handler.GetBalancesByAccount).Methods("GET")
+	router.HandleFunc("/balances/token/{tokenId}", handler.GetBalancesByToken).Methods("GET")
 
 	// Supplier endpoints
 	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")

@@ -17,8 +17,14 @@ import { SupplierComponent } from './components/contract-token-management/suppli
 const routes: Routes = [
   {
     path: '',
-    redirectTo: '/contracts',
+    redirectTo: '/dashboard',
     pathMatch: 'full'
+  },
+  {
+    path: 'dashboard',
+    redirectTo: '/contracts',
+    pathMatch: 'full',
+    canActivate: [AuthGuard]
   },
   {
     path: 'login',

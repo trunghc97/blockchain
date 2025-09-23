@@ -48,13 +48,15 @@ export class ContractTokenService {
     return this.http.get<any[]>(`${this.apiUrl}/suppliers`, { headers: this.getHeaders() });
   }
 
-  // Helper method - may need to be implemented on backend
   getAllTokens(): Observable<any[]> {
-    // This would need a new endpoint on backend to get all tokens
-    // For now, returning empty observable
-    return new Observable(observer => {
-      observer.next([]);
-      observer.complete();
-    });
+    return this.http.get<any[]>(`${this.apiUrl}/tokens`, { headers: this.getHeaders() });
+  }
+
+  getBalancesByAccount(accountId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/tokens/balances/account/${accountId}`, { headers: this.getHeaders() });
+  }
+
+  getBalancesByToken(tokenId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/tokens/balances/token/${tokenId}`, { headers: this.getHeaders() });
   }
 }

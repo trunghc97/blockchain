@@ -13,6 +13,7 @@ export interface Contract {
   suppliers: SupplierAmount[];
   totalAmount: number;
   status: string;
+  approved?: boolean; // Add approved property
   fileUrl?: string;
   createdAt: Date;
   updatedAt: Date;

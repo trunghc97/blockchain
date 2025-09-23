@@ -62,4 +62,40 @@ public class TokenController {
             return ResponseEntity.internalServerError().body("Error getting tokens issued by bank: " + e.getMessage());
         }
     }
+
+    @GetMapping
+    public ResponseEntity<?> getAllTokens() {
+        try {
+            logger.info("Getting all tokens");
+            List<Map<String, Object>> tokens = blockchainService.getAllTokens();
+            return ResponseEntity.ok(tokens);
+        } catch (Exception e) {
+            logger.error("Error getting all tokens", e);
+            return ResponseEntity.internalServerError().body("Error getting all tokens: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/balances/account/{accountId}")
+    public ResponseEntity<?> getBalancesByAccount(@PathVariable("accountId") String accountId) {
+        try {
+            logger.info("Getting balances for account: {}", accountId);
+            List<Map<String, Object>> balances = blockchainService.getBalancesByAccount(accountId);
+            return ResponseEntity.ok(balances);
+        } catch (Exception e) {
+            logger.error("Error getting balances for account", e);
+            return ResponseEntity.internalServerError().body("Error getting balances: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/balances/token/{tokenId}")
+    public ResponseEntity<?> getBalancesByToken(@PathVariable("tokenId") String tokenId) {
+        try {
+            logger.info("Getting balances for token: {}", tokenId);
+            List<Map<String, Object>> balances = blockchainService.getBalancesByToken(tokenId);
+            return ResponseEntity.ok(balances);
+        } catch (Exception e) {
+            logger.error("Error getting balances for token", e);
+            return ResponseEntity.internalServerError().body("Error getting balances: " + e.getMessage());
+        }
+    }
 }

@@ -155,4 +155,34 @@ public class BlockchainService {
         );
         return response.getBody();
     }
+
+    public List<Map<String, Object>> getAllTokens() {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/tokens",
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getBalancesByAccount(String accountId) {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/balances/account/" + accountId,
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getBalancesByToken(String tokenId) {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/balances/token/" + tokenId,
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
 }

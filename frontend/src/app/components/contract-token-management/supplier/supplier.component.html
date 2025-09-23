@@ -31,7 +31,7 @@
                   <td>
                     <span class="badge bg-secondary">{{ token.symbol }}</span>
                   </td>
-                  <td>{{ token.total | currency }}</td>
+                  <td>{{ getTokenBalance(token.id) | currency }}</td>
                   <td>
                     <button class="btn btn-success btn-sm me-2" (click)="transferForm.patchValue({tokenId: token.id})">
                       Transfer
@@ -77,9 +77,26 @@
             </div>
 
             <div class="mb-3">
-              <label for="to" class="form-label">Transfer To (Supplier ID)</label>
-              <input type="text" class="form-control" id="to" formControlName="to"
-                     placeholder="Enter recipient supplier ID" required>
+              <mat-form-field appearance="outline" class="w-100">
+                <mat-label>Transfer To (Supplier ID)</mat-label>
+                <input type="text"
+                       matInput
+                       formControlName="to"
+                       [matAutocomplete]="supplierAuto"
+                       placeholder="Type to search suppliers..."
+                       required>
+                <mat-autocomplete #supplierAuto="matAutocomplete"
+                                  [displayWith]="displaySupplier"
+                                  (optionSelected)="selectSupplier($event)">
+                  <mat-option *ngFor="let supplier of filteredSuppliers" [value]="supplier">
+                    <div class="d-flex flex-column">
+                      <span class="fw-bold">{{ supplier.id }}</span>
+                      <small class="text-muted">{{ supplier.username }}</small>
+                    </div>
+                  </mat-option>
+                </mat-autocomplete>
+                <mat-hint>Search by Supplier ID or username</mat-hint>
+              </mat-form-field>
             </div>
 
             <div class="mb-3">
