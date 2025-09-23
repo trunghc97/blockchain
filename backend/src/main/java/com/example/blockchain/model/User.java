@@ -16,5 +16,5 @@ public class User {
 
     private String username;
     private String password;
-    private String role; // "ANCHOR", "SUPPLIER"
+    private String role; // "ANCHOR", "SUPPLIER", "BANK"
 }

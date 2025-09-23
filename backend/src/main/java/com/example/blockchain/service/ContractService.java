@@ -23,10 +23,12 @@ import java.util.Objects;
 public class ContractService {
     private final MongoTemplate mongoTemplate;
     private final BlockchainService blockchainService;
+    private final UserService userService;
 
-    public ContractService(MongoTemplate mongoTemplate, BlockchainService blockchainService) {
+    public ContractService(MongoTemplate mongoTemplate, BlockchainService blockchainService, UserService userService) {
         this.mongoTemplate = mongoTemplate;
         this.blockchainService = blockchainService;
+        this.userService = userService;
     }
 
     public Contract createContract(Contract contract, MultipartFile file) {
@@ -47,7 +49,8 @@ public class ContractService {
         if (contract.getContractId() == null || contract.getContractId().isEmpty()) {
             contract.setContractId(UUID.randomUUID().toString());
         }
-        contract.setStatus("PENDING");
+        contract.setStatus("PENDING_BANK_APPROVAL");
+        contract.setBankApproved(false);
         contract.setWordState("CREATED"); // Set initial word state
 
         // Set timestamps as ISO string format
@@ -79,7 +82,8 @@ public class ContractService {
             contractData.put("anchorId", contract.getBuyer()); // buyer is anchor
             contractData.put("supplierId", contract.getSuppliers() != null && !contract.getSuppliers().isEmpty()
                 ? contract.getSuppliers().get(0).getSupplierId() : ""); // primary supplier
-            contractData.put("bankId", "BANK001"); // hardcoded for now
+            contractData.put("bankId", contract.getBankId() != null ? contract.getBankId() : "BANK001"); // use provided bankId or default
+            contractData.put("bankApproved", contract.getBankApproved());
             contractData.put("amount", contract.getTotalAmount());
             contractData.put("suppliers", contract.getSuppliers());
             contractData.put("approvers", contract.getSuppliers() != null
@@ -87,7 +91,7 @@ public class ContractService {
                 : java.util.Collections.emptyList());
 
             System.out.println("DEBUG: Calling blockchain service with data: " + contractData);
-            // Call blockchain service to create contract
+            // Call blockchain service to create contract (without token creation)
             Map<String, Object> blockchainResponse = blockchainService.createContract(contractData);
             System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
@@ -128,13 +132,20 @@ public class ContractService {
         contract.setContractId((String) blockchainContract.get("_id"));
         contract.setDescription((String) blockchainContract.get("description"));
         contract.setBuyer((String) blockchainContract.get("anchorId"));
+        contract.setBankId((String) blockchainContract.get("bankId"));
 
-        // Set status based on approved field
+        // Set bank approval status
+        Boolean bankApproved = (Boolean) blockchainContract.get("bankApproved");
+        contract.setBankApproved(bankApproved != null ? bankApproved : false);
+
+        // Set status based on approval fields
         Boolean approved = (Boolean) blockchainContract.get("approved");
         if (approved != null && approved) {
             contract.setStatus("EXECUTED");
+        } else if (bankApproved != null && bankApproved) {
+            contract.setStatus("BANK_APPROVED");
         } else {
-            contract.setStatus("PENDING");
+            contract.setStatus("PENDING_BANK_APPROVAL");
         }
 
         // Safely handle amount field - could be null from blockchain
@@ -211,10 +222,20 @@ public class ContractService {
             return true;
         }
 
-        // Check if user is a supplier
+        // Bank users can see all contracts
+        if (username != null && username.startsWith("BANK")) {
+            return true;
+        }
+
+        // Suppliers can only see contracts that have been approved by bank
         if (contract.getSuppliers() != null) {
-            return contract.getSuppliers().stream()
+            boolean isSupplier = contract.getSuppliers().stream()
                 .anyMatch(supplier -> username.equals(supplier.getSupplierId()));
+
+            if (isSupplier) {
+                // Suppliers can only see contracts that have been bank-approved
+                return contract.getBankApproved() != null && contract.getBankApproved();
+            }
         }
 
         return false;
@@ -254,6 +275,43 @@ public class ContractService {
             throw new RuntimeException("Contract not found: " + contractId);
         }
 
+        // Verify contract has been approved by bank before allowing supplier approval
+        if (contract.getBankApproved() == null || !contract.getBankApproved()) {
+            throw new RuntimeException("Contract must be approved by bank before supplier approval: " + contractId);
+        }
+
+        // Verify supplier is part of this contract
+        boolean isValidSupplier = contract.getSuppliers() != null &&
+            contract.getSuppliers().stream()
+                .anyMatch(supplier -> {
+                    // Check exact supplierId match
+                    if (supplier.getSupplierId() != null && supplierId.equals(supplier.getSupplierId())) {
+                        return true;
+                    }
+
+                    // Check if supplierId is null and supplier name matches user username
+                    if (supplier.getSupplierId() == null && supplier.getName() != null) {
+                        try {
+                            // Get user by supplierId to get their username
+                            User user = mongoTemplate.findOne(
+                                Query.query(Criteria.where("id").is(supplierId)),
+                                User.class,
+                                "users"
+                            );
+                            return user != null && supplier.getName().equals(user.getUsername());
+                        } catch (Exception e) {
+                            // If user lookup fails, don't allow
+                            return false;
+                        }
+                    }
+
+                    return false;
+                });
+
+        if (!isValidSupplier) {
+            throw new RuntimeException("Supplier " + supplierId + " is not authorized to approve contract " + contractId);
+        }
+
         try {
             // Call blockchain service to approve contract
             Map<String, Object> blockchainResponse = blockchainService.approveContract(contractId, supplierId);
@@ -262,9 +320,28 @@ public class ContractService {
                 // Update local contract status for quick access
                 if (contract.getSuppliers() != null) {
                     for (var supplier : contract.getSuppliers()) {
-                        if (supplier != null && supplierId.equals(supplier.getSupplierId())) {
-                            supplier.setStatus("APPROVED");
-                            break;
+                        if (supplier != null) {
+                            // Check exact supplierId match
+                            if (supplierId.equals(supplier.getSupplierId())) {
+                                supplier.setStatus("APPROVED");
+                                break;
+                            }
+                            // Check if supplierId is null and supplier name matches user username
+                            else if (supplier.getSupplierId() == null && supplier.getName() != null) {
+                                try {
+                                    User user = mongoTemplate.findOne(
+                                        Query.query(Criteria.where("id").is(supplierId)),
+                                        User.class,
+                                        "users"
+                                    );
+                                    if (user != null && supplier.getName().equals(user.getUsername())) {
+                                        supplier.setStatus("APPROVED");
+                                        break;
+                                    }
+                                } catch (Exception e) {
+                                    // Continue to next supplier if lookup fails
+                                }
+                            }
                         }
                     }
 
@@ -286,6 +363,87 @@ public class ContractService {
             }
         } catch (Exception e) {
             System.err.println("Error calling blockchain service: " + e.getMessage());
+            throw new RuntimeException("Blockchain service unavailable", e);
+        }
+    }
+
+    public Contract approveContractByBank(String contractId, String bankId) {
+        if (!StringUtils.hasText(contractId)) {
+            throw new IllegalArgumentException("Contract ID cannot be empty");
+        }
+        if (!StringUtils.hasText(bankId)) {
+            throw new IllegalArgumentException("Bank ID cannot be empty");
+        }
+
+        Contract contract = getContract(contractId);
+        if (contract == null) {
+            throw new RuntimeException("Contract not found: " + contractId);
+        }
+
+        // Verify bank has permission to approve this contract
+        if (!bankId.equals(contract.getBankId())) {
+            throw new RuntimeException("Bank " + bankId + " does not have permission to approve contract " + contractId);
+        }
+
+        try {
+            // Call blockchain service to approve contract by bank
+            Map<String, Object> blockchainResponse = blockchainService.approveContractByBank(contractId, bankId);
+
+            if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
+                // Update local contract status
+                contract.setBankApproved(true);
+                contract.setStatus("BANK_APPROVED");
+
+                String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "Z";
+                contract.setUpdatedAt(now);
+                return mongoTemplate.save(contract);
+            } else {
+                throw new RuntimeException("Failed to approve contract by bank on blockchain");
+            }
+        } catch (Exception e) {
+            System.err.println("Error calling blockchain service: " + e.getMessage());
+            throw new RuntimeException("Blockchain service unavailable", e);
+        }
+    }
+
+    public List<Map<String, Object>> getAllTokens() {
+        try {
+            return blockchainService.getAllTokens();
+        } catch (Exception e) {
+            System.err.println("Error getting all tokens: " + e.getMessage());
+            throw new RuntimeException("Blockchain service unavailable", e);
+        }
+    }
+
+    public List<Map<String, Object>> getAllBalances() {
+        try {
+            // Get all balances by combining balances from all accounts
+            List<Map<String, Object>> allBalances = new java.util.ArrayList<>();
+
+            // Get all users to iterate through their balances
+            List<User> users = userService.getUsers();
+            for (User user : users) {
+                String userId = user.getId();
+                if (userId != null) {
+                    List<Map<String, Object>> userBalances = blockchainService.getBalancesByAccount(userId);
+                    if (userBalances != null) {
+                        allBalances.addAll(userBalances);
+                    }
+                }
+            }
+
+            return allBalances;
+        } catch (Exception e) {
+            System.err.println("Error getting all balances: " + e.getMessage());
+            throw new RuntimeException("Error retrieving balances", e);
+        }
+    }
+
+    public List<Map<String, Object>> getBalancesByToken(String tokenId) {
+        try {
+            return blockchainService.getBalancesByToken(tokenId);
+        } catch (Exception e) {
+            System.err.println("Error getting balances by token: " + e.getMessage());
             throw new RuntimeException("Blockchain service unavailable", e);
         }
     }

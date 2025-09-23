@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -142,17 +143,19 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create contract with suppliers array
+	bankApproved := false // Default to false for new contracts
 	contract := map[string]interface{}{
-		"_id":         req.ID,
-		"description": req.Description,
-		"anchorId":    req.AnchorId,
-		"supplierId":  req.SupplierId, // Primary supplier for token transfer
-		"bankId":      req.BankId,
-		"amount":      req.Amount,
-		"suppliers":   req.Suppliers, // All suppliers with details
-		"approvers":   req.Approvers,
-		"approved":    false,
-		"createdAt":   time.Now().Format(time.RFC3339),
+		"_id":          req.ID,
+		"description":  req.Description,
+		"anchorId":     req.AnchorId,
+		"supplierId":   req.SupplierId, // Primary supplier for token transfer
+		"bankId":       req.BankId,
+		"bankApproved": bankApproved,
+		"amount":       req.Amount,
+		"suppliers":    req.Suppliers, // All suppliers with details
+		"approvers":    req.Approvers,
+		"approved":     false,
+		"createdAt":    time.Now().Format(time.RFC3339),
 	}
 
 	// Save contract to MongoDB
@@ -165,57 +168,16 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("DEBUG: Contract saved successfully\n")
 
-	// Calculate total amount from all suppliers
-	totalAmount := 0.0
-	for _, supplier := range req.Suppliers {
-		totalAmount += supplier.Amount
-	}
-
-	// Auto-issue token when contract is created
-	tokenId := fmt.Sprintf("token_%s", req.ID)
-	symbol := fmt.Sprintf("TK%s", req.ID[len(req.ID)-4:]) // Last 4 chars of contract ID
-
-	fmt.Printf("DEBUG: Creating token with ID: %s, total: %f\n", tokenId, totalAmount)
-	token := models.Token{
-		ID:         tokenId,
-		ContractId: req.ID,
-		Symbol:     symbol,
-		Total:      totalAmount,
-		Issuer:     req.BankId,
-		Owner:      req.AnchorId, // Initially owned by anchor (not bank)
-		CreatedAt:  time.Now().Format(time.RFC3339),
-	}
-
-	_, err = h.db.Collection("tokens").InsertOne(context.Background(), token)
-	if err != nil {
-		fmt.Printf("DEBUG: Error saving token: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	fmt.Printf("DEBUG: Token saved successfully\n")
-
-	// Create initial balance for anchor (use hardcoded ANCHOR001 to match approval process)
-	balance := models.Balance{
-		TokenId: tokenId,
-		Account: "ANCHOR001", // Always use ANCHOR001 to match the approval transfer logic
-		Balance: totalAmount,
-	}
-
-	_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	// Note: Token will be created only after bank approval
 
 	// Log event
 	event := map[string]interface{}{
 		"eventId":     generateEventID(),
 		"eventType":   "CONTRACT_CREATED",
 		"contractId":  req.ID,
-		"tokenId":     tokenId,
 		"anchorId":    req.AnchorId,
 		"bankId":      req.BankId,
-		"totalAmount": totalAmount,
+		"totalAmount": req.Amount,
 		"description": req.Description,
 		"suppliers":   req.Suppliers,
 		"timestamp":   time.Now().Format(time.RFC3339),
@@ -251,7 +213,6 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"contractId": req.ID,
-		"tokenId":    tokenId,
 		"status":     "success",
 	})
 }
@@ -272,36 +233,243 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("DEBUG: Approving contract %s for supplier %s\n", contractId, req.SupplierId)
 
-	// Update contract approval status
-	filter := bson.M{"_id": contractId}
-	update := bson.M{"$set": bson.M{"approved": true}}
-	_, err := h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+	// Get contract to verify bank approval and supplier authorization
+	var contract map[string]interface{}
+	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&contract)
 	if err != nil {
-		fmt.Printf("DEBUG: Error updating contract: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Contract not found", http.StatusNotFound)
 		return
 	}
 
-	// Transfer token ownership from anchor to supplier
-	tokenId := fmt.Sprintf("token_%s", contractId)
-	// Note: For contract approval, we don't change token ownership
-	// The token ownership typically remains with the bank or anchor
-	// Only balances are transferred
-
-	// Transfer balance from anchor to supplier
-	balanceFilter := bson.M{"tokenId": tokenId, "account": "ANCHOR001"}
-	balanceUpdate := bson.M{"$set": bson.M{"account": req.SupplierId}}
-	_, err = h.db.Collection("balances").UpdateOne(context.Background(), balanceFilter, balanceUpdate)
-	if err != nil {
-		fmt.Printf("DEBUG: Error updating balance: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Verify contract has been approved by bank
+	bankApproved, ok := contract["bankApproved"].(bool)
+	if !ok || !bankApproved {
+		http.Error(w, "Contract must be approved by bank before supplier approval", http.StatusForbidden)
 		return
+	}
+
+	// Verify supplier is part of this contract
+	isValidSupplier := false
+	if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+		for _, supplierInterface := range suppliersArray {
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				continue
+			}
+
+			if supplierId, ok := supplier["supplierId"].(string); ok && supplierId == req.SupplierId {
+				isValidSupplier = true
+				break
+			} else if supplierId, ok := supplier["supplierid"].(string); ok && supplierId == req.SupplierId {
+				// Try lowercase variant
+				isValidSupplier = true
+				break
+			} else if supplier["supplierId"] == nil {
+				// Check if supplierId is null and supplier name matches user username
+				if supplierName, ok := supplier["name"].(string); ok {
+					// Get user by supplierId to get their username
+					var user map[string]interface{}
+					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
+					if err == nil {
+						if username, ok := user["username"].(string); ok && username == supplierName {
+							isValidSupplier = true
+							break
+						}
+					}
+				}
+			}
+		}
+	} else {
+		http.Error(w, "Invalid contract suppliers data", http.StatusInternalServerError)
+		return
+	}
+
+	if !isValidSupplier {
+		http.Error(w, "Supplier is not authorized to approve this contract", http.StatusForbidden)
+		return
+	}
+
+	// Define filter for contract updates
+	filter := bson.M{"_id": contractId}
+
+	// Update individual supplier status
+	if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+		for i, supplierInterface := range suppliersArray {
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				continue
+			}
+
+			// Check if this is the approving supplier
+			isApprovingSupplier := false
+			if supplierId, ok := supplier["supplierId"].(string); ok && supplierId == req.SupplierId {
+				isApprovingSupplier = true
+			} else if supplier["supplierId"] == nil {
+				// Check if supplierId is null and supplier name matches user username
+				if supplierName, ok := supplier["name"].(string); ok {
+					var user map[string]interface{}
+					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
+					if err == nil {
+						if username, ok := user["username"].(string); ok && username == supplierName {
+							isApprovingSupplier = true
+						}
+					}
+				}
+			}
+
+			if isApprovingSupplier {
+				// Update this supplier's status to APPROVED
+				// First, get the current suppliers array and update it
+				if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+					// Create updated suppliers array
+					var updatedSuppliers []map[string]interface{}
+					for j, supInterface := range suppliersArray {
+						var sup map[string]interface{}
+						if s, ok := supInterface.(map[string]interface{}); ok {
+							sup = make(map[string]interface{})
+							for k, v := range s {
+								sup[k] = v
+							}
+						} else if s, ok := supInterface.(primitive.M); ok {
+							sup = make(map[string]interface{})
+							for k, v := range s {
+								sup[k] = v
+							}
+						}
+						if j == i {
+							sup["status"] = "APPROVED"
+						}
+						updatedSuppliers = append(updatedSuppliers, sup)
+					}
+
+					// Update the entire suppliers array
+					statusUpdate := bson.M{"$set": bson.M{"suppliers": updatedSuppliers}}
+					_, err = h.db.Collection("contracts").UpdateOne(context.Background(), filter, statusUpdate)
+					if err != nil {
+						// Don't return error here, continue with contract approval
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Refetch contract data to get updated supplier statuses
+	var updatedContract map[string]interface{}
+	err = h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&updatedContract)
+	if err != nil {
+		fmt.Printf("DEBUG: Error refetching contract: %v\n", err)
+		// Continue with old contract data
+		updatedContract = contract
+	}
+
+	// Check if all suppliers have approved using updated data
+	allApproved := true
+	if suppliersArray, ok := updatedContract["suppliers"].(primitive.A); ok {
+		for _, supplierInterface := range suppliersArray {
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				continue
+			}
+
+			status, ok := supplier["status"].(string)
+			if !ok || status != "APPROVED" {
+				allApproved = false
+				break
+			}
+		}
+	}
+
+	tokenId := fmt.Sprintf("token_%s", contractId)
+
+	if allApproved {
+		// All suppliers approved - distribute tokens proportionally
+
+		// Update contract approval status
+		update := bson.M{"$set": bson.M{"approved": true}}
+		_, err = h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Distribute token balances to all approved suppliers
+		if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+			for _, supplierInterface := range suppliersArray {
+				var supplier map[string]interface{}
+				if s, ok := supplierInterface.(map[string]interface{}); ok {
+					supplier = s
+				} else if s, ok := supplierInterface.(primitive.M); ok {
+					supplier = map[string]interface{}(s)
+				} else {
+					continue
+				}
+
+				// Get supplier ID
+				supplierId := ""
+				if id, ok := supplier["supplierId"].(string); ok && id != "" {
+					supplierId = id
+				} else if name, ok := supplier["name"].(string); ok {
+					// Find user by name to get ID
+					var user map[string]interface{}
+					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"username": name}).Decode(&user)
+					if err == nil {
+						if id, ok := user["id"].(string); ok {
+							supplierId = id
+						}
+					}
+				}
+
+				if supplierId != "" {
+					// Get supplier amount
+					amount := 0.0
+					if amt, ok := supplier["amount"].(float64); ok {
+						amount = amt
+					}
+
+					// Create balance for this supplier
+					balance := models.Balance{
+						TokenId: tokenId,
+						Account: supplierId,
+						Balance: amount,
+					}
+
+					_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
+					if err != nil {
+						// Continue with other suppliers
+					}
+				}
+			}
+		}
+
+		// Remove anchor's balance since tokens are now distributed
+		h.db.Collection("balances").DeleteOne(context.Background(), bson.M{
+			"tokenId": tokenId,
+			"account": "ANCHOR001",
+		})
 	}
 
 	// Log approval event
+	eventType := "SUPPLIER_APPROVED"
+	if allApproved {
+		eventType = "CONTRACT_FULLY_APPROVED"
+	}
+
 	event := map[string]interface{}{
 		"eventId":    generateEventID(),
-		"eventType":  "CONTRACT_APPROVED",
+		"eventType":  eventType,
 		"contractId": contractId,
 		"tokenId":    tokenId,
 		"supplierId": req.SupplierId,
@@ -339,6 +507,167 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "success",
 		"message": "Contract approved successfully",
+	})
+}
+
+// ApproveContractByBank allows banks to approve contracts
+func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	contractId := vars["id"]
+
+	var req struct {
+		BankId string `json:"bankId"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("DEBUG: Bank %s approving contract %s\n", req.BankId, contractId)
+
+	// Get contract to verify bank permission
+	var contract map[string]interface{}
+	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&contract)
+	if err != nil {
+		http.Error(w, "Contract not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify bank has permission to approve this contract
+	contractBankId, ok := contract["bankId"].(string)
+	if !ok || contractBankId != req.BankId {
+		http.Error(w, "Bank does not have permission to approve this contract", http.StatusForbidden)
+		return
+	}
+
+	// Update contract bank approval status
+	filter := bson.M{"_id": contractId}
+	update := bson.M{"$set": bson.M{"bankApproved": true}}
+	_, err = h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+	if err != nil {
+		fmt.Printf("DEBUG: Error updating contract bank approval: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Calculate total amount from all suppliers for token creation
+	fmt.Printf("DEBUG: Contract suppliers type: %T, value: %+v\n", contract["suppliers"], contract["suppliers"])
+
+	totalAmount := 0.0
+
+	// Handle the suppliers array - MongoDB driver returns primitive.A
+	if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+		fmt.Printf("DEBUG: Suppliers is primitive.A with %d items\n", len(suppliersArray))
+		fmt.Printf("DEBUG: Processing suppliers array with %d items\n", len(suppliersArray))
+		for i, supplierInterface := range suppliersArray {
+			fmt.Printf("DEBUG: Processing supplier %d: %T\n", i, supplierInterface)
+
+			// Try to convert to map
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else if s, ok := supplierInterface.(bson.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				fmt.Printf("DEBUG: Cannot convert supplier %d to map\n", i)
+				continue
+			}
+
+			if amount, ok := supplier["amount"].(float64); ok {
+				fmt.Printf("DEBUG: Adding amount %f from supplier %d\n", amount, i)
+				totalAmount += amount
+			} else {
+				fmt.Printf("DEBUG: No valid amount found in supplier %d\n", i)
+			}
+		}
+	} else {
+		fmt.Printf("DEBUG: Suppliers is not []interface{}, type: %T\n", contract["suppliers"])
+		http.Error(w, "Invalid contract suppliers data", http.StatusInternalServerError)
+		return
+	}
+
+	// Create token after bank approval
+	tokenId := fmt.Sprintf("token_%s", contractId)
+	symbol := fmt.Sprintf("TK%s", contractId[len(contractId)-4:]) // Last 4 chars of contract ID
+
+	// Token should be owned by anchor (buyer) after bank approval
+	anchorId := "ANCHOR001" // Default anchor ID
+
+	token := models.Token{
+		ID:         tokenId,
+		ContractId: contractId,
+		Symbol:     symbol,
+		Total:      totalAmount,
+		Issuer:     req.BankId,
+		Owner:      anchorId, // Owned by anchor after bank approval
+		CreatedAt:  time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("tokens").InsertOne(context.Background(), token)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Create initial balance for anchor (token owner)
+	balance := models.Balance{
+		TokenId: tokenId,
+		Account: anchorId,
+		Balance: totalAmount,
+	}
+
+	_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Log bank approval event
+	event := map[string]interface{}{
+		"eventId":     generateEventID(),
+		"eventType":   "CONTRACT_BANK_APPROVED",
+		"contractId":  contractId,
+		"tokenId":     tokenId,
+		"bankId":      req.BankId,
+		"totalAmount": totalAmount,
+		"timestamp":   time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
+	if err != nil {
+		fmt.Printf("DEBUG: Error logging bank approval event: %v\n", err)
+		// Don't fail the approval for logging errors
+	}
+
+	// Create block entry
+	blockNumber := h.getNextBlockNumber()
+	timestamp := time.Now().Format(time.RFC3339)
+	eventIds := []string{event["eventId"].(string)}
+	previousHash := h.getPreviousBlockHash()
+	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
+	block := map[string]interface{}{
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"events":       eventIds,
+		"previousHash": previousHash,
+		"hash":         blockHash,
+	}
+
+	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
+	if err != nil {
+		fmt.Printf("DEBUG: Error creating bank approval block: %v\n", err)
+		// Don't fail the approval for block creation errors
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "success",
+		"message": "Contract approved by bank successfully",
+		"tokenId": tokenId,
 	})
 }
 

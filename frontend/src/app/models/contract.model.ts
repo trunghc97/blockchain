@@ -14,6 +14,8 @@ export interface Contract {
   totalAmount: number;
   status: string;
   approved?: boolean; // Add approved property
+  bankApproved?: boolean; // Add bank approved property
+  bankId?: string; // Add bank ID property
   fileUrl?: string;
   createdAt: Date;
   updatedAt: Date;

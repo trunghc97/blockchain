@@ -82,6 +82,25 @@ public class BlockchainService {
         return response.getBody();
     }
 
+    public Map<String, Object> approveContractByBank(String contractId, String bankId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> approvalData = new HashMap<>();
+        approvalData.put("contractId", contractId);
+        approvalData.put("bankId", bankId);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/contract/" + contractId + "/approve-bank",
+                HttpMethod.POST,
+                request,
+                Map.class
+        );
+        return response.getBody();
+    }
+
     public List<Map<String, Object>> listContracts() {
         ResponseEntity<List> response = restTemplate.exchange(
                 blockchainUrl + "/contract/list",

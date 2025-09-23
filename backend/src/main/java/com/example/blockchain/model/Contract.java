@@ -18,6 +18,8 @@ public class Contract {
     private List<SupplierAmount> suppliers;
     private Double totalAmount; // Total amount of all suppliers
     private String status;
+    private Boolean bankApproved; // Whether bank has approved this contract
+    private String bankId; // ID of the bank assigned to this contract
     private String fileUrl;
     private String createdAt;
     private String updatedAt;

@@ -10,7 +10,7 @@ import { environment } from '../../environments/environment';
   providedIn: 'root'
 })
 export class ContractService {
-  private apiUrl = `${environment.apiUrl}/api/contracts`;
+  private apiUrl = `${environment.apiUrl}/api/v1/contracts`;
 
   constructor(
     private http: HttpClient,
@@ -124,14 +124,39 @@ export class ContractService {
     );
   }
 
-  approveContract(id: string): Observable<Contract> {
-    return this.http.post<Contract>(`${this.apiUrl}/${id}/approve`, {}, { headers: this.getHeaders() }).pipe(
+  approveContract(id: string, approverId?: string): Observable<Contract> {
+    const requestBody = approverId ? { supplierId: approverId } : {};
+    return this.http.post<Contract>(`${this.apiUrl}/${id}/approve`, requestBody, { headers: this.getHeaders() }).pipe(
       catchError(this.handleError.bind(this))
     );
   }
 
   rejectContract(id: string, reason: string): Observable<Contract> {
     return this.http.post<Contract>(`${this.apiUrl}/${id}/reject`, { reason }, { headers: this.getHeaders() }).pipe(
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  approveContractByBank(id: string, request: { bankId: string }): Observable<Contract> {
+    return this.http.post<Contract>(`${this.apiUrl}/${id}/approve-bank`, request, { headers: this.getHeaders() }).pipe(
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  getAllTokens(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/tokens/all`, { headers: this.getHeaders() }).pipe(
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  getAllBalances(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/balances/all`, { headers: this.getHeaders() }).pipe(
+      catchError(this.handleError.bind(this))
+    );
+  }
+
+  getBalancesByToken(tokenId: string): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/balances/token/${tokenId}`, { headers: this.getHeaders() }).pipe(
       catchError(this.handleError.bind(this))
     );
   }

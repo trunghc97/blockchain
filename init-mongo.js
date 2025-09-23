@@ -65,6 +65,7 @@ if (db.users.countDocuments() === 0) {
     print('- Bank: bank / 123456 (BANK001)');
     print('- Anchor: anchor / 123456 (ANCHOR001)');
     print('- Suppliers: supplier1-supplier5 / 123456 (SUPPLIER001-SUPPLIER005)');
+
 } else {
     print('Users collection already has data, skipping user initialization');
 }
@@ -114,6 +115,16 @@ if (!contractIndexes.some(index => index.name === 'bankId_1')) {
 if (!contractIndexes.some(index => index.name === 'approved_1')) {
     db.contracts.createIndex({ "approved": 1 });
     print('Created index on contracts.approved');
+}
+
+if (!contractIndexes.some(index => index.name === 'bankApproved_1')) {
+    db.contracts.createIndex({ "bankApproved": 1 });
+    print('Created index on contracts.bankApproved');
+}
+
+if (!contractIndexes.some(index => index.name === 'status_1')) {
+    db.contracts.createIndex({ "status": 1 });
+    print('Created index on contracts.status');
 }
 
 // Tokens collection indexes
@@ -173,19 +184,20 @@ print('Database indexes created successfully');
 // Final summary
 print('\n=== BLOCKCHAIN CONTRACT-TOKEN SYSTEM INITIALIZATION COMPLETE ===');
 print('Collections created:');
-print('- users: User authentication data');
-print('- contracts: Contract world state');
-print('- tokens: Token world state');
+print('- users: User authentication data (ANCHOR, BANK, SUPPLIER roles)');
+print('- contracts: Contract world state (with bank approval workflow)');
+print('- tokens: Token world state (issued after bank approval)');
 print('- balances: Token balance tracking');
 print('- events: Legacy blockchain events');
 print('- blocks: Legacy block data');
 
 print('\nAvailable test users:');
-print('BANK:     bank / 123456 (ID: BANK001)');
-print('ANCHOR:   anchor / 123456 (ID: ANCHOR001)');
-print('SUPPLIERS: supplier1-supplier5 / 123456 (IDs: SUPPLIER001-SUPPLIER005)');
+print('BANK:       bank / 123456 (ID: BANK001) - Can approve contracts & view all data');
+print('ANCHOR:     anchor / 123456 (ID: ANCHOR001) - Creates contracts');
+print('SUPPLIERS:  supplier1-supplier5 / 123456 (IDs: SUPPLIER001-SUPPLIER005) - Approve after bank');
 
 print('\nSystem is ready for testing!');
 print('Use docker-compose up --build to start all services.');
 print('Access frontend at: http://localhost:4200');
-print('===============================================================\n');
+print('Login as "bank" to see the new Bank Dashboard with full system overview.');
+print('=================================================================================\n');

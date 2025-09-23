@@ -8,6 +8,8 @@ import (
 
 const (
 	StatusPending             = "PENDING"
+	StatusPendingBankApproval = "PENDING_BANK_APPROVAL"
+	StatusBankApproved        = "BANK_APPROVED"
 	StatusPartiallyApproved   = "PARTIALLY_APPROVED"
 	StatusReadyToExecute      = "READY_TO_EXECUTE"
 	StatusExecuted            = "EXECUTED"
@@ -15,6 +17,7 @@ const (
 	StatusFailed              = "FAILED"
 
 	TxTypeCreate          = "CREATE"
+	TxTypeApproveBank     = "APPROVE_BANK"
 	TxTypeApproveSupplier = "APPROVE_SUPPLIER"
 	TxTypeExecute         = "EXECUTE"
 )
@@ -46,18 +49,20 @@ type BlockEvent struct {
 }
 
 type Contract struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	ContractID  string             `bson:"contractId" json:"contractId"`
-	Description string             `bson:"description" json:"description"`
-	Buyer       string             `bson:"buyer" json:"buyer"`
-	Suppliers   []Supplier         `bson:"suppliers" json:"suppliers"`
-	TotalAmount float64            `bson:"totalAmount" json:"totalAmount"`
-	Status      string             `bson:"status" json:"status"`
-	FileURL     string             `bson:"fileUrl,omitempty" json:"fileUrl,omitempty"`
-	CreatedAt   time.Time          `bson:"createdAt" json:"createdAt"`
-	UpdatedAt   time.Time          `bson:"updatedAt" json:"updatedAt"`
-	WordState   string             `bson:"wordState,omitempty" json:"wordState,omitempty"`
-	History     []ContractEvent    `bson:"history,omitempty" json:"history,omitempty"`
+	ID           primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	ContractID   string             `bson:"contractId" json:"contractId"`
+	Description  string             `bson:"description" json:"description"`
+	Buyer        string             `bson:"buyer" json:"buyer"`
+	BankID       string             `bson:"bankId" json:"bankId"`
+	BankApproved *bool              `bson:"bankApproved,omitempty" json:"bankApproved,omitempty"`
+	Suppliers    []Supplier         `bson:"suppliers" json:"suppliers"`
+	TotalAmount  float64            `bson:"totalAmount" json:"totalAmount"`
+	Status       string             `bson:"status" json:"status"`
+	FileURL      string             `bson:"fileUrl,omitempty" json:"fileUrl,omitempty"`
+	CreatedAt    time.Time          `bson:"createdAt" json:"createdAt"`
+	UpdatedAt    time.Time          `bson:"updatedAt" json:"updatedAt"`
+	WordState    string             `bson:"wordState,omitempty" json:"wordState,omitempty"`
+	History      []ContractEvent    `bson:"history,omitempty" json:"history,omitempty"`
 }
 
 type Block struct {
@@ -74,7 +79,7 @@ type User struct {
 	ID       string `bson:"id" json:"id"`
 	Username string `bson:"username" json:"username"`
 	Password string `bson:"password" json:"password"`
-	Role     string `bson:"role" json:"role"` // "BUYER", "BANK", "SUPPLIER"
+	Role     string `bson:"role" json:"role"` // "ANCHOR", "BANK", "SUPPLIER"
 }
 
 type Token struct {
