@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,21 +36,74 @@ func generateEventID() string {
 	return hex.EncodeToString(bytes)
 }
 
-func (h *Handler) getNextBlockNumber() int64 {
-	// Get the highest block number and increment
+// getPreviousBlockHash returns the hash of the previous block
+func (h *Handler) getPreviousBlockHash() string {
 	var lastBlock map[string]interface{}
 	err := h.db.Collection("blocks").FindOne(context.Background(), bson.M{}, options.FindOne().SetSort(bson.M{"blockNumber": -1})).Decode(&lastBlock)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return 1 // First block
+			return "genesis" // Genesis block has no previous hash
 		}
-		return 1 // Default to 1 on error
+		return "" // Return empty on error
 	}
 
-	if blockNum, ok := lastBlock["blockNumber"].(int64); ok {
-		return blockNum + 1
+	if hash, ok := lastBlock["hash"].(string); ok {
+		return hash
 	}
-	return 1
+	return ""
+}
+
+// getPreviousBlockNumber returns the number of the previous block
+func (h *Handler) getPreviousBlockNumber() int64 {
+	var lastBlock map[string]interface{}
+	err := h.db.Collection("blocks").FindOne(context.Background(), bson.M{}, options.FindOne().SetSort(bson.M{"blockNumber": -1})).Decode(&lastBlock)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return 0 // No previous block
+		}
+		return 0 // Return 0 on error
+	}
+
+	// Handle different numeric types that MongoDB might return
+	if blockNum, ok := lastBlock["blockNumber"].(int64); ok {
+		return blockNum
+	}
+	if blockNum, ok := lastBlock["blockNumber"].(int32); ok {
+		return int64(blockNum)
+	}
+	if blockNum, ok := lastBlock["blockNumber"].(int); ok {
+		return int64(blockNum)
+	}
+	return 0
+}
+
+// calculateBlockHash calculates SHA256 hash of block data
+func calculateBlockHash(blockNumber int64, timestamp, previousHash string, events []string) string {
+	// Create a data structure for hashing (excluding the hash itself)
+	hashData := map[string]interface{}{
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"previousHash": previousHash,
+		"events":       events,
+	}
+
+	// Convert to JSON
+	jsonData, err := json.Marshal(hashData)
+	if err != nil {
+		return ""
+	}
+
+	// Calculate SHA256 hash
+	hash := sha256.Sum256(jsonData)
+	return hex.EncodeToString(hash[:])
+}
+
+func (h *Handler) getNextBlockNumber() int64 {
+	previousBlockNum := h.getPreviousBlockNumber()
+	if previousBlockNum == 0 {
+		return 1 // First block
+	}
+	return previousBlockNum + 1
 }
 
 func NewHandler(db *mongo.Database) *Handler {
@@ -174,12 +228,18 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create block entry
+	blockNumber := h.getNextBlockNumber()
+	timestamp := time.Now().Format(time.RFC3339)
+	eventIds := []string{event["eventId"].(string)}
+	previousHash := h.getPreviousBlockHash()
+	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
 	block := map[string]interface{}{
-		"blockNumber":  h.getNextBlockNumber(),
-		"timestamp":    time.Now().Format(time.RFC3339),
-		"events":       []string{event["eventId"].(string)},
-		"previousHash": "", // Simplified - in real blockchain this would be hash of previous block
-		"hash":         "", // Simplified
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"events":       eventIds,
+		"previousHash": previousHash,
+		"hash":         blockHash,
 	}
 
 	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
@@ -421,12 +481,18 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create block entry
+	blockNumber := h.getNextBlockNumber()
+	timestamp := time.Now().Format(time.RFC3339)
+	eventIds := []string{event["eventId"].(string)}
+	previousHash := h.getPreviousBlockHash()
+	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
 	block := map[string]interface{}{
-		"blockNumber":  h.getNextBlockNumber(),
-		"timestamp":    time.Now().Format(time.RFC3339),
-		"events":       []string{event["eventId"].(string)},
-		"previousHash": "", // Simplified - in real blockchain this would be hash of previous block
-		"hash":         "", // Simplified
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"events":       eventIds,
+		"previousHash": previousHash,
+		"hash":         blockHash,
 	}
 
 	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
@@ -484,6 +550,175 @@ func (h *Handler) GetTokensIssuedByBank(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tokens)
+}
+
+// GetContractLedger returns all events and blocks related to a contract
+func (h *Handler) GetContractLedger(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	contractId := vars["id"]
+
+	// Get all events related to this contract
+	eventCursor, err := h.db.Collection("events").Find(context.Background(), bson.M{"contractId": contractId})
+	if err != nil {
+		http.Error(w, "Failed to query events: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer eventCursor.Close(context.Background())
+
+	var events []map[string]interface{}
+	if err = eventCursor.All(context.Background(), &events); err != nil {
+		http.Error(w, "Failed to decode events: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get all events related to this contract's token (token_{contractId})
+	tokenId := "token_" + contractId
+	tokenEventCursor, err := h.db.Collection("events").Find(context.Background(), bson.M{"tokenId": tokenId})
+	if err != nil {
+		http.Error(w, "Failed to query token events: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tokenEventCursor.Close(context.Background())
+
+	var tokenEvents []map[string]interface{}
+	if err = tokenEventCursor.All(context.Background(), &tokenEvents); err != nil {
+		http.Error(w, "Failed to decode token events: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Combine all events
+	allEvents := append(events, tokenEvents...)
+
+	// Get all blocks containing these events
+	var eventIds []string
+	for _, event := range allEvents {
+		if eventId, ok := event["eventId"].(string); ok {
+			eventIds = append(eventIds, eventId)
+		}
+	}
+
+	blockCursor, err := h.db.Collection("blocks").Find(context.Background(), bson.M{"events": bson.M{"$in": eventIds}})
+	if err != nil {
+		http.Error(w, "Failed to query blocks: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer blockCursor.Close(context.Background())
+
+	var blocks []map[string]interface{}
+	if err = blockCursor.All(context.Background(), &blocks); err != nil {
+		http.Error(w, "Failed to decode blocks: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get token balances for this contract
+	balanceCursor, err := h.db.Collection("balances").Find(context.Background(), bson.M{"tokenId": tokenId})
+	if err != nil {
+		http.Error(w, "Failed to query balances: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer balanceCursor.Close(context.Background())
+
+	var balances []map[string]interface{}
+	if err = balanceCursor.All(context.Background(), &balances); err != nil {
+		http.Error(w, "Failed to decode balances: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare ledger response
+	ledger := map[string]interface{}{
+		"contractId": contractId,
+		"tokenId":    tokenId,
+		"events":     allEvents,
+		"blocks":     blocks,
+		"balances":   balances,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ledger)
+}
+
+// UpdateBlockHashes recalculates and updates hashes for all blocks
+func (h *Handler) UpdateBlockHashes(w http.ResponseWriter, r *http.Request) {
+	// Get all blocks sorted by block number
+	cursor, err := h.db.Collection("blocks").Find(context.Background(), bson.M{}, options.Find().SetSort(bson.M{"blockNumber": 1}))
+	if err != nil {
+		http.Error(w, "Failed to query blocks: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var blocks []map[string]interface{}
+	if err = cursor.All(context.Background(), &blocks); err != nil {
+		http.Error(w, "Failed to decode blocks: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	updatedCount := 0
+	for _, block := range blocks {
+		// Get block data
+		blockNumber := int64(0)
+		if bn, ok := block["blockNumber"].(int64); ok {
+			blockNumber = bn
+		} else if bn, ok := block["blockNumber"].(int32); ok {
+			blockNumber = int64(bn)
+		}
+
+		timestamp := ""
+		if ts, ok := block["timestamp"].(string); ok {
+			timestamp = ts
+		}
+
+		var eventIds []string
+		if events, ok := block["events"].([]interface{}); ok {
+			for _, event := range events {
+				if eventId, ok := event.(string); ok {
+					eventIds = append(eventIds, eventId)
+				}
+			}
+		}
+
+		// Determine previous hash - genesis for first block, otherwise get from previous block
+		previousHash := "genesis"
+		if blockNumber > 1 {
+			// Get previous block's hash from database
+			prevBlockFilter := bson.M{"blockNumber": blockNumber - 1}
+			var prevBlock map[string]interface{}
+			err := h.db.Collection("blocks").FindOne(context.Background(), prevBlockFilter).Decode(&prevBlock)
+			if err == nil {
+				if ph, ok := prevBlock["hash"].(string); ok && ph != "" {
+					previousHash = ph
+				}
+			}
+		}
+
+		// Calculate new hash
+		newHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
+		// Update block in database
+		filter := bson.M{"_id": block["_id"]}
+		update := bson.M{"$set": bson.M{
+			"hash":         newHash,
+			"previousHash": previousHash,
+		}}
+
+		_, err = h.db.Collection("blocks").UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			fmt.Printf("Failed to update block %d: %v\n", blockNumber, err)
+			continue
+		}
+
+		updatedCount++
+		fmt.Printf("Updated block %d with hash: %s, previous: %s\n", blockNumber, newHash, previousHash)
+	}
+
+	response := map[string]interface{}{
+		"message":      "Block hashes updated successfully",
+		"updatedCount": updatedCount,
+		"totalBlocks":  len(blocks),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetAllTokens returns all tokens

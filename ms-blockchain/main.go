@@ -39,6 +39,7 @@ func main() {
 	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
 	router.HandleFunc("/contract/list", handler.GetContracts).Methods("GET")
 	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
+	router.HandleFunc("/contract/{id}/ledger", handler.GetContractLedger).Methods("GET")
 
 	// Token endpoints
 	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
@@ -50,6 +51,9 @@ func main() {
 
 	// Supplier endpoints
 	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")
+
+	// Utility endpoints
+	router.HandleFunc("/blocks/hash/update", handler.UpdateBlockHashes).Methods("POST")
 
 	// Configure CORS
 	c := cors.New(cors.Options{
