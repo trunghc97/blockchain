@@ -314,6 +314,27 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the approval for logging errors
 	}
 
+	// Create block entry
+	blockNumber := h.getNextBlockNumber()
+	timestamp := time.Now().Format(time.RFC3339)
+	eventIds := []string{event["eventId"].(string)}
+	previousHash := h.getPreviousBlockHash()
+	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
+	block := map[string]interface{}{
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"events":       eventIds,
+		"previousHash": previousHash,
+		"hash":         blockHash,
+	}
+
+	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
+	if err != nil {
+		fmt.Printf("DEBUG: Error creating approval block: %v\n", err)
+		// Don't fail the approval for block creation errors
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "success",
