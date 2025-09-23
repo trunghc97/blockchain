@@ -65,6 +65,17 @@
           <h5>Transfer Token</h5>
         </div>
         <div class="card-body">
+          <!-- Thông tin người chuyển -->
+          <div class="sender-info-section mb-3" *ngIf="supplierId">
+            <div class="d-flex align-items-center">
+              <mat-icon class="sender-icon me-2">account_circle</mat-icon>
+              <div>
+                <div class="sender-label small text-muted">Người chuyển</div>
+                <div class="sender-name fw-bold">{{ supplierId }}</div>
+              </div>
+            </div>
+          </div>
+
           <form [formGroup]="transferForm" (ngSubmit)="onTransfer()">
             <div class="mb-3">
               <label for="tokenId" class="form-label">Token ID</label>

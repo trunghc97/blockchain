@@ -15,6 +15,7 @@ export class TransferFormComponent implements OnInit {
   transferForm: FormGroup;
   users: User[] = [];
   selectedApprovers: User[] = [];
+  currentUser: User | null = null;
 
   constructor(
     private fb: FormBuilder,
@@ -31,6 +32,18 @@ export class TransferFormComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadUsers();
+    this.loadCurrentUser();
+  }
+
+  loadCurrentUser(): void {
+    this.userService.getCurrentUser().subscribe({
+      next: (user) => {
+        this.currentUser = user;
+      },
+      error: (error) => {
+        console.error('Error loading current user:', error);
+      }
+    });
   }
 
   loadUsers(): void {

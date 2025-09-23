@@ -225,7 +225,13 @@ public class ContractService {
             throw new IllegalArgumentException("Contract ID cannot be empty");
         }
 
-        // Query contract from blockchain service
+        // Query contract from local database first
+        Contract localContract = mongoTemplate.findById(contractId, Contract.class);
+        if (localContract != null) {
+            return localContract;
+        }
+
+        // Fallback to blockchain service if not found locally
         Map<String, Object> blockchainContract = blockchainService.getContract(contractId);
         if (blockchainContract == null) {
             return null;

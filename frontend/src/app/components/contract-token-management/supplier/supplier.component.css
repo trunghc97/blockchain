@@ -58,3 +58,26 @@
   background-color: #e0a800;
   border-color: #d39e00;
 }
+
+/* Thông tin người chuyển */
+.sender-info-section {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.sender-icon {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 32px;
+}
+
+.sender-label {
+  margin-bottom: 2px;
+  opacity: 0.8;
+}
+
+.sender-name {
+  font-size: 1.1rem;
+}

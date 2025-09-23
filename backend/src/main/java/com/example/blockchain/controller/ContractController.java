@@ -1,5 +1,6 @@
 package com.example.blockchain.controller;
 
+import com.example.blockchain.model.ApproveRequest;
 import com.example.blockchain.model.Contract;
 import com.example.blockchain.model.LedgerResponse;
 import com.example.blockchain.model.TransferRequest;
@@ -107,7 +108,7 @@ public class ContractController {
     }
 
     @PostMapping("/{id}/approve")
-    public ResponseEntity<?> approveContract(@PathVariable("id") String contractId) {
+    public ResponseEntity<?> approveContract(@PathVariable("id") String contractId, @RequestBody ApproveRequest request) {
         try {
             // TEMP: Skip authentication for testing
             // User currentUser = userService.getCurrentUser();
@@ -115,7 +116,12 @@ public class ContractController {
             //     return ResponseEntity.badRequest().body("User not authenticated");
             // }
 
-            Contract approved = contractService.approveContract(contractId, "SUPPLIER001"); // hardcoded for testing
+            // Use supplierId from request body, fallback to hardcoded for testing
+            String supplierId = request != null && request.getApproverId() != null
+                ? request.getApproverId()
+                : "SUPPLIER001";
+
+            Contract approved = contractService.approveContract(contractId, supplierId);
             return ResponseEntity.ok(approved);
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid request data: {}", e.getMessage());

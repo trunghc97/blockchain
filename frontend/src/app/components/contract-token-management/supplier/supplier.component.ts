@@ -17,6 +17,7 @@ export class SupplierComponent implements OnInit {
   suppliers: any[] = []; // List of all suppliers for autocomplete
   filteredSuppliers: any[] = []; // Filtered suppliers for autocomplete
   balances: any[] = []; // User's token balances
+  selectedSupplier: any = null; // Store selected supplier object
 
   constructor(
     private fb: FormBuilder,
@@ -62,12 +63,12 @@ export class SupplierComponent implements OnInit {
   }
 
   onTransfer(): void {
-    if (this.transferForm.valid) {
+    if (this.transferForm.valid && this.selectedSupplier) {
       this.loading = true;
       const transferData = {
         tokenId: this.transferForm.value.tokenId,
         from: this.supplierId,
-        to: this.transferForm.value.to,
+        to: this.selectedSupplier.id, // Use selected supplier ID
         amount: this.transferForm.value.amount
       };
 
@@ -76,6 +77,7 @@ export class SupplierComponent implements OnInit {
           console.log('Token transferred:', response);
           alert('Token transferred successfully!');
           this.transferForm.reset();
+          this.selectedSupplier = null; // Reset selected supplier
           this.loadBalances();
         },
         error: (error) => {
@@ -94,6 +96,7 @@ export class SupplierComponent implements OnInit {
           }
 
           alert(errorMessage);
+          this.selectedSupplier = null; // Reset on error too
         },
         complete: () => {
           this.loading = false;
@@ -169,21 +172,27 @@ export class SupplierComponent implements OnInit {
     const filterValue = value.toLowerCase();
     return this.suppliers.filter(supplier =>
       supplier.id.toLowerCase().includes(filterValue) ||
-      supplier.username.toLowerCase().includes(filterValue) ||
-      (supplier.name && supplier.name.toLowerCase().includes(filterValue))
+      (supplier.username && supplier.username.toLowerCase().includes(filterValue))
     );
   }
 
   displaySupplier(supplier: any): string {
-    return supplier ? supplier.id : '';
+    if (!supplier) return '';
+    const name = supplier.username || 'Unknown';
+    return `${supplier.id} (${name})`;
   }
 
   selectSupplier(event: any): void {
     const selectedSupplier = event.option.value;
     if (selectedSupplier) {
+      // Set the form value to the full display string for better UX
+      // But we'll need to extract the ID when submitting
+      const displayValue = this.displaySupplier(selectedSupplier);
       this.transferForm.patchValue({
-        to: selectedSupplier.id
+        to: displayValue
       });
+      // Store the actual supplier object for submission
+      this.selectedSupplier = selectedSupplier;
     }
   }
 
