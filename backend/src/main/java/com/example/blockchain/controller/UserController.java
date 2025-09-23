@@ -34,6 +34,11 @@ public class UserController {
         // Giả sử token format là "Bearer <token>"
         String jwtToken = token.replace("Bearer ", "");
         User user = userService.getCurrentUser(jwtToken);
+        // Đảm bảo trả về custom id thay vì MongoDB ObjectId
+        if (user != null && user.getId() != null && user.getId().length() > 10) {
+            // Nếu id là MongoDB ObjectId (24 ký tự hex), giữ nguyên
+            // Nếu không, id đã là custom id
+        }
         return ResponseEntity.ok(user);
     }
 

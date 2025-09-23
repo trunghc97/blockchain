@@ -43,6 +43,26 @@ public class BlockchainService {
         return response.getBody();
     }
 
+    public Map<String, Object> getContract(String contractId) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/contract/" + contractId,
+                HttpMethod.GET,
+                null,
+                Map.class
+        );
+        return response.getBody();
+    }
+
+    public Map<String, Object> getToken(String tokenId) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/token/" + tokenId,
+                HttpMethod.GET,
+                null,
+                Map.class
+        );
+        return response.getBody();
+    }
+
     public Map<String, Object> approveContract(String contractId, String supplierId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

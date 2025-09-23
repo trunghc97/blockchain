@@ -1,6 +1,7 @@
 package com.example.blockchain.service;
 
 import com.example.blockchain.model.Contract;
+import com.example.blockchain.model.SupplierAmount;
 import com.example.blockchain.model.User;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -91,8 +92,17 @@ public class ContractService {
             System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
             if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
-                // Save contract locally for quick access
-                return mongoTemplate.save(contract);
+                // Contract is now managed by blockchain service only
+                // Get the created contract from blockchain service to return complete data
+                String createdContractId = (String) blockchainResponse.get("contractId");
+                if (createdContractId != null) {
+                    Map<String, Object> blockchainContract = blockchainService.getContract(createdContractId);
+                    if (blockchainContract != null) {
+                        return convertBlockchainContractToLocal(blockchainContract);
+                    }
+                }
+                // Fallback to original contract if blockchain query fails
+                return contract;
             } else {
                 throw new RuntimeException("Failed to create contract on blockchain");
             }
@@ -105,16 +115,109 @@ public class ContractService {
 
 
     public List<Contract> getContracts() {
-        return mongoTemplate.findAll(Contract.class, "contracts");
+        // Query contracts from blockchain service since that's now the authoritative source
+        List<Map<String, Object>> blockchainContracts = blockchainService.listContracts();
+        return blockchainContracts.stream()
+            .map(this::convertBlockchainContractToLocal)
+            .collect(java.util.stream.Collectors.toList());
+    }
+
+    private Contract convertBlockchainContractToLocal(Map<String, Object> blockchainContract) {
+        Contract contract = new Contract();
+        contract.setId((String) blockchainContract.get("_id"));
+        contract.setContractId((String) blockchainContract.get("_id"));
+        contract.setDescription((String) blockchainContract.get("description"));
+        contract.setBuyer((String) blockchainContract.get("anchorId"));
+
+        // Set status based on approved field
+        Boolean approved = (Boolean) blockchainContract.get("approved");
+        if (approved != null && approved) {
+            contract.setStatus("EXECUTED");
+        } else {
+            contract.setStatus("PENDING");
+        }
+
+        // Safely handle amount field - could be null from blockchain
+        Object amountObj = blockchainContract.get("amount");
+        double amount = 0.0;
+        if (amountObj instanceof Number) {
+            amount = ((Number) amountObj).doubleValue();
+        } else if (amountObj != null) {
+            try {
+                amount = Double.parseDouble(amountObj.toString());
+            } catch (NumberFormatException e) {
+                // Log warning but continue with 0.0
+                System.err.println("Warning: Invalid amount format in contract " + contract.getContractId() + ": " + amountObj);
+            }
+        }
+        contract.setTotalAmount(amount);
+        contract.setFileUrl((String) blockchainContract.get("fileUrl"));
+        contract.setCreatedAt((String) blockchainContract.get("createdAt"));
+        contract.setUpdatedAt((String) blockchainContract.get("createdAt")); // Use createdAt as updatedAt
+        contract.setWordState("CREATED");
+
+        // Convert suppliers from blockchain format to local format
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> blockchainSuppliers = (List<Map<String, Object>>) blockchainContract.get("suppliers");
+        if (blockchainSuppliers != null) {
+            List<SupplierAmount> suppliers = blockchainSuppliers.stream()
+                .map(this::convertBlockchainSupplierToLocal)
+                .collect(java.util.stream.Collectors.toList());
+            contract.setSuppliers(suppliers);
+        }
+
+        return contract;
+    }
+
+    private SupplierAmount convertBlockchainSupplierToLocal(Map<String, Object> blockchainSupplier) {
+        SupplierAmount supplier = new SupplierAmount();
+        // Try different possible keys for supplierId
+        String supplierId = (String) blockchainSupplier.get("supplierId");
+        if (supplierId == null) {
+            supplierId = (String) blockchainSupplier.get("supplierid");
+        }
+        supplier.setSupplierId(supplierId);
+        supplier.setName((String) blockchainSupplier.get("name"));
+        // Safely handle supplier amount field - could be null from blockchain
+        Object supplierAmountObj = blockchainSupplier.get("amount");
+        double supplierAmount = 0.0;
+        if (supplierAmountObj instanceof Number) {
+            supplierAmount = ((Number) supplierAmountObj).doubleValue();
+        } else if (supplierAmountObj != null) {
+            try {
+                supplierAmount = Double.parseDouble(supplierAmountObj.toString());
+            } catch (NumberFormatException e) {
+                // Log warning but continue with 0.0
+                System.err.println("Warning: Invalid supplier amount format for supplier " + supplier.getSupplierId() + ": " + supplierAmountObj);
+            }
+        }
+        supplier.setAmount(supplierAmount);
+        supplier.setStatus((String) blockchainSupplier.get("status"));
+        return supplier;
     }
 
     public List<Contract> getContractsByUser(String username) {
-        // Find contracts where user is either buyer (anchor) or a supplier
-        Criteria buyerCriteria = Criteria.where("buyer").is(username);
-        Criteria supplierCriteria = Criteria.where("suppliers.supplierid").is(username);
+        // Get all contracts from blockchain service and filter by user
+        List<Map<String, Object>> allBlockchainContracts = blockchainService.listContracts();
+        return allBlockchainContracts.stream()
+            .map(this::convertBlockchainContractToLocal)
+            .filter(contract -> isUserInContract(contract, username))
+            .collect(java.util.stream.Collectors.toList());
+    }
 
-        Query query = new Query(new Criteria().orOperator(buyerCriteria, supplierCriteria));
-        return mongoTemplate.find(query, Contract.class);
+    private boolean isUserInContract(Contract contract, String username) {
+        // Check if user is the buyer (anchor)
+        if (username.equals(contract.getBuyer())) {
+            return true;
+        }
+
+        // Check if user is a supplier
+        if (contract.getSuppliers() != null) {
+            return contract.getSuppliers().stream()
+                .anyMatch(supplier -> username.equals(supplier.getSupplierId()));
+        }
+
+        return false;
     }
 
     public Contract getContract(String contractId) {
@@ -122,10 +225,13 @@ public class ContractService {
             throw new IllegalArgumentException("Contract ID cannot be empty");
         }
 
-        return mongoTemplate.findOne(
-            Query.query(Criteria.where("contractId").is(contractId)),
-            Contract.class
-        );
+        // Query contract from blockchain service
+        Map<String, Object> blockchainContract = blockchainService.getContract(contractId);
+        if (blockchainContract == null) {
+            return null;
+        }
+
+        return convertBlockchainContractToLocal(blockchainContract);
     }
 
 

@@ -32,11 +32,12 @@ export class ContractApprovalComponent implements OnInit {
     this.loading = true;
     try {
       this.currentUser = await firstValueFrom(this.userService.getCurrentUser());
-      console.log('Current user:', this.currentUser);
-
       await this.loadContracts();
     } catch (error) {
       console.error('Error loading current user:', error);
+      this.snackBar.open('Không thể xác thực người dùng. Vui lòng đăng nhập lại.', 'Đóng', {
+        duration: 5000
+      });
     } finally {
       this.loading = false;
     }
@@ -52,8 +53,6 @@ export class ContractApprovalComponent implements OnInit {
           s.supplierId === this.currentUser?.id && s.status === 'PENDING'
         )
       );
-
-      console.log('Filtered contracts for approval:', this.contracts);
 
       // Khởi tạo trạng thái approving cho mỗi contract
       this.contracts.forEach(contract => {

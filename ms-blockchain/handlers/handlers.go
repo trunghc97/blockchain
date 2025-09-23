@@ -260,7 +260,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "approved",
+		"status":  "success",
 		"message": "Contract approved successfully",
 	})
 }
@@ -289,7 +289,7 @@ func (h *Handler) GetContract(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	contractId := vars["id"]
 
-	var contract models.Contract
+	var contract map[string]interface{}
 	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&contract)
 	if err != nil {
 		http.Error(w, "Contract not found", http.StatusNotFound)
