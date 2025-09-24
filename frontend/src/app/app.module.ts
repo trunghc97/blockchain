@@ -26,6 +26,13 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatExpansionModule } from '@angular/material/expansion';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatOptionModule } from '@angular/material/core';
+import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatGridListModule } from '@angular/material/grid-list';
 
 // Routing
 import { AppRoutingModule } from './app-routing.module';
@@ -36,21 +43,32 @@ import { ErrorInterceptor } from './interceptors/error.interceptor';
 // Components
 import { AppComponent } from './app.component';
 import { ContractStatusComponent } from './components/contract-status/contract-status.component';
+import { TokenDetailsDialogComponent } from './components/contract-status/token-details-dialog.component';
 import { LedgerViewerComponent } from './components/ledger-viewer/ledger-viewer.component';
 import { ContractFormComponent } from './components/contract-form/contract-form.component';
 import { ContractApprovalComponent } from './components/contract-approval/contract-approval.component';
 import { LoginComponent } from './components/login/login.component';
 import { NavbarComponent } from './components/navbar/navbar.component';
 
+// Contract-Token Management Components
+import { AnchorComponent } from './components/contract-token-management/anchor/anchor.component';
+import { BankComponent } from './components/contract-token-management/bank/bank.component';
+import { SupplierComponent } from './components/contract-token-management/supplier/supplier.component';
+
 @NgModule({
   declarations: [
     AppComponent,
     ContractStatusComponent,
+    TokenDetailsDialogComponent,
     LedgerViewerComponent,
     ContractFormComponent,
     ContractApprovalComponent,
     LoginComponent,
-    NavbarComponent
+    NavbarComponent,
+    // Contract-Token Management Components
+    AnchorComponent,
+    BankComponent,
+    SupplierComponent
   ],
   imports: [
     BrowserModule,
@@ -78,7 +96,14 @@ import { NavbarComponent } from './components/navbar/navbar.component';
     MatSnackBarModule,
     MatToolbarModule,
     MatExpansionModule,
-    MatButtonToggleModule
+    MatButtonToggleModule,
+    MatAutocompleteModule,
+    MatDialogModule,
+    MatOptionModule,
+    MatListModule,
+    MatMenuModule,
+    MatSidenavModule,
+    MatGridListModule
   ],
   providers: [
     DatePipe, // Add DatePipe provider

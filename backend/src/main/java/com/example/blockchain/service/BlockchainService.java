@@ -43,6 +43,26 @@ public class BlockchainService {
         return response.getBody();
     }
 
+    public Map<String, Object> getContract(String contractId) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/contract/" + contractId,
+                HttpMethod.GET,
+                null,
+                Map.class
+        );
+        return response.getBody();
+    }
+
+    public Map<String, Object> getToken(String tokenId) {
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/token/" + tokenId,
+                HttpMethod.GET,
+                null,
+                Map.class
+        );
+        return response.getBody();
+    }
+
     public Map<String, Object> approveContract(String contractId, String supplierId) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -54,7 +74,26 @@ public class BlockchainService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/approve",
+                blockchainUrl + "/contract/" + contractId + "/approve",
+                HttpMethod.POST,
+                request,
+                Map.class
+        );
+        return response.getBody();
+    }
+
+    public Map<String, Object> approveContractByBank(String contractId, String bankId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> approvalData = new HashMap<>();
+        approvalData.put("contractId", contractId);
+        approvalData.put("bankId", bankId);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/contract/" + contractId + "/approve-bank",
                 HttpMethod.POST,
                 request,
                 Map.class
@@ -72,14 +111,14 @@ public class BlockchainService {
         return response.getBody();
     }
 
-    public com.example.blockchain.model.LedgerResponse queryLedger(String contractId) {
+    public LedgerResponse queryLedger(String contractId) {
         ResponseEntity<Map> response = restTemplate.exchange(
                 blockchainUrl + "/contract/" + contractId + "/ledger",
                 HttpMethod.GET,
                 null,
                 Map.class
         );
-        com.example.blockchain.model.LedgerResponse ledgerResponse = new com.example.blockchain.model.LedgerResponse();
+        LedgerResponse ledgerResponse = new LedgerResponse();
         ledgerResponse.setData(response.getBody());
         return ledgerResponse;
     }
@@ -90,6 +129,93 @@ public class BlockchainService {
                 HttpMethod.GET,
                 null,
                 List.class
+        );
+        return response.getBody();
+    }
+
+    public Map<String, Object> transferToken(Map<String, Object> transferData) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(transferData, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/token/transfer",
+                HttpMethod.POST,
+                request,
+                Map.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getTokensIssuedByBank(String bankId) {
+        System.out.println("DEBUG: Calling blockchain service for tokens issued by: " + bankId);
+        try {
+            ResponseEntity<List> response = restTemplate.exchange(
+                    blockchainUrl + "/token/issued/" + bankId,
+                    HttpMethod.GET,
+                    null,
+                    List.class
+            );
+            System.out.println("DEBUG: Response: " + response.getBody());
+            return response.getBody();
+        } catch (Exception e) {
+            System.out.println("DEBUG: Error calling blockchain: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    public List<Map<String, Object>> getAllSuppliers() {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/suppliers",
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getAllTokens() {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/tokens",
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getBalancesByAccount(String accountId) {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/balances/account/" + accountId,
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public List<Map<String, Object>> getBalancesByToken(String tokenId) {
+        ResponseEntity<List> response = restTemplate.exchange(
+                blockchainUrl + "/balances/token/" + tokenId,
+                HttpMethod.GET,
+                null,
+                List.class
+        );
+        return response.getBody();
+    }
+
+    public Map<String, Object> settleToken(Map<String, Object> settleData) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(settleData, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/token/settle",
+                HttpMethod.POST,
+                request,
+                Map.class
         );
         return response.getBody();
     }

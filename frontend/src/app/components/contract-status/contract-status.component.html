@@ -3,11 +3,19 @@
     <mat-card-header>
       <mat-card-title>
         <mat-icon>description</mat-icon>
-        Trạng thái hợp đồng
+        Quản lý hợp đồng
       </mat-card-title>
+          <div class="card-actions">
+                <button mat-raised-button color="primary" routerLink="/contracts/new" *ngIf="currentUser?.role === 'ANCHOR'">
+                  <mat-icon>add</mat-icon>
+                  Tạo hợp đồng mới
+                </button>
+              </div>
     </mat-card-header>
 
     <mat-card-content>
+
+      <!-- Contracts List -->
       <div class="loading-spinner" *ngIf="loading">
         <mat-spinner></mat-spinner>
       </div>
@@ -62,42 +70,36 @@
             </div>
 
             <!-- Supplier Details (Collapsible) -->
-            <div class="supplier-details" *ngIf="expandedContracts[contract.contractId]">
+            <div class="supplier-details" *ngIf="expandedContracts[contract.contractId]" (mouseenter)="onContractExpanded(contract)">
               <div class="supplier-header">
                 <h4>Danh sách nhà cung cấp</h4>
               </div>
 
               <!-- Supplier Table Header -->
               <div class="supplier-table-header">
+                <div class="supplier-name-header">ID Supplier</div>
                 <div class="supplier-name-header">Tên nhà cung cấp</div>
                 <div class="supplier-amount-header">Số tiền</div>
                 <div class="supplier-status-header">Trạng thái</div>
-                <div class="supplier-actions-header">Thao tác</div>
+                <div class="supplier-token-header">Trạng thái token</div>
               </div>
 
               <div *ngFor="let supplier of contract.suppliers; let i = index" class="supplier-row">
+                <div class="supplier-name">{{supplier.supplierId}}</div>
                 <div class="supplier-name">{{supplier.name}}</div>
                 <div class="supplier-amount">{{formatAmount(supplier.amount || 0)}}</div>
                 <div class="supplier-status">
-                  <span [ngClass]="'status-chip status-' + getSupplierStatus(supplier).toLowerCase()">
-                    {{getSupplierStatus(supplier)}}
+                  <span [ngClass]="'status-chip status-' + supplier.status.toLowerCase()">
+                    {{supplier.status}}
                   </span>
                 </div>
-                <div class="supplier-actions">
-                  <div *ngIf="supplier.status === 'PENDING' && canApproveSupplier(supplier); else cannotApprove">
-                    <button mat-raised-button color="primary" size="small"
-                            (click)="approveSupplier(contract, supplier)" [disabled]="approvingSuppliers[supplier.supplierId]">
-                      <mat-spinner diameter="16" *ngIf="approvingSuppliers[supplier.supplierId]"></mat-spinner>
-                      <span *ngIf="!approvingSuppliers[supplier.supplierId]">Duyệt</span>
-                    </button>
-                    <button mat-button color="warn" size="small"
-                            (click)="rejectSupplier(contract, supplier)" [disabled]="approvingSuppliers[supplier.supplierId]">
-                      Từ chối
-                    </button>
-                  </div>
-                  <ng-template #cannotApprove>
-                    <span class="text-muted">Đã xử lý</span>
-                  </ng-template>
+                <div class="supplier-token">
+                  <span [ngClass]="'status-chip ' + getTokenStatusClass(getTokenStatusForSupplier(contract, supplier))"
+                        (click)="showTokenDetails(contract)"
+                        style="cursor: pointer;"
+                        matTooltip="Click to view token ownership details">
+                    {{getTokenStatusForSupplier(contract, supplier)}}
+                  </span>
                 </div>
               </div>
             </div>

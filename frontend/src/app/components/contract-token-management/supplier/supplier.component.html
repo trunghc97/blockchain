@@ -1,0 +1,141 @@
+<div class="container mt-4">
+  <h2 class="mb-4">Supplier Dashboard - Token Management</h2>
+
+  <div class="row">
+    <!-- My Tokens -->
+    <div class="col-lg-8">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">My Tokens</h5>
+          <button class="btn btn-primary btn-sm" (click)="loadMyTokens()" [disabled]="loading">
+            <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+            Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Token ID</th>
+                  <th>Contract ID</th>
+                  <th>Symbol</th>
+                  <th>Amount</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let token of tokens">
+                  <td>{{ token.id }}</td>
+                  <td>{{ token.contractId }}</td>
+                  <td>
+                    <span class="badge bg-secondary">{{ token.symbol }}</span>
+                  </td>
+                  <td>{{ getTokenBalance(token.id) | currency }}</td>
+                  <td>
+                    <button class="btn btn-success btn-sm me-2" (click)="transferForm.patchValue({tokenId: token.id})">
+                      Transfer
+                    </button>
+                    <button class="btn btn-warning btn-sm" (click)="onPayBack(token)">
+                      Settle with Bank
+                    </button>
+                  </td>
+                </tr>
+                <tr *ngIf="tokens.length === 0 && !loading">
+                  <td colspan="5" class="text-center text-muted">No tokens received yet</td>
+                </tr>
+                <tr *ngIf="loading">
+                  <td colspan="5" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transfer Form -->
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header">
+          <h5>Transfer Token</h5>
+        </div>
+        <div class="card-body">
+          <!-- Thông tin người chuyển -->
+          <div class="sender-info-section mb-3" *ngIf="supplierId">
+            <div class="d-flex align-items-center">
+              <mat-icon class="sender-icon me-2">account_circle</mat-icon>
+              <div>
+                <div class="sender-label small text-muted">Người chuyển</div>
+                <div class="sender-name fw-bold">{{ supplierId }}</div>
+              </div>
+            </div>
+          </div>
+
+          <form [formGroup]="transferForm" (ngSubmit)="onTransfer()">
+            <div class="mb-3">
+              <label for="tokenId" class="form-label">Token ID</label>
+              <select class="form-select" id="tokenId" formControlName="tokenId" required>
+                <option value="">Select a token</option>
+                <option *ngFor="let token of availableTokens" [value]="token.id">
+                  {{ token.symbol }} - {{ token.total | currency }}
+                </option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <mat-form-field appearance="outline" class="w-100">
+                <mat-label>Transfer To (Supplier ID)</mat-label>
+                <input type="text"
+                       matInput
+                       formControlName="to"
+                       [matAutocomplete]="supplierAuto"
+                       placeholder="Type to search suppliers..."
+                       required>
+                <mat-autocomplete #supplierAuto="matAutocomplete"
+                                  [displayWith]="displaySupplier"
+                                  (optionSelected)="selectSupplier($event)">
+                  <mat-option *ngFor="let supplier of filteredSuppliers" [value]="supplier">
+                    <div class="d-flex flex-column">
+                      <span class="fw-bold">{{ supplier.id }}</span>
+                      <small class="text-muted">{{ supplier.username }}</small>
+                    </div>
+                  </mat-option>
+                </mat-autocomplete>
+                <mat-hint>Search by Supplier ID or username</mat-hint>
+              </mat-form-field>
+            </div>
+
+            <div class="mb-3">
+              <label for="amount" class="form-label">Amount</label>
+              <input type="number" class="form-control" id="amount" formControlName="amount"
+                     step="0.01" min="0" required>
+            </div>
+
+            <button type="submit" class="btn btn-success w-100" [disabled]="transferForm.invalid || loading">
+              <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+              Transfer Token
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Settle with Bank Info -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h6>Settle with Bank</h6>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small">
+            Use the "Settle with Bank" button next to any token to settle your token balance with the bank.
+            This will remove all your token balance and mark the settlement as complete.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -35,36 +35,41 @@ Hệ thống blockchain SCF permissioned được thiết kế để:
 
 Hệ thống được xây dựng theo kiến trúc microservices với 4 thành phần chính:
 
-### Frontend (Angular)
-- **Công nghệ**: Angular framework
-- **Chức năng**: Giao diện người dùng cho tất cả các bên tham gia
-- **Port**: 4200 (qua nginx proxy)
+### Frontend (Angular 17)
+- **Công nghệ**: Angular 17, Angular Material, Bootstrap 5.3, TypeScript 5.2
+- **Chức năng**: Giao diện người dùng đa vai trò cho các bên tham gia (Anchor, Bank, Supplier)
+- **Components**: Contract forms, approval workflows, token management, ledger viewer
+- **Port**: 4200 (served qua nginx proxy)
 
-### Backend (Spring Boot)
-- **Công nghệ**: Java Spring Boot với JWT authentication
+### Backend (Spring Boot 3.1.5)
+- **Công nghệ**: Java 17, Spring Boot 3.1.5, Spring Security (JWT), Spring Data MongoDB, Lombok
 - **Chức năng**:
-  - Quản lý người dùng và xác thực
-  - Lưu trữ metadata hợp đồng
-  - Upload và quản lý file hợp đồng
-  - Tích hợp với blockchain service
+  - Authentication & Authorization với JWT tokens
+  - Contract management với file upload support
+  - User role management (Anchor, Bank, Supplier)
+  - REST API gateway tới blockchain service
+  - Error handling và logging
 - **Port**: 8080
 
-### ms-blockchain (Go)
-- **Công nghệ**: Golang với MongoDB
+### ms-blockchain (Go 1.21)
+- **Công nghệ**: Go 1.21, Gorilla Mux (HTTP router), MongoDB driver, CORS middleware
 - **Chức năng**:
-  - Quản lý blockchain ledger
-  - Tạo và xác thực blocks
-  - API truy vấn blockchain data
-  - Block builder tự động
+  - Blockchain ledger management với event sourcing
+  - Token issuance và transfer logic
+  - Automatic block building (mỗi 10 giây)
+  - RESTful API cho contract và token operations
+  - Immutable audit trail qua blockchain blocks
 - **Port**: 8081
 
-### MongoDB
-- **Chức năng**: Cơ sở dữ liệu lưu trữ tất cả dữ liệu
+### MongoDB (Latest)
+- **Chức năng**: Cơ sở dữ liệu lưu trữ tất cả dữ liệu với authentication
 - **Collections**:
-  - `users`: Thông tin người dùng
-  - `contracts`: Metadata hợp đồng
-  - `events`: Sự kiện blockchain
-  - `blocks`: Blocks của blockchain
+  - `users`: Thông tin người dùng và roles (Anchor, Bank, Supplier)
+  - `contracts`: Metadata hợp đồng SCF với file attachments
+  - `tokens`: Thông tin tokens được phát hành từ contracts
+  - `balances`: Số dư token của từng account
+  - `events`: Sự kiện blockchain chưa được include vào block
+  - `blocks`: Blocks của blockchain (immutable ledger)
 - **Port**: 27017
 
 ### Docker Compose
@@ -123,29 +128,61 @@ Lưu trữ các block của blockchain (immutable):
 }
 ```
 
+### Tokens Collection
+Lưu trữ thông tin về các token được phát hành từ hợp đồng:
+```json
+{
+  "id": "string",
+  "contractId": "string",
+  "symbol": "string",
+  "totalSupply": 500000.0,
+  "issuer": "string", // Bank ID
+  "owner": "string", // Current owner (initially Bank, then Supplier)
+  "createdAt": "timestamp"
+}
+```
+
+### Balances Collection
+Lưu trữ số dư token của từng account:
+```json
+{
+  "tokenId": "string",
+  "account": "string", // User ID
+  "balance": 500000.0,
+  "lastUpdated": "timestamp"
+}
+```
+
 ### Mối quan hệ dữ liệu
 
+- **Contracts → Tokens**: Mỗi contract phát hành một token
+- **Tokens → Balances**: Mỗi token có balances cho các accounts
 - **Contracts ↔ Events**: Mỗi contract có history events
 - **Events → Blocks**: Events được gom nhóm thành blocks
 - **Blocks**: Chuỗi liên kết qua hash, tạo thành immutable ledger
-- **World State**: Trạng thái hiện tại của contracts được derive từ events trong blocks
+- **World State**: Trạng thái hiện tại được derive từ events trong blocks
 
 ## Luồng nghiệp vụ
 
-### 1. Buyer tạo hợp đồng
-1. Buyer đăng nhập và tạo hợp đồng mới
-2. Hệ thống tạo event `CREATE` trong collection `events`
-3. Contract được lưu với status `PENDING`
+### 1. Anchor tạo hợp đồng
+1. Anchor đăng nhập và tạo hợp đồng mới với file đính kèm
+2. Hệ thống tự động phát hành token cho Bank (issuer = Bank, owner = Bank)
+3. Tạo balance record cho Bank với toàn bộ số lượng token
+4. Contract được lưu với status `PENDING`, token được tạo và gán cho Bank
 
-### 2. Suppliers phê duyệt
+### 2. Suppliers phê duyệt hợp đồng
 1. Suppliers xem danh sách hợp đồng cần phê duyệt
 2. Mỗi supplier approve → tạo event `APPROVE_SUPPLIER`
-3. Khi tất cả suppliers đã approve → contract status = `READY_TO_EXECUTE`
+3. Khi tất cả suppliers đã approve:
+   - Contract status = `READY_TO_EXECUTE`
+   - Token ownership chuyển từ Bank sang Supplier
+   - Balance cập nhật: Bank = 0, Supplier = amount
 
-### 3. Hệ thống thực thi tự động
-1. Khi đủ điều kiện, hệ thống tự động thực thi
-2. Tạo event `EXECUTE` với kết quả thực thi
-3. Cập nhật status contract và suppliers
+### 3. Token management & transfer
+1. Supplier có thể chuyển token cho Supplier khác
+2. Bank có thể xem tất cả tokens đã phát hành
+3. Mọi giao dịch token được ghi lại như events và include vào blocks
+4. Balances được cập nhật real-time sau mỗi transaction
 
 ### 4. Block builder tạo blocks
 1. Block builder chạy định kỳ mỗi 10 giây
@@ -166,47 +203,67 @@ Dưới đây là sơ đồ sequence mô tả luồng tương tác đầy đủ 
 
 ```mermaid
 sequenceDiagram
-    participant U as User (Buyer/Supplier)
+    participant A as Anchor
+    participant S as Supplier
+    participant B as Bank
     participant FE as Frontend (Angular)
     participant BE as Backend (Spring Boot)
     participant BC as Blockchain Service (Go)
     participant DB as MongoDB
 
-    %% 1. Tạo hợp đồng
+    %% 1. Tạo hợp đồng & Token
     rect rgb(240, 248, 255)
-        Note over U,DB: Tạo hợp đồng mới
-        U->>FE: Submit contract form
-        FE->>BE: POST /api/contracts (with file)
+        Note over A,DB: Tạo hợp đồng + Token tự động
+        A->>FE: Submit contract form (with file)
+        FE->>BE: POST /api/contracts
         BE->>DB: Save contract metadata
         BE->>BC: POST /contract/create
         BC->>DB: Insert CREATE event
-        BC-->>BE: Success response
-        BE-->>FE: Contract created
-        FE-->>U: Success message
+        BC->>DB: Auto-create token (issuer=Bank)
+        BC->>DB: Create balance (Bank=totalAmount)
+        BC-->>BE: Contract + Token created
+        BE-->>FE: Success response
+        FE-->>A: Contract created
     end
 
-    %% 2. Phê duyệt hợp đồng
+    %% 2. Phê duyệt & Transfer Token
     rect rgb(255, 248, 240)
-        Note over U,DB: Suppliers phê duyệt
-        U->>FE: Click approve button
+        Note over S,DB: Supplier phê duyệt
+        S->>FE: Click approve button
         FE->>BE: POST /api/contracts/{id}/approve
         BE->>BC: POST /contract/approve
         BC->>DB: Check contract status
         BC->>DB: Insert APPROVE_SUPPLIER event
 
         alt All suppliers approved
-            BC->>BC: Auto-execute contract
-            BC->>DB: Insert EXECUTE event
-            BC->>DB: Update contract status
+            BC->>DB: Transfer token (Bank → Supplier)
+            BC->>DB: Update balances (Bank=0, Supplier=amount)
+            BC->>DB: Update contract.approved = true
         end
 
         BC-->>BE: Success response
         BE-->>FE: Updated contract
-        FE-->>U: Approval confirmed
+        FE-->>S: Approval confirmed
     end
 
-    %% 3. Block building (chạy định kỳ)
+    %% 3. Token Transfer
     rect rgb(248, 255, 240)
+        Note over S,DB: Supplier chuyển token
+        S->>FE: Initiate token transfer
+        FE->>BE: POST /api/tokens/transfer
+        BE->>BC: POST /token/transfer
+        BC->>DB: Check sender balance & ownership
+        BC->>DB: Debit sender balance
+        BC->>DB: Credit receiver balance
+        BC->>DB: Update token ownership
+        BC->>DB: Insert TRANSFER event
+        BC-->>BE: Transfer successful
+        BE-->>FE: Success response
+        FE-->>S: Transfer confirmed
+    end
+
+    %% 4. Block building (chạy định kỳ)
+    rect rgb(255, 240, 248)
         Note over BC,DB: Block Builder (mỗi 10s)
         loop Every 10 seconds
             BC->>DB: Find unincluded events
@@ -219,17 +276,17 @@ sequenceDiagram
         end
     end
 
-    %% 4. Truy vấn ledger
-    rect rgb(255, 240, 248)
-        Note over U,DB: Xem ledger
-        U->>FE: Click ledger view
-        FE->>BE: GET /api/contracts/{id}/ledger
-        BE->>BC: GET /contract/{id}/ledger
-        BC->>DB: Query blocks with contract events
-        DB-->>BC: Return block data
-        BC-->>BE: Formatted ledger response
-        BE-->>FE: Ledger data
-        FE-->>U: Display events & blocks
+    %% 5. Bank xem tokens
+    rect rgb(240, 255, 248)
+        Note over B,DB: Bank xem tokens đã phát hành
+        B->>FE: View issued tokens
+        FE->>BE: GET /api/tokens/issued/{bankId}
+        BE->>BC: GET /token/issued/{bankId}
+        BC->>DB: Query tokens by issuer
+        DB-->>BC: Token list with owners
+        BC-->>BE: Formatted response
+        BE-->>FE: Token data
+        FE-->>B: Display token overview
     end
 ```
 
@@ -269,6 +326,36 @@ GET /api/contracts/{id}/ledger
 Authorization: Bearer {token}
 
 Response: Ledger data với events và blocks
+```
+
+#### Lấy thông tin token
+```
+GET /api/tokens/{id}
+Authorization: Bearer {token}
+
+Response: Token information
+```
+
+#### Chuyển token
+```
+POST /api/tokens/transfer
+Authorization: Bearer {token}
+{
+  "tokenId": "string",
+  "fromUserId": "string",
+  "toUserId": "string",
+  "amount": number
+}
+
+Response: Transfer result
+```
+
+#### Lấy tokens đã phát hành bởi Bank
+```
+GET /api/tokens/issued/{bankId}
+Authorization: Bearer {token}
+
+Response: Array of tokens issued by bank
 ```
 
 ### Blockchain APIs (Go service)
@@ -316,30 +403,139 @@ GET /ledger/blocks
 Response: Array of block info
 ```
 
+#### Lấy thông tin token
+```
+GET /token/{id}
+
+Response: Token details
+```
+
+#### Chuyển token
+```
+POST /token/transfer
+{
+  "tokenId": "string",
+  "fromUserId": "string",
+  "toUserId": "string",
+  "amount": number
+}
+
+Response: {"status": "success"}
+```
+
+#### Lấy tokens đã phát hành bởi Bank
+```
+GET /token/issued/{bankId}
+
+Response: Array of tokens issued by bank
+```
+
+#### Lấy tất cả tokens
+```
+GET /tokens
+
+Response: Array of all tokens
+```
+
+#### Lấy balances của account
+```
+GET /balances/account/{accountId}
+
+Response: Array of balances for account
+```
+
+#### Lấy balances của token
+```
+GET /balances/token/{tokenId}
+
+Response: Array of balances for token
+```
+
+#### Lấy danh sách suppliers
+```
+GET /suppliers
+
+Response: Array of supplier information
+```
+
+#### Cập nhật block hashes
+```
+POST /blocks/hash/update
+
+Response: Hash update result
+```
+
 ## Frontend
 
-Giao diện web được chia thành 4 tab chính:
+### Cấu trúc Components
+Giao diện được tổ chức theo role-based navigation với các components chính:
 
-### Tab 1: Tạo hợp đồng (`/contracts/new`)
-- Form tạo hợp đồng mới
-- Upload file hợp đồng (PDF)
-- Chọn suppliers và phân bổ số tiền
-- Chỉ Buyer có quyền truy cập
+#### Core Components
+- **Login Component** (`/login`): Xác thực người dùng với JWT
+- **Navbar Component**: Navigation menu theo role (Anchor/Bank/Supplier)
+- **Auth Guard**: Bảo vệ routes theo quyền truy cập
 
-### Tab 2: Phê duyệt hợp đồng (`/contracts/approve`)
-- Hiển thị danh sách hợp đồng chờ phê duyệt
-- Suppliers có thể approve/reject
-- Theo dõi tiến độ phê duyệt
+#### Role-based Components
 
-### Tab 3: Trạng thái hợp đồng (`/contracts`)
-- Dashboard tổng quan
-- Danh sách tất cả hợp đồng
-- Chi tiết status và history
+##### Anchor Components (`/anchor/*`)
+- **Contract Form** (`contract-form/`): Tạo hợp đồng mới với file upload
+- **Contract Token Management** (`contract-token-management/anchor/`): Quản lý tokens đã tạo
 
-### Tab 4: Ledger Viewer (`/ledger`)
-- Truy cập blockchain ledger
-- Xem chi tiết các blocks
-- Audit trail của tất cả transactions
+##### Bank Components (`/bank/*`)
+- **Contract Token Management** (`contract-token-management/bank/`): Xem và quản lý tokens đã phát hành
+
+##### Supplier Components (`/supplier/*`)
+- **Contract Token Management** (`contract-token-management/supplier/`): Quản lý tokens sở hữu
+- **Transfer Form** (`transfer-form/`): Chuyển token cho supplier khác
+
+#### Shared Components
+- **Contract Approval** (`contract-approval/`): Interface phê duyệt hợp đồng
+- **Contract Status** (`contract-status/`): Dashboard trạng thái hợp đồng
+- **Ledger Viewer** (`ledger-viewer/`): Hiển thị blockchain ledger
+- **Status List** (`status-list/`): Component hiển thị danh sách
+
+### Routing Structure
+```
+/ → /login (redirect if not authenticated)
+/login → LoginComponent
+/anchor → ContractFormComponent (Anchor only)
+/bank → BankTokenManagementComponent (Bank only)
+/supplier → SupplierTokenManagementComponent (Supplier only)
+/contracts/approve → ContractApprovalComponent
+/contracts → ContractStatusComponent
+/ledger → LedgerViewerComponent
+```
+
+### Models & Services
+- **Auth Models**: User, LoginRequest, AuthResponse
+- **Contract Models**: Contract, SupplierAllocation
+- **Token Models**: Token, Balance, TransferRequest
+- **Ledger Models**: Block, Event, LedgerEntry
+
+- **Auth Service**: JWT authentication, role management
+- **Contract Service**: CRUD operations cho contracts
+- **Token Service**: Token transfer, balance queries
+- **Ledger Service**: Blockchain data retrieval
+
+## Scripts & Utilities
+
+### Password Generation Script
+Script tiện ích để tạo password hash cho user authentication:
+
+```bash
+# Chạy script generate password
+cd scripts
+node generate-password.js
+
+# Script sử dụng bcryptjs để hash passwords
+# Output: Hashed password để sử dụng trong database seeding
+```
+
+### MongoDB Initialization
+File `init-mongo.js` được sử dụng để khởi tạo MongoDB với:
+- Root user authentication
+- Initial database setup
+- Collection indexes cho performance tối ưu
 
 ## Thiết kế blockchain
 
@@ -374,48 +570,189 @@ Giao diện web được chia thành 4 tab chính:
 ## Cách chạy hệ thống
 
 ### Yêu cầu hệ thống
-- Docker và Docker Compose
-- Ít nhất 4GB RAM
-- Port 4200, 8080, 8081, 27017 khả dụng
+- **Docker**: version 20.10+ với Docker Compose V2
+- **RAM**: Tối thiểu 4GB, khuyến nghị 8GB
+- **CPU**: 2 cores trở lên
+- **Disk**: 5GB free space
+- **Ports**: 4200, 8080, 8081, 27017 phải khả dụng
 
-### Lệnh chạy
+### Cấu hình môi trường
+
+#### Environment Variables
+Các service sử dụng environment variables được định nghĩa trong `docker-compose.yml`:
+
+```yaml
+# Backend service
+SPRING_DATA_MONGODB_HOST=mongo
+SPRING_DATA_MONGODB_PORT=27017
+SPRING_DATA_MONGODB_DATABASE=blockchain
+
+# Blockchain service
+MONGO_URI=mongodb://root:example@mongo:27017/blockchain?authSource=admin
+```
+
+#### MongoDB Configuration
+- **Username**: root
+- **Password**: example
+- **Database**: blockchain
+- **Authentication DB**: admin
+
+### Lệnh triển khai
+
 ```bash
-# Clone repository (nếu có)
-# git clone <repository-url>
-# cd blockchain
+# 1. Clone repository
+git clone <repository-url>
+cd blockchain
 
-# Build và chạy tất cả services
+# 2. Build và chạy tất cả services (foreground)
 docker-compose up --build
 
-# Chạy background
+# 3. Hoặc chạy background
 docker-compose up -d --build
+
+# 4. Kiểm tra trạng thái services
+docker-compose ps
+
+# 5. Xem logs real-time
+docker-compose logs -f
 ```
 
 ### Truy cập hệ thống
-- **Frontend**: http://localhost:4200
-- **Backend API**: http://localhost:8080
-- **Blockchain API**: http://localhost:8081
-- **MongoDB**: localhost:27017
+
+| Service | URL | Mô tả |
+|---------|-----|--------|
+| **Frontend** | http://localhost:4200 | Giao diện người dùng |
+| **Backend API** | http://localhost:8080 | REST API Spring Boot |
+| **Blockchain API** | http://localhost:8081 | Blockchain service API |
+| **MongoDB** | localhost:27017 | Database (external access) |
 
 ### Tài khoản test
-- **Anchor (Buyer)**: username: `anchor`, password: `123456`
-- **Supplier 1-10**: username: `supplier1` đến `supplier10`, password: `123456`
 
-### Kiểm tra logs
+| Role | Username | Password | Quyền truy cập |
+|------|----------|----------|----------------|
+| **Anchor** | `anchor` | `123456` | Tạo hợp đồng |
+| **Bank** | `bank` | `123456` | Phát hành token |
+| **Supplier 1-10** | `supplier1` - `supplier10` | `123456` | Phê duyệt & chuyển token |
+
+### Monitoring & Debugging
+
+#### Logs Management
 ```bash
 # Xem logs tất cả services
 docker-compose logs -f
 
-# Xem logs cụ thể service
+# Xem logs service cụ thể
 docker-compose logs -f backend
 docker-compose logs -f ms-blockchain
+docker-compose logs -f mongo
+
+# Xem logs với timestamp
+docker-compose logs -f --timestamps
+
+# Xuất logs ra file
+docker-compose logs > logs.txt
 ```
 
-### Dừng hệ thống
+#### Container Management
 ```bash
-# Dừng và xóa containers
+# Restart service cụ thể
+docker-compose restart backend
+
+# Rebuild và restart service
+docker-compose up --build --force-recreate backend
+
+# Truy cập container shell
+docker-compose exec backend bash
+docker-compose exec ms-blockchain sh
+```
+
+### Troubleshooting
+
+#### Common Issues
+
+**1. Port conflicts**
+```bash
+# Kiểm tra port đang sử dụng
+lsof -i :4200
+lsof -i :8080
+lsof -i :8081
+lsof -i :27017
+
+# Thay đổi port trong docker-compose.yml nếu cần
+```
+
+**2. MongoDB connection failed**
+```bash
+# Kiểm tra MongoDB container
+docker-compose logs mongo
+
+# Kiểm tra MongoDB connectivity
+docker-compose exec mongo mongo --username root --password example --authenticationDatabase admin
+```
+
+**3. Services không start được**
+```bash
+# Kiểm tra dependencies
+docker-compose ps
+
+# Restart với clean state
+docker-compose down -v
+docker-compose up --build
+```
+
+**4. Frontend build failed**
+```bash
+# Clear npm cache
+docker-compose exec frontend npm cache clean --force
+
+# Rebuild frontend
+docker-compose up --build frontend
+```
+
+#### Performance Tuning
+
+**Memory Issues:**
+```bash
+# Tăng memory limit cho Docker
+docker system info
+
+# Cấu hình Docker Desktop với 8GB+ RAM
+```
+
+**Storage Issues:**
+```bash
+# Kiểm tra disk usage
+docker system df
+
+# Clean up unused resources
+docker system prune -a --volumes
+```
+
+### Production Deployment
+
+#### Security Considerations
+- Thay đổi default passwords trong `docker-compose.yml`
+- Sử dụng secrets management cho sensitive data
+- Configure HTTPS với reverse proxy
+- Implement rate limiting và CORS policies
+
+#### Scaling
+- MongoDB có thể scale horizontally với replica sets
+- Backend services có thể scale với load balancer
+- Blockchain service hiện tại single-node, có thể extend thành multi-node
+
+### Cleanup Commands
+
+```bash
+# Dừng tất cả services
 docker-compose down
 
-# Dừng và xóa volumes (xóa data)
+# Dừng và xóa tất cả data (reset hoàn toàn)
 docker-compose down -v
+
+# Xóa images (free disk space)
+docker-compose down --rmi all
+
+# Deep cleanup
+docker system prune -a --volumes --force
 ```

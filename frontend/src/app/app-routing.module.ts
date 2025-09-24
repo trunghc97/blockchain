@@ -9,24 +9,48 @@ import { ContractFormComponent } from './components/contract-form/contract-form.
 import { ContractApprovalComponent } from './components/contract-approval/contract-approval.component';
 import { LedgerViewerComponent } from './components/ledger-viewer/ledger-viewer.component';
 
+// Contract-Token Management Components
+import { AnchorComponent } from './components/contract-token-management/anchor/anchor.component';
+import { BankComponent } from './components/contract-token-management/bank/bank.component';
+import { SupplierComponent } from './components/contract-token-management/supplier/supplier.component';
+
 const routes: Routes = [
   {
     path: '',
-    redirectTo: '/contracts',
+    redirectTo: '/dashboard',
     pathMatch: 'full'
+  },
+  {
+    path: 'dashboard',
+    redirectTo: '/contracts',
+    pathMatch: 'full',
+    canActivate: [AuthGuard]
   },
   {
     path: 'login',
     component: LoginComponent
   },
+  // Contract-Token Management Routes
   {
-    path: 'contracts',
-    component: ContractStatusComponent,
+    path: 'bank',
+    component: BankComponent,
     canActivate: [AuthGuard]
   },
   {
+    path: 'supplier',
+    component: SupplierComponent,
+    canActivate: [AuthGuard]
+  },
+  // Create contract route
+  {
     path: 'contracts/new',
     component: ContractFormComponent,
+    canActivate: [AuthGuard]
+  },
+  // View contracts status
+  {
+    path: 'contracts',
+    component: ContractStatusComponent,
     canActivate: [AuthGuard]
   },
   {

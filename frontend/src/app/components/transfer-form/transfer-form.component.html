@@ -4,8 +4,23 @@
       <mat-card-header>
         <mat-card-title>Tạo giao dịch chuyển tiền mới</mat-card-title>
       </mat-card-header>
-      
+
       <mat-card-content>
+        <!-- Thông tin người chuyển -->
+        <div class="sender-info-card mb-4" *ngIf="currentUser">
+          <div class="row align-items-center">
+            <div class="col-auto">
+              <mat-icon class="sender-icon">account_circle</mat-icon>
+            </div>
+            <div class="col">
+              <div class="sender-label">Người chuyển</div>
+              <div class="sender-name">{{ currentUser.name }}</div>
+              <div class="sender-account">Tài khoản: {{ currentUser.id }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form inputs -->
         <div class="row">
           <div class="col-md-6">
             <mat-form-field appearance="outline" class="w-100">

@@ -1,0 +1,108 @@
+<div class="container mt-4">
+  <h2 class="mb-4">Anchor Dashboard - Create Contract</h2>
+
+  <!-- Contract Creation Form -->
+  <div class="card mb-4">
+    <div class="card-header">
+      <h5>Create New Contract</h5>
+    </div>
+    <div class="card-body">
+      <form [formGroup]="contractForm" (ngSubmit)="onSubmit()">
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="contractId" class="form-label">Contract ID (Optional)</label>
+              <input type="text" class="form-control" id="contractId" formControlName="id" placeholder="Auto-generated if empty">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="anchorId" class="form-label">Anchor ID *</label>
+              <input type="text" class="form-control" id="anchorId" formControlName="anchorId" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="supplierId" class="form-label">Supplier ID *</label>
+              <input type="text" class="form-control" id="supplierId" formControlName="supplierId" required>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="mb-3">
+              <label for="bankId" class="form-label">Bank ID *</label>
+              <input type="text" class="form-control" id="bankId" formControlName="bankId" required>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="amount" class="form-label">Contract Amount *</label>
+          <input type="number" class="form-control" id="amount" formControlName="amount" step="0.01" min="0" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Approvers *</label>
+          <div formArrayName="approvers">
+            <div *ngFor="let approver of approvers.controls; let i = index" class="input-group mb-2">
+              <input type="text" class="form-control" [formControlName]="i" placeholder="Approver ID" required>
+              <button type="button" class="btn btn-outline-danger" (click)="removeApprover(i)" *ngIf="approvers.length > 1">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-primary btn-sm" (click)="addApprover()">
+            <i class="fas fa-plus"></i> Add Approver
+          </button>
+        </div>
+
+        <button type="submit" class="btn btn-primary" [disabled]="contractForm.invalid || loading">
+          <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
+          Create Contract
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Contract List -->
+  <div class="card">
+    <div class="card-header">
+      <h5>My Contracts</h5>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Contract ID</th>
+              <th>Supplier</th>
+              <th>Bank</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let contract of contracts">
+              <td>{{ contract.id }}</td>
+              <td>{{ contract.supplierId }}</td>
+              <td>{{ contract.bankId }}</td>
+              <td>{{ contract.amount | currency }}</td>
+              <td>
+                <span class="badge" [ngClass]="contract.approved ? 'bg-success' : 'bg-warning'">
+                  {{ contract.approved ? 'Approved' : 'Pending' }}
+                </span>
+              </td>
+              <td>{{ contract.createdAt | date }}</td>
+            </tr>
+            <tr *ngIf="contracts.length === 0">
+              <td colspan="6" class="text-center text-muted">No contracts found</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -4,11 +4,17 @@ import { MatPaginator } from '@angular/material/paginator';
 import { MatSort } from '@angular/material/sort';
 import { MatSelectChange } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatDialog } from '@angular/material/dialog';
+import { FormBuilder, FormGroup, Validators, FormArray } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { Contract } from '../../models/contract.model';
 import { ContractService } from '../../services/contract.service';
+import { ContractTokenService } from '../../services/contract-token.service';
 import { UserService } from '../../services/user.service';
 import { User } from '../../models/user.model';
+
+// Import the dialog component we'll create
+import { TokenDetailsDialogComponent } from './token-details-dialog.component';
 
 @Component({
   selector: 'app-contract-status',
@@ -20,13 +26,18 @@ export class ContractStatusComponent implements OnInit {
   filteredContracts: Contract[] = [];
   loading = false;
   expandedContracts: { [key: string]: boolean } = {};
-  approvingSuppliers: { [key: string]: boolean } = {};
   currentUser: User | null = null;
+
+  // Token information for suppliers
+  contractTokens: { [contractId: string]: any } = {};
+  supplierTokens: { [supplierId: string]: any[] } = {};
 
   constructor(
     private contractService: ContractService,
+    private contractTokenService: ContractTokenService,
     private userService: UserService,
-    private snackBar: MatSnackBar
+    private snackBar: MatSnackBar,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit() {
@@ -82,45 +93,6 @@ export class ContractStatusComponent implements OnInit {
     this.expandedContracts[contractId] = !this.expandedContracts[contractId];
   }
 
-  async approveSupplier(contract: Contract, supplier: any) {
-    this.approvingSuppliers[supplier.supplierId] = true;
-    try {
-      // Use contract.contractId for the API call
-      await firstValueFrom(this.contractService.approveContract(contract.contractId));
-      await this.loadContracts(); // Reload to get updated data
-
-      this.snackBar.open(`Đã duyệt ${supplier.name} thành công`, 'Đóng', {
-        duration: 3000
-      });
-    } catch (error) {
-      console.error('Error approving supplier:', error);
-      this.snackBar.open('Có lỗi khi duyệt nhà cung cấp', 'Đóng', {
-        duration: 3000
-      });
-    } finally {
-      this.approvingSuppliers[supplier.supplierId] = false;
-    }
-  }
-
-  async rejectSupplier(contract: Contract, supplier: any) {
-    this.approvingSuppliers[supplier.supplierId] = true;
-    try {
-      // Use contract.contractId for the API call
-      await firstValueFrom(this.contractService.rejectContract(contract.contractId, 'Rejected by supplier'));
-      await this.loadContracts(); // Reload to get updated data
-
-      this.snackBar.open(`Đã từ chối ${supplier.name}`, 'Đóng', {
-        duration: 3000
-      });
-    } catch (error) {
-      console.error('Error rejecting supplier:', error);
-      this.snackBar.open('Có lỗi khi từ chối nhà cung cấp', 'Đóng', {
-        duration: 3000
-      });
-    } finally {
-      this.approvingSuppliers[supplier.supplierId] = false;
-    }
-  }
 
   trackByContractId(index: number, contract: Contract): string {
     return contract.contractId;
@@ -137,8 +109,71 @@ export class ContractStatusComponent implements OnInit {
     return supplier.status || 'PENDING';
   }
 
-  // Check if current user can approve this supplier
-  canApproveSupplier(supplier: any): boolean {
-    return !!(this.currentUser && this.currentUser.id === supplier.supplierId);
+
+
+  // Token information methods
+  async loadTokenForContract(contractId: string): Promise<void> {
+    try {
+      const token = await firstValueFrom(this.contractTokenService.getToken(`token_${contractId}`));
+      this.contractTokens[contractId] = token;
+    } catch (error) {
+      console.error(`Error loading token for contract ${contractId}:`, error);
+    }
   }
+
+  getTokenStatusForSupplier(contract: Contract, supplier: any): string {
+    if (!this.contractTokens[contract.contractId]) {
+      return 'Loading...';
+    }
+
+    const token = this.contractTokens[contract.contractId];
+    if (token.owner === supplier.supplierId) {
+      return 'Token Received';
+    } else if (token.owner === contract.buyer) {
+      return 'Token Pending';
+    } else {
+      return 'Token Transferred';
+    }
+  }
+
+  getTokenStatusClass(supplierStatus: string): string {
+    switch (supplierStatus) {
+      case 'Token Received': return 'token-received';
+      case 'Token Pending': return 'token-pending';
+      case 'Token Transferred': return 'token-transferred';
+      default: return 'token-loading';
+    }
+  }
+
+  // Show token ownership details
+  showTokenDetails(contract: Contract): void {
+    const tokenId = `token_${contract.contractId}`;
+
+    this.contractTokenService.getBalancesByToken(tokenId).subscribe({
+      next: (balances) => {
+        const dialogRef = this.dialog.open(TokenDetailsDialogComponent, {
+          width: '600px',
+          data: {
+            tokenId: tokenId,
+            contract: contract,
+            balances: balances
+          }
+        });
+      },
+      error: (error) => {
+        console.error('Error loading token balances:', error);
+        this.snackBar.open('Không thể tải thông tin token', 'Đóng', {
+          duration: 3000
+        });
+      }
+    });
+  }
+
+  // Load token information when contract is expanded
+  async onContractExpanded(contract: Contract): Promise<void> {
+    if (!this.contractTokens[contract.contractId]) {
+      await this.loadTokenForContract(contract.contractId);
+    }
+  }
+
 }

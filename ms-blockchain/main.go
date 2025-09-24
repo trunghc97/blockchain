@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -20,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Disconnect(nil)
+	defer client.Disconnect(context.TODO())
 
 	database := client.Database(config.DatabaseName)
 
@@ -36,16 +37,26 @@ func main() {
 
 	// Contract endpoints
 	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
-	router.HandleFunc("/contract/approve", handler.ApproveContract).Methods("POST")
-	router.HandleFunc("/contract/list", handler.ListContracts).Methods("GET")
-	router.HandleFunc("/contract/{id}/ledger", handler.QueryContractLedger).Methods("GET")
+	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
+	router.HandleFunc("/contract/{id}/approve-bank", handler.ApproveContractByBank).Methods("POST")
+	router.HandleFunc("/contract/list", handler.GetContracts).Methods("GET")
+	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
+	router.HandleFunc("/contract/{id}/ledger", handler.GetContractLedger).Methods("GET")
 
-	// Ledger endpoints
-	router.HandleFunc("/ledger/blocks", handler.GetLedgerBlocks).Methods("GET")
-	router.HandleFunc("/ledger/query", handler.QueryLedger).Methods("GET")
+	// Token endpoints
+	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
+	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
+	router.HandleFunc("/token/settle", handler.SettleToken).Methods("POST")
+	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
+	router.HandleFunc("/tokens", handler.GetAllTokens).Methods("GET")
+	router.HandleFunc("/balances/account/{accountId}", handler.GetBalancesByAccount).Methods("GET")
+	router.HandleFunc("/balances/token/{tokenId}", handler.GetBalancesByToken).Methods("GET")
 
-	// User endpoints
-	router.HandleFunc("/users", handler.GetUsers).Methods("GET")
+	// Supplier endpoints
+	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")
+
+	// Utility endpoints
+	router.HandleFunc("/blocks/hash/update", handler.UpdateBlockHashes).Methods("POST")
 
 	// Configure CORS
 	c := cors.New(cors.Options{

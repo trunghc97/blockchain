@@ -1,0 +1,227 @@
+<div class="container mt-4">
+  <h2 class="mb-4">Bank Dashboard - Complete System Overview</h2>
+
+  <!-- System Overview -->
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card text-white bg-primary">
+        <div class="card-body">
+          <h5 class="card-title">Total Contracts</h5>
+          <h3>{{ contracts.length }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-warning">
+        <div class="card-body">
+          <h5 class="card-title">Pending Approval</h5>
+          <h3>{{ pendingContractsCount }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-success">
+        <div class="card-body">
+          <h5 class="card-title">Approved Contracts</h5>
+          <h3>{{ approvedContractsCount }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card text-white bg-info">
+        <div class="card-body">
+          <h5 class="card-title">Active Tokens</h5>
+          <h3>{{ tokens.length }}</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <ul class="nav nav-tabs mb-4" id="bankTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" [class.active]="activeTab === 'contracts'"
+              (click)="activeTab = 'contracts'" type="button">Contracts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" [class.active]="activeTab === 'tokens'"
+              (click)="activeTab = 'tokens'" type="button">Tokens</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" [class.active]="activeTab === 'balances'"
+              (click)="activeTab = 'balances'" type="button">Token Balances</button>
+    </li>
+  </ul>
+
+  <!-- Tab Content -->
+  <div class="tab-content">
+
+    <!-- Contracts Tab -->
+    <div *ngIf="activeTab === 'contracts'" class="tab-pane active">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">All Contracts</h5>
+          <button class="btn btn-primary btn-sm" (click)="loadContracts()" [disabled]="loading.contracts">
+            <span *ngIf="loading.contracts" class="spinner-border spinner-border-sm me-2"></span>
+            Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Contract ID</th>
+                  <th>Description</th>
+                  <th>Anchor</th>
+                  <th>Bank</th>
+                  <th>Total Amount</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let contract of contracts">
+                  <td>{{ contract.contractId }}</td>
+                  <td>{{ contract.description }}</td>
+                  <td>{{ contract.buyer }}</td>
+                  <td>{{ contract.bankId }}</td>
+                  <td>{{ contract.totalAmount | currency }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="getContractStatusBadgeClass(contract)">
+                      {{ getContractStatus(contract) }}
+                    </span>
+                  </td>
+                  <td>{{ contract.createdAt | date:'short' }}</td>
+                  <td>
+                    <button *ngIf="canApproveContract(contract)"
+                            class="btn btn-success btn-sm"
+                            (click)="approveContract(contract)">
+                      Approve
+                    </button>
+                  </td>
+                </tr>
+                <tr *ngIf="contracts.length === 0 && !loading.contracts">
+                  <td colspan="8" class="text-center text-muted">No contracts found</td>
+                </tr>
+                <tr *ngIf="loading.contracts">
+                  <td colspan="8" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tokens Tab -->
+    <div *ngIf="activeTab === 'tokens'" class="tab-pane active">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">All Tokens</h5>
+          <button class="btn btn-primary btn-sm" (click)="loadAllTokens()" [disabled]="loading.tokens">
+            <span *ngIf="loading.tokens" class="spinner-border spinner-border-sm me-2"></span>
+            Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Token ID</th>
+                  <th>Contract ID</th>
+                  <th>Symbol</th>
+                  <th>Total Amount</th>
+                  <th>Issuer</th>
+                  <th>Current Owner</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let token of tokens">
+                  <td>{{ token._id || token.id }}</td>
+                  <td>{{ token.contractId }}</td>
+                  <td>
+                    <span class="badge bg-secondary">{{ token.symbol }}</span>
+                  </td>
+                  <td>{{ token.total | currency }}</td>
+                  <td>{{ token.issuer }}</td>
+                  <td>{{ token.owner }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="getStatusBadgeClass(token)">
+                      {{ getTokenStatus(token) }}
+                    </span>
+                  </td>
+                  <td>{{ token.createdAt | date:'short' }}</td>
+                </tr>
+                <tr *ngIf="tokens.length === 0 && !loading.tokens">
+                  <td colspan="8" class="text-center text-muted">No tokens found</td>
+                </tr>
+                <tr *ngIf="loading.tokens">
+                  <td colspan="8" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Balances Tab -->
+    <div *ngIf="activeTab === 'balances'" class="tab-pane active">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">All Token Balances</h5>
+          <button class="btn btn-primary btn-sm" (click)="loadAllBalances()" [disabled]="loading.balances">
+            <span *ngIf="loading.balances" class="spinner-border spinner-border-sm me-2"></span>
+            Refresh
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Token ID</th>
+                  <th>Account</th>
+                  <th>Balance</th>
+                  <th>Transferred From</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let balance of balances">
+                  <td>{{ balance.tokenId }}</td>
+                  <td>{{ balance.account }}</td>
+                  <td>{{ balance.balance | currency }}</td>
+                  <td>{{ balance.transferredFrom || '-' }}</td>
+                </tr>
+                <tr *ngIf="balances.length === 0 && !loading.balances">
+                  <td colspan="4" class="text-center text-muted">No balances found</td>
+                </tr>
+                <tr *ngIf="loading.balances">
+                  <td colspan="4" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                      <span class="visually-hidden">Loading...</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

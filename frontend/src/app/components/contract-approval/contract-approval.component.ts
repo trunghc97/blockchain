@@ -32,11 +32,12 @@ export class ContractApprovalComponent implements OnInit {
     this.loading = true;
     try {
       this.currentUser = await firstValueFrom(this.userService.getCurrentUser());
-      console.log('Current user:', this.currentUser);
-
       await this.loadContracts();
     } catch (error) {
       console.error('Error loading current user:', error);
+      this.snackBar.open('Không thể xác thực người dùng. Vui lòng đăng nhập lại.', 'Đóng', {
+        duration: 5000
+      });
     } finally {
       this.loading = false;
     }
@@ -46,14 +47,15 @@ export class ContractApprovalComponent implements OnInit {
     try {
       const allContracts = await firstValueFrom(this.contractService.getContracts());
 
-      // Lọc contracts có suppliers mà user hiện tại có thể approve
+      // Lọc contracts có suppliers mà user hiện tại có thể approve VÀ đã được bank duyệt
       this.contracts = allContracts.filter(contract =>
+        contract.bankApproved === true &&
         contract.suppliers.some(s =>
-          s.supplierId === this.currentUser?.id && s.status === 'PENDING'
+          (s.supplierId === this.currentUser?.id ||
+           (s.supplierId == null && s.name === this.currentUser?.username)) &&
+          s.status === 'PENDING'
         )
       );
-
-      console.log('Filtered contracts for approval:', this.contracts);
 
       // Khởi tạo trạng thái approving cho mỗi contract
       this.contracts.forEach(contract => {
@@ -70,7 +72,7 @@ export class ContractApprovalComponent implements OnInit {
   async approveContract(contract: Contract) {
     this.approving[contract.contractId] = true;
     try {
-      await firstValueFrom(this.contractService.approveContract(contract.contractId));
+      await firstValueFrom(this.contractService.approveContract(contract.contractId, this.currentUser?.id));
       this.snackBar.open('Đã duyệt hợp đồng thành công', 'Đóng', {
         duration: 3000
       });
@@ -114,7 +116,10 @@ export class ContractApprovalComponent implements OnInit {
 
   // Get the supplier info for current user in this contract
   getCurrentUserSupplier(contract: Contract): any {
-    return contract.suppliers.find(s => s.supplierId === this.currentUser?.id);
+    return contract.suppliers.find(s =>
+      s.supplierId === this.currentUser?.id ||
+      (s.supplierId == null && s.name === this.currentUser?.username)
+    );
   }
 
   // Check if current user can approve this contract

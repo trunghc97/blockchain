@@ -1,0 +1,69 @@
+    <div class="token-details-dialog">
+      <h2 mat-dialog-title>Chi Tiết Token</h2>
+
+      <mat-dialog-content>
+        <div class="token-info mb-3">
+          <div class="row">
+            <div class="col-md-6">
+              <strong>Token ID:</strong> {{ data.tokenId }}
+            </div>
+            <div class="col-md-6">
+              <strong>Contract ID:</strong> {{ data.contract.contractId }}
+            </div>
+          </div>
+          <div class="row mt-2">
+            <div class="col-md-6">
+              <strong>Total Supply:</strong> {{ data.contract.totalAmount | currency }}
+            </div>
+            <div class="col-md-6">
+              <strong>Status:</strong>
+              <span class="badge ms-2" [ngClass]="data.contract.approved ? 'bg-success' : 'bg-warning'">
+                {{ data.contract.approved ? 'Approved' : 'Pending' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <h4>Token Ownership</h4>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Account ID</th>
+                <th>Account Type</th>
+                <th>Balance</th>
+                <th>From (Source)</th>
+                <th>Percentage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let balance of data.balances">
+                <td>{{ balance.account }}</td>
+                <td>{{ getAccountType(balance.account) }}</td>
+                <td>{{ balance.balance | currency }}</td>
+                <td>
+                  <span *ngIf="balance.transferredFrom; else initialBalance">
+                    <mat-icon class="text-primary me-1" style="font-size: 16px;">arrow_forward</mat-icon>
+                    {{ balance.transferredFrom }}
+                  </span>
+                  <ng-template #initialBalance>
+                    <span class="text-muted">
+                      <mat-icon class="me-1" style="font-size: 16px;">account_balance</mat-icon>
+                      Initial
+                    </span>
+                  </ng-template>
+                </td>
+                <td>{{ getPercentage(balance.balance) }}%</td>
+              </tr>
+              <tr *ngIf="data.balances.length === 0">
+                <td colspan="5" class="text-center text-muted">No balances found</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </mat-dialog-content>
+
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close>Đóng</button>
+      </mat-dialog-actions>
+    </div>
