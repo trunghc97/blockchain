@@ -98,4 +98,16 @@ public class TokenController {
             return ResponseEntity.internalServerError().body("Error getting balances: " + e.getMessage());
         }
     }
+
+    @PostMapping("/settle")
+    public ResponseEntity<?> settleToken(@RequestBody Map<String, Object> settleData) {
+        try {
+            logger.info("Settling token: {}", settleData);
+            Map<String, Object> result = blockchainService.settleToken(settleData);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            logger.error("Error settling token", e);
+            return ResponseEntity.internalServerError().body("Error settling token: " + e.getMessage());
+        }
+    }
 }

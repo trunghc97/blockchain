@@ -111,12 +111,6 @@ func NewHandler(db *mongo.Database) *Handler {
 	return &Handler{db: db}
 }
 
-func (h *Handler) generateEventID() string {
-	bytes := make([]byte, 16)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)
-}
-
 // CreateContract creates a new contract (Anchor) - New Contract-Token Implementation
 func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -601,7 +595,7 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 		ContractId: contractId,
 		Symbol:     symbol,
 		Total:      totalAmount,
-		Issuer:     req.BankId,
+		Issuer:     "SYSTEM", // System auto-generates token for anchor
 		Owner:      anchorId, // Owned by anchor after bank approval
 		CreatedAt:  time.Now().Format(time.RFC3339),
 	}
@@ -625,14 +619,16 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Log bank approval event
+	// Log bank approval and token generation event
 	event := map[string]interface{}{
 		"eventId":     generateEventID(),
-		"eventType":   "CONTRACT_BANK_APPROVED",
+		"eventType":   "CONTRACT_BANK_APPROVED_TOKEN_GENERATED",
 		"contractId":  contractId,
 		"tokenId":     tokenId,
 		"bankId":      req.BankId,
+		"anchorId":    anchorId,
 		"totalAmount": totalAmount,
+		"description": "Bank approved contract and system auto-generated token for anchor",
 		"timestamp":   time.Now().Format(time.RFC3339),
 	}
 
@@ -1132,6 +1128,119 @@ func (h *Handler) GetBalancesByToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(balances)
+}
+
+// SettleToken allows suppliers to settle their tokens with the bank, removing their token balance
+func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TokenId    string `json:"tokenId"`
+		SupplierId string `json:"supplierId"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("DEBUG: Supplier %s settling token %s\n", req.SupplierId, req.TokenId)
+
+	// Verify supplier has balance for this token
+	var balance models.Balance
+	err := h.db.Collection("balances").FindOne(
+		context.Background(),
+		bson.M{"tokenId": req.TokenId, "account": req.SupplierId},
+	).Decode(&balance)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "Supplier has no balance for this token", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get token info to verify it exists and get bank info
+	var token models.Token
+	err = h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": req.TokenId}).Decode(&token)
+	if err != nil {
+		http.Error(w, "Token not found", http.StatusNotFound)
+		return
+	}
+
+	// Get contract info to get bank ID
+	var contract map[string]interface{}
+	err = h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": token.ContractId}).Decode(&contract)
+	if err != nil {
+		http.Error(w, "Contract not found", http.StatusNotFound)
+		return
+	}
+
+	bankId, ok := contract["bankId"].(string)
+	if !ok {
+		http.Error(w, "Invalid contract data - missing bank ID", http.StatusInternalServerError)
+		return
+	}
+
+	// Remove supplier's balance for this token
+	_, err = h.db.Collection("balances").DeleteOne(
+		context.Background(),
+		bson.M{"tokenId": req.TokenId, "account": req.SupplierId},
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Log settlement event
+	event := map[string]interface{}{
+		"eventId":       generateEventID(),
+		"eventType":     "TOKEN_SETTLED",
+		"tokenId":       req.TokenId,
+		"contractId":    token.ContractId,
+		"supplierId":    req.SupplierId,
+		"bankId":        bankId,
+		"settledAmount": balance.Balance,
+		"description":   fmt.Sprintf("Supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+		"timestamp":     time.Now().Format(time.RFC3339),
+	}
+
+	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
+	if err != nil {
+		fmt.Printf("DEBUG: Error logging settlement event: %v\n", err)
+		// Don't fail the settlement for logging errors
+	}
+
+	// Create block entry
+	blockNumber := h.getNextBlockNumber()
+	timestamp := time.Now().Format(time.RFC3339)
+	eventIds := []string{event["eventId"].(string)}
+	previousHash := h.getPreviousBlockHash()
+	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
+
+	block := map[string]interface{}{
+		"blockNumber":  blockNumber,
+		"timestamp":    timestamp,
+		"events":       eventIds,
+		"previousHash": previousHash,
+		"hash":         blockHash,
+	}
+
+	_, err = h.db.Collection("blocks").InsertOne(context.Background(), block)
+	if err != nil {
+		fmt.Printf("DEBUG: Error creating settlement block: %v\n", err)
+		// Don't fail the settlement for block creation errors
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "settled",
+		"message":       "Token settled successfully with bank",
+		"tokenId":       req.TokenId,
+		"supplierId":    req.SupplierId,
+		"bankId":        bankId,
+		"settledAmount": balance.Balance,
+	})
 }
 
 // GetSuppliers returns all users with role SUPPLIER

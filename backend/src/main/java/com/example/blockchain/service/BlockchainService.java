@@ -204,4 +204,19 @@ public class BlockchainService {
         );
         return response.getBody();
     }
+
+    public Map<String, Object> settleToken(Map<String, Object> settleData) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(settleData, headers);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                blockchainUrl + "/token/settle",
+                HttpMethod.POST,
+                request,
+                Map.class
+        );
+        return response.getBody();
+    }
 }

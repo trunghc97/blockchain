@@ -59,4 +59,8 @@ export class ContractTokenService {
   getBalancesByToken(tokenId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.apiUrl}/tokens/balances/token/${tokenId}`, { headers: this.getHeaders() });
   }
+
+  settleToken(settleData: any): Observable<any> {
+    return this.http.post(`${this.apiUrl}/tokens/settle`, settleData, { headers: this.getHeaders() });
+  }
 }

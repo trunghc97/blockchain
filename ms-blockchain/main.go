@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -20,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer client.Disconnect(nil)
+	defer client.Disconnect(context.TODO())
 
 	database := client.Database(config.DatabaseName)
 
@@ -45,6 +46,7 @@ func main() {
 	// Token endpoints
 	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
 	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
+	router.HandleFunc("/token/settle", handler.SettleToken).Methods("POST")
 	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
 	router.HandleFunc("/tokens", handler.GetAllTokens).Methods("GET")
 	router.HandleFunc("/balances/account/{accountId}", handler.GetBalancesByAccount).Methods("GET")

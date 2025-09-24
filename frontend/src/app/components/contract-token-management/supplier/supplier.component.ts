@@ -106,24 +106,29 @@ export class SupplierComponent implements OnInit {
   }
 
   onPayBack(token: any): void {
-    if (confirm(`Are you sure you want to return this token to the bank?`)) {
+    const balance = this.getTokenBalance(token.id);
+    if (balance <= 0) {
+      alert('You have no balance for this token to settle.');
+      return;
+    }
+
+    if (confirm(`Are you sure you want to settle this token with the bank?\nAmount to settle: ${balance}\nThis will remove all your balance for this token.`)) {
       this.loading = true;
-      const transferData = {
+      const settleData = {
         tokenId: token.id,
-        from: this.supplierId,
-        to: token.issuer, // Bank ID
-        amount: token.total
+        supplierId: this.supplierId
       };
 
-      this.contractTokenService.transferToken(transferData).subscribe({
+      this.contractTokenService.settleToken(settleData).subscribe({
         next: (response) => {
-          console.log('Token returned to bank:', response);
-          alert('Token returned to bank successfully!');
+          console.log('Token settled with bank:', response);
+          alert('Token settled with bank successfully!');
           this.loadMyTokens();
+          this.loadBalances();
         },
         error: (error) => {
-          console.error('Error returning token to bank:', error);
-          alert('Error returning token to bank: ' + error.message);
+          console.error('Error settling token with bank:', error);
+          alert('Error settling token with bank: ' + error.message);
         },
         complete: () => {
           this.loading = false;
