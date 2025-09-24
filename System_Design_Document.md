@@ -619,14 +619,14 @@ Mỗi block được nối với block trước thông qua **Previous Hash**:
 
 ```mermaid
 graph LR
-    B0[Block 0<br/>Genesis<br/>prevHash: "genesis"<br/>hash: H0] --> B1[Block 1<br/>prevHash: H0<br/>hash: H1]
+    B0[Genesis Block<br/>hash: H0] --> B1[Block 1<br/>prevHash: H0<br/>hash: H1]
     B1 --> B2[Block 2<br/>prevHash: H1<br/>hash: H2]
     B2 --> B3[Block 3<br/>prevHash: H2<br/>hash: H3]
 
-    B0 --> H0
-    B1 --> H1
-    B2 --> H2
-    B3 --> H3
+    B0 --> H0((H0))
+    B1 --> H1((H1))
+    B2 --> H2((H2))
+    B3 --> H3((H3))
 ```
 
 **Công thức hash của block:**
@@ -708,14 +708,14 @@ func verifyBlock(block Block) bool {
 flowchart TD
     A[Start from Genesis Block] --> B[Verify Block 1]
     B --> C{Block Valid?}
-    C -->|No| D[❌ Blockchain INVALID]
+    C -->|No| D[INVALID Blockchain]
     C -->|Yes| E[Verify Next Block]
     E --> F{More Blocks?}
     F -->|Yes| B
-    F -->|No| G[✅ Blockchain VALID]
+    F -->|No| G[VALID Blockchain]
 
     E --> H[Check Chain Continuity]
-    H --> I{prevHash matches<br/>previous block hash?}
+    H --> I{prevHash matches previous block hash?}
     I -->|No| D
     I -->|Yes| F
 ```

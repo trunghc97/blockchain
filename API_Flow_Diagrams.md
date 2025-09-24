@@ -176,7 +176,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[🟢 Receive Contract ID] --> B[🟠 Query Events for Contract]
-    B --> C[🟠 Query Events for Token (token_{contractId})]
+    B --> C[🟠 Query Events for Token (token_contractId)]
     C --> D[🔵 Combine All Events]
     D --> E[🟠 Query Blocks Containing Event IDs]
     E --> F[🟠 Query Token Balances]
