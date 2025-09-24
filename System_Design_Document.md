@@ -540,6 +540,209 @@ flowchart TD
 ]
 ```
 
+## Blockchain Technical Details
+
+### Thuật toán Hash và Cơ chế Blockchain
+
+#### 1. Thuật toán Hash
+Hệ thống sử dụng **SHA256** làm thuật toán hash chính cho blockchain:
+
+```go
+func calculateBlockHash(blockNumber int64, timestamp, previousHash string, events []string) string {
+    hashData := map[string]interface{}{
+        "blockNumber":  blockNumber,
+        "timestamp":    timestamp,
+        "previousHash": previousHash,
+        "events":       events,
+    }
+
+    jsonData, err := json.Marshal(hashData)
+    if err != nil {
+        return ""
+    }
+
+    hash := sha256.Sum256(jsonData)
+    return hex.EncodeToString(hash[:])
+}
+```
+
+**Đặc điểm của SHA256:**
+- **Cryptographic Hash Function**: Một chiều, không thể reverse
+- **Deterministic**: Input giống nhau luôn tạo ra output giống nhau
+- **Avalanche Effect**: Thay đổi nhỏ trong input tạo ra thay đổi lớn trong output
+- **Collision Resistant**: Rất khó tìm 2 inputs khác nhau tạo ra cùng hash
+
+#### 2. Merkle Tree Implementation
+
+Hệ thống sử dụng **Merkle Tree** để tối ưu hóa việc verify các events trong block:
+
+```go
+func (b *BlockBuilder) calculateMerkleRoot(eventIds []string) string {
+    if len(eventIds) == 0 {
+        return b.calculateSHA256("")
+    }
+
+    // Calculate SHA256 for each event ID
+    hashes := make([]string, len(eventIds))
+    for i, eventId := range eventIds {
+        hashes[i] = b.calculateSHA256(eventId)
+    }
+
+    // Build merkle tree
+    for len(hashes) > 1 {
+        var newHashes []string
+        for i := 0; i < len(hashes); i += 2 {
+            left := hashes[i]
+            right := ""
+            if i+1 < len(hashes) {
+                right = hashes[i+1]
+            } else {
+                right = left // Duplicate last hash if odd number
+            }
+            newHashes = append(newHashes, b.calculateSHA256(left+right))
+        }
+        hashes = newHashes
+    }
+
+    return hashes[0]
+}
+```
+
+**Lợi ích của Merkle Tree:**
+- **Efficient Verification**: Có thể verify một event mà không cần toàn bộ events
+- **Data Integrity**: Phát hiện được thay đổi trong bất kỳ event nào
+- **Compact Representation**: Merkle root đại diện cho tất cả events
+
+#### 3. Cách nối các Chain với nhau
+
+Mỗi block được nối với block trước thông qua **Previous Hash**:
+
+```mermaid
+graph LR
+    B0[Block 0<br/>Genesis<br/>prevHash: "genesis"<br/>hash: H0] --> B1[Block 1<br/>prevHash: H0<br/>hash: H1]
+    B1 --> B2[Block 2<br/>prevHash: H1<br/>hash: H2]
+    B2 --> B3[Block 3<br/>prevHash: H2<br/>hash: H3]
+
+    B0 --> H0
+    B1 --> H1
+    B2 --> H2
+    B3 --> H3
+```
+
+**Công thức hash của block:**
+```
+Block_Hash = SHA256(prevHash + merkleRoot + timestamp)
+```
+
+**Genesis Block:**
+- `blockNumber = 1`
+- `prevHash = "genesis"`
+- `hash = SHA256("genesis" + merkleRoot + timestamp)`
+
+#### 4. Block Verification Algorithm
+
+Để verify một block, hệ thống kiểm tra:
+
+```go
+func verifyBlock(block Block) bool {
+    // 1. Verify block hash
+    expectedHash := calculateBlockHash(
+        block.BlockNumber,
+        block.Timestamp.Format(time.RFC3339),
+        block.PrevHash,
+        extractEventIds(block.Events)
+    )
+
+    if expectedHash != block.Hash {
+        return false // Block hash is invalid
+    }
+
+    // 2. Verify merkle root
+    eventIds := extractEventIds(block.Events)
+    expectedMerkleRoot := calculateMerkleRoot(eventIds)
+
+    if expectedMerkleRoot != block.MerkleRoot {
+        return false // Merkle root is invalid
+    }
+
+    // 3. Verify events exist and are valid
+    for _, event := range block.Events {
+        if !verifyEvent(event) {
+            return false // Event is invalid
+        }
+    }
+
+    return true // Block is valid
+}
+```
+
+**Các bước verification:**
+
+1. **Hash Verification**:
+   ```
+   calculated_hash = SHA256(blockNumber + timestamp + prevHash + events[])
+   if calculated_hash != block.hash → INVALID
+   ```
+
+2. **Merkle Root Verification**:
+   ```
+   calculated_merkle = buildMerkleTree(eventIds[])
+   if calculated_merkle != block.merkleRoot → INVALID
+   ```
+
+3. **Chain Continuity Verification**:
+   ```
+   if block.prevHash != previousBlock.hash → INVALID
+   ```
+
+4. **Event Verification**:
+   - Kiểm tra event tồn tại trong database
+   - Verify timestamp hợp lệ
+   - Kiểm tra business logic rules
+
+#### 5. Blockchain Integrity Verification
+
+Để verify toàn bộ blockchain:
+
+```mermaid
+flowchart TD
+    A[Start from Genesis Block] --> B[Verify Block 1]
+    B --> C{Block Valid?}
+    C -->|No| D[❌ Blockchain INVALID]
+    C -->|Yes| E[Verify Next Block]
+    E --> F{More Blocks?}
+    F -->|Yes| B
+    F -->|No| G[✅ Blockchain VALID]
+
+    E --> H[Check Chain Continuity]
+    H --> I{prevHash matches<br/>previous block hash?}
+    I -->|No| D
+    I -->|Yes| F
+```
+
+**Verification Rules:**
+- **Genesis Block**: prevHash = "genesis"
+- **Chain Continuity**: block[N].prevHash == block[N-1].hash
+- **No Double Spending**: Token balances không âm, tổng balance = token.total
+- **Business Rules**: Contract states hợp lệ, approvals đúng quyền
+
+#### 6. Security Features
+
+**Cryptographic Security:**
+- SHA256 collision resistance
+- Timestamp prevents replay attacks
+- Event ordering đảm bảo causality
+
+**Data Integrity:**
+- Merkle tree cho efficient verification
+- Block hash chaining
+- Immutable audit trail
+
+**Tamper Detection:**
+- Bất kỳ thay đổi nào trong events sẽ làm thay đổi merkle root
+- Thay đổi merkle root làm thay đổi block hash
+- Thay đổi block hash làm đứt chain continuity
+
 ## Thiết kế Database
 
 ### MongoDB Collections
