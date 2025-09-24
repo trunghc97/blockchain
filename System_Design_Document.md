@@ -1,0 +1,785 @@
+# Tài liệu Thiết kế Hệ thống Blockchain Token Trading
+
+## Mục lục
+1. [Tổng quan hệ thống](#tổng-quan-hệ-thống)
+2. [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
+3. [Luồng Use Case](#luồng-use-case)
+4. [Luồng Sequence Diagram](#luồng-sequence-diagram)
+5. [Thiết kế API](#thiết-kế-api)
+6. [Thiết kế Database](#thiết-kế-database)
+7. [Luồng Xử lý Nghiệp vụ](#luồng-xử-lý-nghiệp-vụ)
+
+## Tổng quan hệ thống
+
+### Mục đích
+Hệ thống Blockchain Token Trading là nền tảng phân quyền cho việc quản lý và giao dịch token trong chuỗi cung ứng. Hệ thống cho phép:
+- Tạo và phê duyệt hợp đồng thương mại
+- Phát hành token tự động khi hợp đồng được phê duyệt
+- Chuyển nhượng token giữa các bên tham gia
+- Tất toán token với ngân hàng
+- Ghi nhận tất cả giao dịch vào blockchain để đảm bảo tính minh bạch và không thể thay đổi
+
+### Phạm vi
+- Quản lý hợp đồng thương mại giữa Anchor (Người mua), Bank (Ngân hàng), và Suppliers (Người bán)
+- Phát hành token tự động bởi hệ thống
+- Giao dịch token peer-to-peer
+- Tất toán token với ngân hàng
+- Audit trail hoàn chỉnh trên blockchain
+
+## Kiến trúc hệ thống
+
+### Mô hình kết nối tổng thể
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        FE[Angular Frontend<br/>Port: 3000]
+    end
+
+    subgraph "API Gateway Layer"
+        JAVA[Java Spring Boot<br/>Port: 8080<br/>API Gateway & Business Logic]
+    end
+
+    subgraph "Blockchain Layer"
+        GO[Golang Microservice<br/>Port: 8081<br/>Blockchain Operations]
+    end
+
+    subgraph "Data Layer"
+        MONGO[(MongoDB<br/>Database)]
+    end
+
+    subgraph "Infrastructure"
+        DOCKER[Docker Compose<br/>Container Orchestration]
+        NETWORK[Docker Network<br/>ms-blockchain-network]
+    end
+
+    FE -->|HTTP/REST| JAVA
+    JAVA -->|HTTP/REST| GO
+    GO -->|MongoDB Driver| MONGO
+
+    DOCKER --> FE
+    DOCKER --> JAVA
+    DOCKER --> GO
+    DOCKER --> MONGO
+
+    NETWORK -.->|Inter-container<br/>communication| FE
+    NETWORK -.->|Inter-container<br/>communication| JAVA
+    NETWORK -.->|Inter-container<br/>communication| GO
+    NETWORK -.->|Inter-container<br/>communication| MONGO
+```
+
+### Kiến trúc Microservices
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Client Layer                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                 Angular Frontend                     │    │
+│  │  - Components: Contract, Token, Supplier, Bank      │    │
+│  │  - Services: API calls, Auth, Data management       │    │
+│  │  - UI: Material Design, Responsive                   │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                                 │
+                    HTTP/REST API (Port 8080)
+                                 │
+┌─────────────────────────────────────────────────────────────┐
+│                   Business Logic Layer                      │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Java Spring Boot API Gateway            │    │
+│  │  - Controllers: Contract, Token, Supplier            │    │
+│  │  - Services: Business logic, Validation              │    │
+│  │  - Models: DTOs, Entities                            │    │
+│  │  - Proxy: Blockchain operations to Go service        │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                                 │
+                  HTTP/REST API (Port 8081)
+                                 │
+┌─────────────────────────────────────────────────────────────┐
+│                  Blockchain Layer                           │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │           Golang Blockchain Microservice             │    │
+│  │  - Handlers: Contract, Token, Block operations       │    │
+│  │  - Models: Token, Balance, Block, Event              │    │
+│  │  - Blockchain: Event logging, Block creation         │    │
+│  │  - Database: Direct MongoDB operations               │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                                 │
+                      MongoDB Driver
+                                 │
+┌─────────────────────────────────────────────────────────────┐
+│                    Data Persistence Layer                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │                    MongoDB                           │    │
+│  │  Collections:                                        │    │
+│  │  - contracts: Contract data & approval status       │    │
+│  │  - tokens: Token metadata                            │    │
+│  │  - balances: Account balances                        │    │
+│  │  - events: Audit trail                               │    │
+│  │  - blocks: Blockchain blocks                         │    │
+│  │  - users: User accounts & roles                      │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Công nghệ sử dụng
+
+| Layer | Technology | Version | Purpose |
+|-------|------------|---------|---------|
+| Frontend | Angular | 15+ | Single Page Application |
+| Backend | Java Spring Boot | 3.x | REST API Gateway |
+| Blockchain | Golang | 1.19+ | Blockchain operations |
+| Database | MongoDB | 6.x | Document database |
+| Container | Docker | 20.x | Containerization |
+| Orchestration | Docker Compose | 2.x | Multi-container management |
+
+## Luồng Use Case
+
+### UC-001: Tạo hợp đồng thương mại
+**Actor**: Anchor (Người mua)
+**Mô tả**: Anchor tạo hợp đồng mới với danh sách suppliers và thông tin chi tiết
+**Điều kiện tiên quyết**: Anchor đã đăng nhập
+**Luồng chính**:
+1. Anchor nhập thông tin hợp đồng
+2. Hệ thống tạo ID hợp đồng
+3. Lưu hợp đồng vào database
+4. Ghi event và tạo block
+5. Thông báo thành công
+
+### UC-002: Ngân hàng phê duyệt hợp đồng
+**Actor**: Bank (Ngân hàng)
+**Mô tả**: Bank phê duyệt hợp đồng và hệ thống tự động phát hành token
+**Điều kiện tiên quyết**: Hợp đồng tồn tại, chưa được bank phê duyệt
+**Luồng chính**:
+1. Bank chọn hợp đồng cần phê duyệt
+2. Hệ thống kiểm tra quyền hạn
+3. Cập nhật trạng thái bankApproved = true
+4. Tính tổng giá trị hợp đồng
+5. Tạo token với Issuer = "SYSTEM"
+6. Tạo balance ban đầu cho Anchor
+7. Ghi event và tạo block
+8. Thông báo thành công
+
+### UC-003: Supplier phê duyệt hợp đồng
+**Actor**: Supplier (Người bán)
+**Mô tả**: Supplier phê duyệt phần của mình trong hợp đồng
+**Điều kiện tiên quyết**: Hợp đồng đã được bank phê duyệt
+**Luồng chính**:
+1. Supplier chọn hợp đồng cần phê duyệt
+2. Hệ thống kiểm tra quyền hạn
+3. Cập nhật trạng thái supplier
+4. Kiểm tra tất cả suppliers đã phê duyệt
+5. Nếu tất cả đã phê duyệt:
+   - Phân phối token cho tất cả suppliers
+   - Xóa balance của Anchor
+   - Cập nhật trạng thái hợp đồng
+6. Ghi event và tạo block
+7. Thông báo thành công
+
+### UC-004: Chuyển nhượng token
+**Actor**: Supplier
+**Mô tả**: Supplier chuyển token cho supplier khác
+**Điều kiện tiên quyết**: Supplier có balance token > 0
+**Luồng chính**:
+1. Supplier chọn token và số lượng
+2. Chọn người nhận
+3. Hệ thống kiểm tra balance đủ
+4. Cập nhật balance người gửi (-)
+5. Cập nhật balance người nhận (+)
+6. Ghi event và tạo block
+7. Kiểm tra nếu Anchor hết token thì tự động hoàn tất hợp đồng
+
+### UC-005: Tất toán token với ngân hàng
+**Actor**: Supplier
+**Mô tả**: Supplier tất toán toàn bộ token với ngân hàng
+**Điều kiện tiên quyết**: Supplier có balance token > 0
+**Luồng chính**:
+1. Supplier chọn token cần tất toán
+2. Hệ thống kiểm tra balance
+3. Xóa toàn bộ balance của supplier
+4. Ghi event tất toán
+5. Tạo block
+6. Thông báo thành công
+
+### UC-006: Xem lịch sử giao dịch
+**Actor**: Tất cả users
+**Mô tả**: Xem tất cả events và blocks liên quan đến một hợp đồng
+**Luồng chính**:
+1. Chọn hợp đồng
+2. Query tất cả events liên quan
+3. Query blocks chứa events
+4. Query balances hiện tại
+5. Hiển thị ledger hoàn chỉnh
+
+## Luồng Sequence Diagram
+
+### SD-001: Tạo và phê duyệt hợp đồng hoàn chỉnh
+
+```mermaid
+sequenceDiagram
+    participant A as Anchor
+    participant FE as Frontend
+    participant BE as Backend (Java)
+    participant BC as Blockchain (Go)
+    participant DB as MongoDB
+
+    %% Tạo hợp đồng
+    A->>FE: Nhập thông tin hợp đồng
+    FE->>BE: POST /api/contracts (contract data)
+    BE->>BC: POST /contract/create
+    BC->>DB: Insert contract
+    BC->>DB: Insert event CONTRACT_CREATED
+    BC->>DB: Insert block
+    BC-->>BE: Success response
+    BE-->>FE: Success response
+    FE-->>A: Hiển thị hợp đồng đã tạo
+
+    %% Bank phê duyệt
+    A->>FE: Yêu cầu bank phê duyệt
+    FE->>BE: POST /api/contracts/{id}/approve-bank
+    BE->>BC: POST /contract/{id}/approve-bank
+    BC->>DB: Update contract bankApproved=true
+    BC->>DB: Insert token (issuer=SYSTEM)
+    BC->>DB: Insert balance (anchor)
+    BC->>DB: Insert event BANK_APPROVED
+    BC->>DB: Insert block
+    BC-->>BE: Success + tokenId
+    BE-->>FE: Success + tokenId
+    FE-->>A: Hiển thị token đã tạo
+
+    %% Suppliers phê duyệt
+    A->>FE: Thông báo suppliers phê duyệt
+    loop Mỗi supplier
+        FE->>BE: POST /api/contracts/{id}/approve (supplierId)
+        BE->>BC: POST /contract/{id}/approve
+        BC->>DB: Update supplier status
+        BC->>DB: Check all suppliers approved
+        alt Tất cả đã approve
+            BC->>DB: Update contract approved=true
+            BC->>DB: Insert balances cho tất cả suppliers
+            BC->>DB: Delete anchor balance
+            BC->>DB: Insert event CONTRACT_FULLY_APPROVED
+        else
+            BC->>DB: Insert event SUPPLIER_APPROVED
+        end
+        BC->>DB: Insert block
+        BC-->>BE: Success
+        BE-->>FE: Success
+    end
+    FE-->>A: Hợp đồng hoàn tất
+```
+
+### SD-002: Chuyển nhượng token
+
+```mermaid
+sequenceDiagram
+    participant S1 as Supplier 1
+    participant FE as Frontend
+    participant BE as Backend (Java)
+    participant BC as Blockchain (Go)
+    participant DB as MongoDB
+
+    S1->>FE: Chọn token & số lượng, chọn người nhận
+    FE->>BE: POST /api/v1/tokens/transfer
+    BE->>BC: POST /token/transfer
+    BC->>DB: Get sender balance
+    BC->>DB: Validate balance >= amount
+    BC->>DB: Update sender balance (-amount)
+    BC->>DB: Get/Update receiver balance (+amount)
+    BC->>DB: Insert event TOKEN_TRANSFERRED
+    BC->>DB: Insert block
+    BC->>DB: Check if anchor balance == 0
+    alt Anchor hết token
+        BC->>DB: Update contract status APPROVED
+    end
+    BC-->>BE: Success
+    BE-->>FE: Success
+    FE-->>S1: Transfer thành công
+```
+
+### SD-003: Tất toán token
+
+```mermaid
+sequenceDiagram
+    participant S as Supplier
+    participant FE as Frontend
+    participant BE as Backend (Java)
+    participant BC as Blockchain (Go)
+    participant DB as MongoDB
+
+    S->>FE: Click "Settle with Bank" cho token
+    FE->>BE: POST /api/v1/tokens/settle
+    BE->>BC: POST /token/settle
+    BC->>DB: Get supplier balance
+    BC->>DB: Validate balance exists
+    BC->>DB: Delete supplier balance
+    BC->>DB: Insert event TOKEN_SETTLED
+    BC->>DB: Insert block
+    BC-->>BE: Success
+    BE-->>FE: Success
+    FE-->>S: Settlement thành công
+```
+
+## Thiết kế API
+
+### API Gateway (Java Spring Boot - Port 8080)
+
+#### 1. Contract APIs
+
+##### POST /api/contracts - Create Contract
+**Mô tả**: Tạo hợp đồng mới
+
+**Input**:
+```json
+{
+  "buyer": "ANCHOR001",
+  "bankId": "BANK001",
+  "description": "Supply Chain Contract",
+  "suppliers": [
+    {
+      "supplierId": "SUP001",
+      "name": "Supplier 1",
+      "allocatedAmount": 50000.00
+    }
+  ],
+  "totalAmount": 50000.00
+}
+```
+
+**Output**:
+```json
+{
+  "id": "contract_1234567890",
+  "status": "success"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid contract data
+- 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive request] --> B[Validate input]
+    B --> C[Call Go service /contract/create]
+    C --> D[Return response]
+```
+
+##### POST /api/contracts/{id}/approve-bank - Bank Approve Contract
+**Mô tả**: Ngân hàng phê duyệt hợp đồng
+
+**Input**:
+```json
+{
+  "bankId": "BANK001"
+}
+```
+
+**Output**:
+```json
+{
+  "status": "success",
+  "message": "Contract approved by bank successfully",
+  "tokenId": "token_contract_123"
+}
+```
+
+**Mã lỗi**:
+- 404: Contract not found
+- 403: Bank does not have permission
+- 500: Internal server error
+
+#### 2. Token APIs
+
+##### POST /api/v1/tokens/transfer - Transfer Token
+**Mô tả**: Chuyển token giữa các tài khoản
+
+**Input**:
+```json
+{
+  "tokenId": "token_contract_123",
+  "from": "SUP001",
+  "to": "SUP002",
+  "amount": 10000.00
+}
+```
+
+**Output**:
+```json
+{
+  "status": "transferred",
+  "message": "Token transferred successfully"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid transfer data / Insufficient balance
+- 404: Token not found
+- 500: Internal server error
+
+##### POST /api/v1/tokens/settle - Settle Token
+**Mô tả**: Tất toán token với ngân hàng
+
+**Input**:
+```json
+{
+  "tokenId": "token_contract_123",
+  "supplierId": "SUP001"
+}
+```
+
+**Output**:
+```json
+{
+  "status": "settled",
+  "message": "Token settled successfully with bank",
+  "settledAmount": 25000.00
+}
+```
+
+**Mã lỗi**:
+- 400: Supplier has no balance
+- 404: Token not found
+- 500: Internal server error
+
+### Blockchain Service APIs (Golang - Port 8081)
+
+#### 1. Contract APIs
+
+##### POST /contract/create
+**Input/Output**: Same as Java API
+
+##### POST /contract/{id}/approve-bank
+**Input/Output**: Same as Java API
+
+##### POST /contract/{id}/approve
+**Input**:
+```json
+{
+  "supplierId": "SUP001"
+}
+```
+
+**Output**:
+```json
+{
+  "status": "success",
+  "message": "Contract approved successfully"
+}
+```
+
+#### 2. Token APIs
+
+##### POST /token/transfer
+**Input/Output**: Same as Java API
+
+##### POST /token/settle
+**Input/Output**: Same as Java API
+
+##### GET /token/{id}
+**Output**:
+```json
+{
+  "id": "token_contract_123",
+  "contractId": "contract_123",
+  "symbol": "TK123",
+  "total": 50000.00,
+  "issuer": "SYSTEM",
+  "owner": "ANCHOR001",
+  "createdAt": "2024-01-01T10:00:00Z"
+}
+```
+
+##### GET /tokens
+**Output**:
+```json
+[
+  {
+    "id": "token_contract_123",
+    "contractId": "contract_123",
+    "symbol": "TK123",
+    "total": 50000.00,
+    "issuer": "SYSTEM",
+    "owner": "ANCHOR001",
+    "createdAt": "2024-01-01T10:00:00Z"
+  }
+]
+```
+
+#### 3. Query APIs
+
+##### GET /contract/list
+**Output**:
+```json
+[
+  {
+    "_id": "contract_123",
+    "description": "Supply Chain Contract",
+    "anchorId": "ANCHOR001",
+    "bankId": "BANK001",
+    "bankApproved": true,
+    "suppliers": [...],
+    "approved": true,
+    "createdAt": "2024-01-01T09:00:00Z"
+  }
+]
+```
+
+##### GET /balances/account/{accountId}
+**Output**:
+```json
+[
+  {
+    "tokenId": "token_contract_123",
+    "account": "SUP001",
+    "balance": 25000.00
+  }
+]
+```
+
+## Thiết kế Database
+
+### MongoDB Collections
+
+#### 1. contracts
+```javascript
+{
+  _id: "contract_1234567890",
+  description: "Supply Chain Contract Q1 2024",
+  anchorId: "ANCHOR001",
+  supplierId: "SUP001", // Primary supplier
+  bankId: "BANK001",
+  bankApproved: true,
+  amount: 50000.00,
+  suppliers: [
+    {
+      supplierId: "SUP001",
+      name: "ABC Corporation",
+      amount: 30000.00,
+      status: "APPROVED"
+    },
+    {
+      supplierId: "SUP002",
+      name: "XYZ Ltd",
+      amount: 20000.00,
+      status: "APPROVED"
+    }
+  ],
+  approvers: ["SUP001", "SUP002"],
+  approved: true,
+  createdAt: "2024-01-01T09:00:00Z",
+  status: "APPROVED"
+}
+```
+
+**Indexes**:
+- `{bankId: 1}`
+- `{approved: 1}`
+- `{bankApproved: 1}`
+
+#### 2. tokens
+```javascript
+{
+  _id: "token_contract_1234567890",
+  contractId: "contract_1234567890",
+  symbol: "TK567890",
+  total: 50000.00,
+  issuer: "SYSTEM",
+  owner: "ANCHOR001",
+  createdAt: "2024-01-01T10:00:00Z"
+}
+```
+
+**Indexes**:
+- `{contractId: 1}`
+- `{issuer: 1}`
+- `{owner: 1}`
+
+#### 3. balances
+```javascript
+{
+  tokenId: "token_contract_1234567890",
+  account: "SUP001",
+  balance: 25000.00,
+  transferredFrom: "ANCHOR001"
+}
+```
+
+**Indexes**:
+- `{tokenId: 1, account: 1}` (unique compound index)
+- `{account: 1}`
+
+#### 4. events
+```javascript
+{
+  eventId: "evt_1234567890",
+  eventType: "CONTRACT_CREATED", // or CONTRACT_BANK_APPROVED, SUPPLIER_APPROVED, etc.
+  contractId: "contract_1234567890",
+  tokenId: "token_contract_1234567890", // optional
+  supplierId: "SUP001", // optional
+  bankId: "BANK001", // optional
+  anchorId: "ANCHOR001", // optional
+  totalAmount: 50000.00, // optional
+  settledAmount: 25000.00, // optional
+  description: "Bank approved contract and system auto-generated token for anchor",
+  timestamp: "2024-01-01T10:00:00Z"
+}
+```
+
+**Indexes**:
+- `{contractId: 1}`
+- `{tokenId: 1}`
+- `{eventType: 1}`
+- `{timestamp: 1}`
+
+#### 5. blocks
+```javascript
+{
+  blockNumber: 1,
+  timestamp: "2024-01-01T10:00:00Z",
+  events: ["evt_1234567890"],
+  previousHash: "genesis",
+  hash: "a1b2c3d4e5f6...",
+  merkleRoot: "m1n2o3p4q5r6..."
+}
+```
+
+**Indexes**:
+- `{blockNumber: 1}` (unique)
+- `{timestamp: 1}`
+
+#### 6. users
+```javascript
+{
+  id: "SUP001",
+  username: "supplier1",
+  password: "$2a$10$encrypted_password",
+  role: "SUPPLIER" // ANCHOR, BANK, SUPPLIER
+}
+```
+
+**Indexes**:
+- `{id: 1}` (unique)
+- `{username: 1}` (unique)
+- `{role: 1}`
+
+### Database Relationships
+
+```
+contracts (1) ──── (1) tokens
+    │                    │
+    │                    │
+    └─── suppliers[] ────┼─── (many) balances
+                         │
+                         └─── (many) events
+                              │
+                              └─── (many) blocks
+```
+
+### Data Flow Patterns
+
+1. **Contract Creation**: `contracts` → `events` → `blocks`
+2. **Token Issuance**: `contracts` → `tokens` → `balances` → `events` → `blocks`
+3. **Token Transfer**: `balances` → `events` → `blocks`
+4. **Token Settlement**: `balances` → `events` → `blocks`
+
+## Luồng Xử lý Nghiệp vụ
+
+### 1. Contract Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft: Contract Created
+    Draft --> BankApproval: Bank Approves
+    BankApproval --> SupplierApproval: Suppliers Approve
+    SupplierApproval --> Active: All Approved
+    Active --> Completed: All Tokens Settled
+    Completed --> [*]
+
+    Draft --> Cancelled: Cancelled
+    BankApproval --> Cancelled: Cancelled
+    SupplierApproval --> Cancelled: Cancelled
+    Cancelled --> [*]
+```
+
+### 2. Token Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: Token Created<br/>(by System)
+    Created --> Distributed: Distributed to<br/>Suppliers
+    Distributed --> Trading: Peer-to-peer<br/>Trading
+    Trading --> Settled: Settled with Bank
+    Settled --> [*]
+
+    Trading --> PartiallySettled: Some Suppliers<br/>Settled
+    PartiallySettled --> Settled: All Settled
+```
+
+### 3. Business Rules
+
+#### Contract Rules
+- Chỉ Anchor có thể tạo contract
+- Bank phải phê duyệt trước khi suppliers có thể phê duyệt
+- Tất cả suppliers phải phê duyệt để contract active
+- Contract chỉ có thể bị hủy khi ở trạng thái Draft
+
+#### Token Rules
+- Token được tạo tự động bởi hệ thống khi bank phê duyệt
+- Token ban đầu thuộc về Anchor
+- Token được phân phối cho suppliers khi tất cả đã phê duyệt
+- Suppliers có thể chuyển token cho nhau
+- Suppliers có thể tất toán token với bank bất cứ lúc nào
+
+#### Balance Rules
+- Balance không được âm
+- Tổng balance của tất cả accounts cho một token luôn bằng token.total
+- Balance được cập nhật atomically trong transfer operations
+
+#### Blockchain Rules
+- Mọi operation quan trọng đều tạo event
+- Mọi event được ghi vào block
+- Block hash được tính toán từ previous block + current data
+- Blockchain đảm bảo immutability và audit trail
+
+### 4. Security Considerations
+
+#### Authentication & Authorization
+- JWT tokens cho user authentication
+- Role-based access control (ANCHOR, BANK, SUPPLIER)
+- API-level authorization checks
+
+#### Data Integrity
+- Blockchain hashing đảm bảo data integrity
+- Database transactions cho multi-document operations
+- Audit trail hoàn chỉnh
+
+#### Network Security
+- HTTPS cho tất cả communications
+- CORS configuration
+- Docker network isolation
+
+### 5. Performance Considerations
+
+#### Database Optimization
+- Compound indexes cho frequent queries
+- Pagination cho large result sets
+- Connection pooling
+
+#### Caching Strategy
+- Redis cache cho frequently accessed data (future enhancement)
+- In-memory caching cho user sessions
+
+#### Scalability
+- Horizontal scaling với multiple instances
+- Database sharding strategy
+- Load balancing configuration
+
+---
+
+*Document Version: 1.0*
+*Last Updated: January 2024*
+*Author: System Design Team*
