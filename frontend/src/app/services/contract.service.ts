@@ -33,10 +33,22 @@ export class ContractService {
     return throwError(error);
   }
 
-  getContracts(): Observable<Contract[]> {
-    return this.http.get<Contract[]>(this.apiUrl, { headers: this.getHeaders() }).pipe(
+  getContracts(type?: string, status?: string): Observable<Contract[]> {
+    const params: any = {};
+    if (type) params.type = type;
+    if (status) params.status = status;
+
+    return this.http.get<Contract[]>(this.apiUrl, {
+      headers: this.getHeaders(),
+      params
+    }).pipe(
       catchError(this.handleError.bind(this))
     );
+  }
+
+  // Legacy method for backward compatibility
+  getAllContracts(): Observable<Contract[]> {
+    return this.getContracts();
   }
 
   getLedgerData(contractId: string): Observable<any> {

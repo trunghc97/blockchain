@@ -108,7 +108,7 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 
     public LedgerResponse queryLedger(String contractId) {
@@ -130,7 +130,7 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 
     public Map<String, Object> transferToken(Map<String, Object> transferData) {
@@ -158,7 +158,7 @@ public class BlockchainService {
                     List.class
             );
             System.out.println("DEBUG: Response: " + response.getBody());
-            return response.getBody();
+            return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
         } catch (Exception e) {
             System.out.println("DEBUG: Error calling blockchain: " + e.getMessage());
             throw e;
@@ -172,7 +172,7 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 
     public List<Map<String, Object>> getAllTokens() {
@@ -182,7 +182,7 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 
     public List<Map<String, Object>> getBalancesByAccount(String accountId) {
@@ -192,7 +192,7 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 
     public List<Map<String, Object>> getBalancesByToken(String tokenId) {
@@ -202,6 +202,6 @@ public class BlockchainService {
                 null,
                 List.class
         );
-        return response.getBody();
+        return response.getBody() != null ? response.getBody() : new java.util.ArrayList<>();
     }
 }

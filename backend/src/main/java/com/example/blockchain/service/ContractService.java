@@ -3,6 +3,8 @@ package com.example.blockchain.service;
 import com.example.blockchain.model.Contract;
 import com.example.blockchain.model.SupplierAmount;
 import com.example.blockchain.model.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -12,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +24,7 @@ import java.util.Objects;
 
 @Service
 public class ContractService {
+    private static final Logger logger = LoggerFactory.getLogger(ContractService.class);
     private final MongoTemplate mongoTemplate;
     private final BlockchainService blockchainService;
     private final UserService userService;
@@ -121,6 +125,9 @@ public class ContractService {
     public List<Contract> getContracts() {
         // Query contracts from blockchain service since that's now the authoritative source
         List<Map<String, Object>> blockchainContracts = blockchainService.listContracts();
+        if (blockchainContracts == null) {
+            return new ArrayList<>();
+        }
         return blockchainContracts.stream()
             .map(this::convertBlockchainContractToLocal)
             .collect(java.util.stream.Collectors.toList());
@@ -210,6 +217,9 @@ public class ContractService {
     public List<Contract> getContractsByUser(String username) {
         // Get all contracts from blockchain service and filter by user
         List<Map<String, Object>> allBlockchainContracts = blockchainService.listContracts();
+        if (allBlockchainContracts == null) {
+            return new ArrayList<>();
+        }
         return allBlockchainContracts.stream()
             .map(this::convertBlockchainContractToLocal)
             .filter(contract -> isUserInContract(contract, username))
@@ -408,7 +418,8 @@ public class ContractService {
 
     public List<Map<String, Object>> getAllTokens() {
         try {
-            return blockchainService.getAllTokens();
+            List<Map<String, Object>> tokens = blockchainService.getAllTokens();
+            return tokens != null ? tokens : new ArrayList<>();
         } catch (Exception e) {
             System.err.println("Error getting all tokens: " + e.getMessage());
             throw new RuntimeException("Blockchain service unavailable", e);
@@ -441,10 +452,160 @@ public class ContractService {
 
     public List<Map<String, Object>> getBalancesByToken(String tokenId) {
         try {
-            return blockchainService.getBalancesByToken(tokenId);
+            List<Map<String, Object>> balances = blockchainService.getBalancesByToken(tokenId);
+            return balances != null ? balances : new ArrayList<>();
         } catch (Exception e) {
             System.err.println("Error getting balances by token: " + e.getMessage());
             throw new RuntimeException("Blockchain service unavailable", e);
         }
+    }
+
+    /**
+     * Get contracts with role-based filtering
+     * @param currentUser authenticated user
+     * @param type filter type: "status" for contract status, "approval" for approval workflow
+     * @param status filter value
+     * @return filtered list of contracts
+     */
+    public List<Contract> getContractsWithFiltering(User currentUser, String type, String status) {
+        String username = currentUser.getUsername();
+        String role = currentUser.getRole();
+
+        logger.info("Filtering contracts for user: {} (role: {}), type: {}, status: {}", username, role, type, status);
+
+        // Get all contracts from blockchain service
+        List<Contract> allContracts = getContracts();
+        logger.info("Total contracts found: {}", allContracts != null ? allContracts.size() : 0);
+
+        if (allContracts == null || allContracts.isEmpty()) {
+            logger.info("No contracts found for user {}", username);
+            return new ArrayList<>();
+        }
+
+        // Debug: Log contract details
+        for (Contract contract : allContracts) {
+            logger.debug("Contract: id={}, buyer={}, status={}", contract.getContractId(), contract.getBuyer(), contract.getStatus());
+        }
+
+        List<Contract> filteredContracts = allContracts.stream()
+            .filter(contract -> applyRoleBasedFilter(contract, currentUser, type, status))
+            .collect(java.util.stream.Collectors.toList());
+
+        logger.info("Filtered contracts count: {} for user {}", filteredContracts.size(), username);
+        return filteredContracts;
+    }
+
+    /**
+     * Apply role-based filtering logic
+     */
+    private boolean applyRoleBasedFilter(Contract contract, User currentUser, String type, String status) {
+        String username = currentUser.getUsername();
+        String role = currentUser.getRole();
+
+        logger.debug("Applying filter for contract {} to user {} (role: {}), type: {}, status: {}",
+            contract.getContractId(), username, role, type, status);
+
+        // Type = "status": Filter by contract status (PENDING, READY_TO_EXECUTE, EXECUTED)
+        if ("status".equals(type) && status != null) {
+            boolean matches = status.equals(contract.getStatus());
+            logger.debug("Status filter: {} == {} -> {}", status, contract.getStatus(), matches);
+            return matches;
+        }
+
+        // Type = "approval": Filter by approval workflow
+        if ("approval".equals(type) && status != null) {
+            boolean matches = applyApprovalFilter(contract, currentUser, status);
+            logger.debug("Approval filter result: {}", matches);
+            return matches;
+        }
+
+        // Default: Role-based filtering without type/status
+        switch (role.toUpperCase()) {
+            case "ANCHOR":
+                // Anchor sees all contracts they created
+                boolean anchorMatches = username.equals(contract.getBuyer());
+                logger.debug("ANCHOR filter: {} == {} -> {}", username, contract.getBuyer(), anchorMatches);
+                return anchorMatches;
+
+            case "BANK":
+                // Bank sees contracts that need their token issuance
+                boolean bankMatches = contract.getStatus() != null &&
+                       ("PENDING".equals(contract.getStatus()) ||
+                        "READY_TO_EXECUTE".equals(contract.getStatus()));
+                logger.debug("BANK filter for contract status {}: {}", contract.getStatus(), bankMatches);
+                return bankMatches;
+
+            case "SUPPLIER":
+                // Supplier sees contracts where they are allocated
+                boolean supplierMatches = contract.getSuppliers() != null &&
+                       contract.getSuppliers().stream()
+                           .anyMatch(supplier -> username.equals(supplier.getSupplierId()));
+                logger.debug("SUPPLIER filter: contract has suppliers for {} -> {}", username, supplierMatches);
+                return supplierMatches;
+
+            default:
+                logger.debug("Unknown role: {}, denying access", role);
+                return false;
+        }
+    }
+
+    /**
+     * Apply approval-specific filtering
+     */
+    private boolean applyApprovalFilter(Contract contract, User currentUser, String status) {
+        String username = currentUser.getUsername();
+        String role = currentUser.getRole();
+
+        switch (status.toLowerCase()) {
+            case "pending_approval":
+                if ("SUPPLIER".equals(role)) {
+                    // Supplier sees contracts waiting for their approval
+                    return contract.getSuppliers() != null &&
+                           contract.getSuppliers().stream()
+                               .anyMatch(supplier -> username.equals(supplier.getSupplierId()) &&
+                                                    "PENDING".equals(supplier.getStatus()));
+                }
+                break;
+
+            case "approved":
+                if ("SUPPLIER".equals(role)) {
+                    // Supplier sees contracts they have approved
+                    return contract.getSuppliers() != null &&
+                           contract.getSuppliers().stream()
+                               .anyMatch(supplier -> username.equals(supplier.getSupplierId()) &&
+                                                    "READY_TO_EXECUTE".equals(supplier.getStatus()));
+                }
+                break;
+
+            case "needs_token_issuance":
+                if ("BANK".equals(role)) {
+                    // Bank sees contracts that need token issuance
+                    return "PENDING".equals(contract.getStatus());
+                }
+                break;
+
+            case "token_issued":
+                if ("BANK".equals(role)) {
+                    // Bank sees contracts where they have issued tokens
+                    return "READY_TO_EXECUTE".equals(contract.getStatus()) ||
+                           "EXECUTED".equals(contract.getStatus());
+                }
+                break;
+
+            case "executed":
+                // All roles can see executed contracts they are involved in
+                if ("ANCHOR".equals(role)) {
+                    return username.equals(contract.getBuyer()) &&
+                           "EXECUTED".equals(contract.getStatus());
+                } else if ("SUPPLIER".equals(role)) {
+                    return contract.getSuppliers() != null &&
+                           contract.getSuppliers().stream()
+                               .anyMatch(supplier -> username.equals(supplier.getSupplierId())) &&
+                           "EXECUTED".equals(contract.getStatus());
+                }
+                break;
+        }
+
+        return false;
     }
 }

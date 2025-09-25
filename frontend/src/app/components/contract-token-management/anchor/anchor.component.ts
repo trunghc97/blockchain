@@ -1,20 +1,23 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormArray } from '@angular/forms';
 import { ContractTokenService } from '../../../services/contract-token.service';
+import { ContractService } from '../../../services/contract.service';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-anchor',
   templateUrl: './anchor.component.html',
   styleUrls: ['./anchor.component.css']
 })
-export class AnchorComponent {
+export class AnchorComponent implements OnInit {
   contractForm: FormGroup;
   contracts: any[] = [];
   loading = false;
 
   constructor(
     private fb: FormBuilder,
-    private contractTokenService: ContractTokenService
+    private contractTokenService: ContractTokenService,
+    private contractService: ContractService
   ) {
     this.contractForm = this.fb.group({
       id: [''],
@@ -68,9 +71,18 @@ export class AnchorComponent {
     }
   }
 
-  loadContracts(): void {
-    // Load contracts created by this anchor
-    // Implementation would depend on backend API for filtering by anchor
+  async loadContracts(): Promise<void> {
+    try {
+      this.loading = true;
+      // Use new API - backend will filter contracts based on authenticated user role
+      this.contracts = await firstValueFrom(this.contractService.getContracts());
+      console.log('Loaded contracts for anchor:', this.contracts);
+    } catch (error) {
+      console.error('Error loading contracts:', error);
+      alert('Error loading contracts: ' + (error as any).message);
+    } finally {
+      this.loading = false;
+    }
   }
 
   ngOnInit(): void {

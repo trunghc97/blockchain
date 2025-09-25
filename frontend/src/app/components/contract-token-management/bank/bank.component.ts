@@ -36,10 +36,21 @@ export class BankComponent implements OnInit {
 
   loadContracts(): void {
     this.loading.contracts = true;
-    this.contractService.getContracts().subscribe({
-      next: (contracts) => {
-        this.contracts = contracts;
-        this.loading.contracts = false;
+    // Bank sees contracts that need token issuance or are ready to execute
+    this.contractService.getContracts('status', 'PENDING').subscribe({
+      next: (pendingContracts) => {
+        // Also load contracts that are ready to execute
+        this.contractService.getContracts('status', 'READY_TO_EXECUTE').subscribe({
+          next: (readyContracts) => {
+            this.contracts = [...pendingContracts, ...readyContracts];
+            this.loading.contracts = false;
+          },
+          error: (error) => {
+            console.error('Error loading ready contracts:', error);
+            this.contracts = pendingContracts; // At least show pending ones
+            this.loading.contracts = false;
+          }
+        });
       },
       error: (error) => {
         console.error('Error loading contracts:', error);

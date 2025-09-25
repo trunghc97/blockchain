@@ -2,7 +2,9 @@ package com.example.blockchain.controller;
 
 import com.example.blockchain.model.ApproveRequest;
 import com.example.blockchain.model.Contract;
+import com.example.blockchain.model.User;
 import com.example.blockchain.service.ContractService;
+import com.example.blockchain.service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,10 +22,12 @@ import java.util.Map;
 public class ContractV1Controller {
     private static final Logger logger = LoggerFactory.getLogger(ContractV1Controller.class);
     private final ContractService contractService;
+    private final UserService userService;
     private final ObjectMapper objectMapper;
 
-    public ContractV1Controller(ContractService contractService, ObjectMapper objectMapper) {
+    public ContractV1Controller(ContractService contractService, UserService userService, ObjectMapper objectMapper) {
         this.contractService = contractService;
+        this.userService = userService;
         this.objectMapper = objectMapper;
     }
 
@@ -36,9 +40,12 @@ public class ContractV1Controller {
             logger.info("Creating contract with form-data: {}", contractJson);
             Contract contract = objectMapper.readValue(contractJson, Contract.class);
 
-            // TEMP: Skip authentication for testing
-            // User currentUser = userService.getCurrentUser();
-            // contract.setBuyer(currentUser.getUsername());
+            // Get current authenticated user
+            User currentUser = userService.getCurrentUser();
+            if (currentUser == null) {
+                return ResponseEntity.status(401).body("User not authenticated");
+            }
+            contract.setBuyer(currentUser.getUsername());
 
             Contract created = contractService.createContract(contract, file);
             logger.info("Contract created successfully with ID: {}", created.getContractId());
@@ -57,6 +64,13 @@ public class ContractV1Controller {
         try {
             logger.info("Creating contract with JSON: {}", contract);
 
+            // Get current authenticated user
+            User currentUser = userService.getCurrentUser();
+            if (currentUser == null) {
+                return ResponseEntity.status(401).body("User not authenticated");
+            }
+            contract.setBuyer(currentUser.getUsername());
+
             Contract created = contractService.createContract(contract, null);
             logger.info("Contract created successfully with ID: {}", created.getContractId());
             return ResponseEntity.ok(created);
@@ -70,10 +84,21 @@ public class ContractV1Controller {
     }
 
     @GetMapping
-    public ResponseEntity<?> getContracts() {
+    public ResponseEntity<?> getContracts(
+        @RequestParam(value = "type", required = false) String type,
+        @RequestParam(value = "status", required = false) String status
+    ) {
         try {
-            // TEMP: Skip authentication for testing
-            List<Contract> contracts = contractService.getContracts();
+            // Get current authenticated user
+            User currentUser = userService.getCurrentUser();
+            if (currentUser == null) {
+                return ResponseEntity.status(401).body("User not authenticated");
+            }
+
+            logger.info("Getting contracts for user: {} (role: {}), type: {}, status: {}",
+                currentUser.getUsername(), currentUser.getRole(), type, status);
+
+            List<Contract> contracts = contractService.getContractsWithFiltering(currentUser, type, status);
             return ResponseEntity.ok(contracts);
         } catch (Exception e) {
             logger.error("Error getting contracts", e);
@@ -179,6 +204,27 @@ public class ContractV1Controller {
         } catch (Exception e) {
             logger.error("Error getting balances by token", e);
             return ResponseEntity.internalServerError().body("Error getting balances by token: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/debug/all")
+    public ResponseEntity<?> getAllContractsDebug() {
+        try {
+            // Get all contracts without filtering for debugging
+            List<Contract> contracts = contractService.getContracts();
+            logger.info("DEBUG: Total contracts in system: {}", contracts.size());
+
+            // Log contract details
+            for (Contract contract : contracts) {
+                logger.info("DEBUG Contract: id={}, buyer={}, status={}, anchorId={}",
+                    contract.getContractId(), contract.getBuyer(), contract.getStatus(),
+                    contract.getContractId()); // anchorId would be in blockchain data
+            }
+
+            return ResponseEntity.ok(contracts);
+        } catch (Exception e) {
+            logger.error("Error getting debug contracts", e);
+            return ResponseEntity.internalServerError().body("Error getting debug contracts: " + e.getMessage());
         }
     }
 }

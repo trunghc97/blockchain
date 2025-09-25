@@ -45,17 +45,10 @@ export class ContractApprovalComponent implements OnInit {
 
   async loadContracts() {
     try {
-      const allContracts = await firstValueFrom(this.contractService.getContracts());
+      // Use new API with approval filtering - backend will handle role-based filtering
+      const contracts = await firstValueFrom(this.contractService.getContracts('approval', 'pending_approval'));
 
-      // Lọc contracts có suppliers mà user hiện tại có thể approve VÀ đã được bank duyệt
-      this.contracts = allContracts.filter(contract =>
-        contract.bankApproved === true &&
-        contract.suppliers.some(s =>
-          (s.supplierId === this.currentUser?.id ||
-           (s.supplierId == null && s.name === this.currentUser?.username)) &&
-          s.status === 'PENDING'
-        )
-      );
+      this.contracts = contracts;
 
       // Khởi tạo trạng thái approving cho mỗi contract
       this.contracts.forEach(contract => {

@@ -58,6 +58,7 @@ export class ContractStatusComponent implements OnInit {
   async loadContracts() {
     this.loading = true;
     try {
+      // Use new API without filters to get all contracts user can see based on their role
       this.contracts = await firstValueFrom(this.contractService.getContracts());
       this.filteredContracts = [...this.contracts];
       console.log('Loaded contracts with supplier names:', this.contracts);
