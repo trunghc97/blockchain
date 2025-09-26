@@ -5,7 +5,7 @@ import com.example.blockchain.model.Contract;
 import com.example.blockchain.model.LedgerResponse;
 import com.example.blockchain.model.TransferRequest;
 import com.example.blockchain.service.ContractService;
-import com.example.blockchain.service.BlockchainService;
+import com.example.blockchain.service.PeerRoutingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,16 +23,16 @@ import java.util.HashMap;
 public class ContractController {
     private static final Logger logger = LoggerFactory.getLogger(ContractController.class);
     private final ContractService contractService;
-    private final BlockchainService blockchainService;
+    private final PeerRoutingService peerRoutingService;
     private final ObjectMapper objectMapper;
 
     public ContractController(
         ContractService contractService,
-        BlockchainService blockchainService,
+        PeerRoutingService peerRoutingService,
         ObjectMapper objectMapper
     ) {
         this.contractService = contractService;
-        this.blockchainService = blockchainService;
+        this.peerRoutingService = peerRoutingService;
         this.objectMapper = objectMapper;
     }
 
@@ -138,8 +138,8 @@ public class ContractController {
     @GetMapping("/{id}/ledger")
     public ResponseEntity<?> getContractLedger(@PathVariable("id") String contractId) {
         try {
-            // Call blockchain service to get ledger data
-            LedgerResponse ledgerResponse = blockchainService.queryLedger(contractId);
+            // Call peer routing service to get ledger data
+            LedgerResponse ledgerResponse = peerRoutingService.queryLedger(contractId);
 
             if (ledgerResponse == null || ledgerResponse.getData() == null) {
                 return ResponseEntity.notFound().build();
@@ -171,7 +171,7 @@ public class ContractController {
             transferData.put("to", transferRequest.getTo());
             transferData.put("amount", transferRequest.getAmount());
 
-            Map<String, Object> blockchainResponse = blockchainService.transferToken(transferData);
+            Map<String, Object> blockchainResponse = peerRoutingService.transferToken(transferData);
 
             if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
                 return ResponseEntity.ok(blockchainResponse);
@@ -191,7 +191,7 @@ public class ContractController {
     public ResponseEntity<?> getTokensIssuedByBank(@PathVariable("bankId") String bankId) {
         System.out.println("DEBUG: getTokensIssuedByBank called with bankId: " + bankId);
         try {
-            List<Map<String, Object>> tokens = blockchainService.getTokensIssuedByBank(bankId);
+            List<Map<String, Object>> tokens = peerRoutingService.getTokensIssuedByBank(bankId);
             return ResponseEntity.ok(tokens);
         } catch (Exception e) {
             logger.error("Error getting tokens issued by bank", e);

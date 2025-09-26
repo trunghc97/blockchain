@@ -12,128 +12,184 @@
 ## Tổng quan hệ thống
 
 ### Mục đích
-Hệ thống Blockchain Token Trading là nền tảng phân quyền cho việc quản lý và giao dịch token trong chuỗi cung ứng. Hệ thống cho phép:
-- Tạo và phê duyệt hợp đồng thương mại
-- Phát hành token tự động khi hợp đồng được phê duyệt
-- Chuyển nhượng token giữa các bên tham gia
-- Tất toán token với ngân hàng
-- Ghi nhận tất cả giao dịch vào blockchain để đảm bảo tính minh bạch và không thể thay đổi
+Hệ thống Blockchain Permissioned Network cho Supply Chain Finance là nền tảng phân quyền với kiến trúc multi-peer node và Orderer cluster. Hệ thống cho phép:
+- **Permissioned Network**: 3 peer nodes độc lập (Main Bank, Supplier, Anchor) với World State DB riêng biệt
+- **Orderer Cluster**: 3 orderer nodes đảm bảo global consensus và block ordering
+- **Smart API Gateway**: Routing thông minh dựa trên business logic và user roles
+- **Cross-peer Communication**: gRPC-based communication giữa các peer nodes
+- **Immutable Audit Trail**: Global ordering đảm bảo tính nhất quán và không thể thay đổi
+- **Scalable Architecture**: Dễ dàng mở rộng thêm peer nodes cho nhiều ngân hàng và suppliers
 
 ### Phạm vi
-- Quản lý hợp đồng thương mại giữa Anchor (Người mua), Bank (Ngân hàng), và Suppliers (Người bán)
-- Phát hành token tự động bởi hệ thống
-- Giao dịch token peer-to-peer
-- Tất toán token với ngân hàng
-- Audit trail hoàn chỉnh trên blockchain
+- **Multi-peer Architecture**: Tách biệt logic và data giữa Main Bank, Supplier, và Anchor peers
+- **Orderer Cluster**: Global consensus cho tất cả transactions across peers
+- **Business Logic Routing**: API Gateway route requests dựa trên user role và operation type
+- **Private Networks**: Tách biệt public access và internal peer communication
+- **World State Isolation**: Mỗi peer có MongoDB riêng cho data privacy và performance
+- **Cross-peer Validation**: gRPC communication để validate transactions across peers
 
 ## Kiến trúc hệ thống
 
-### Mô hình kết nối tổng thể
+### Mô hình kết nối tổng thể với kiến trúc mới
 
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        FE[Angular Frontend<br/>Port: 3000]
+        FE[Angular Frontend<br/>Port: 4200<br/>Single Page Application]
     end
 
     subgraph "API Gateway Layer"
-        JAVA[Java Spring Boot<br/>Port: 8080<br/>API Gateway & Business Logic]
+        JAVA[Java Spring Boot<br/>Port: 8080<br/>Smart Routing & Auth]
     end
 
-    subgraph "Blockchain Layer"
-        GO[Golang Microservice<br/>Port: 8081<br/>Blockchain Operations]
+    subgraph "Permissioned Peer Network"
+        subgraph "Peer Main Bank"
+            MB_API[REST API<br/>Port: 8082]
+            MB_GRPC[gRPC Service<br/>Port: 9092]
+            MB_DB[(MongoDB<br/>blockchain_main_bank)]
+        end
+
+        subgraph "Peer Supplier"
+            SUP_API[REST API<br/>Port: 8083]
+            SUP_GRPC[gRPC Service<br/>Port: 9093]
+            SUP_DB[(MongoDB<br/>blockchain_supplier)]
+        end
+
+        subgraph "Peer Anchor"
+            ANC_API[REST API<br/>Port: 8084]
+            ANC_GRPC[gRPC Service<br/>Port: 9094]
+            ANC_DB[(MongoDB<br/>blockchain_anchor)]
+        end
     end
 
-    subgraph "Data Layer"
-        MONGO[(MongoDB<br/>Database)]
+    subgraph "Orderer Cluster (Public)"
+        ORD1[Orderer Node 1<br/>Port: 7050<br/>Raft Consensus]
+        ORD2[Orderer Node 2<br/>Port: 7060<br/>Raft Follower]
+        ORD3[Orderer Node 3<br/>Port: 7070<br/>Raft Follower]
     end
 
-    subgraph "Infrastructure"
-        DOCKER[Docker Compose<br/>Container Orchestration]
-        NETWORK[Docker Network<br/>ms-blockchain-network]
+    subgraph "Shared Services"
+        SHARED_DB[(MongoDB Shared<br/>User Management<br/>blockchain_shared)]
     end
 
-    FE -->|HTTP/REST| JAVA
-    JAVA -->|HTTP/REST| GO
-    GO -->|MongoDB Driver| MONGO
+    subgraph "Network Topology"
+        PUBLIC[Public Network<br/>External Access]
+        PEER_NW[Peer Network<br/>Internal gRPC<br/>Isolated]
+        ORDERER_NW[Orderer Network<br/>Consensus<br/>Isolated]
+    end
 
-    DOCKER --> FE
-    DOCKER --> JAVA
-    DOCKER --> GO
-    DOCKER --> MONGO
+    %% Connections
+    FE -->|HTTP| JAVA
+    JAVA -->|Smart Routing| MB_API
+    JAVA -->|Smart Routing| SUP_API
+    JAVA -->|Smart Routing| ANC_API
 
-    NETWORK -.->|Inter-container<br/>communication| FE
-    NETWORK -.->|Inter-container<br/>communication| JAVA
-    NETWORK -.->|Inter-container<br/>communication| GO
-    NETWORK -.->|Inter-container<br/>communication| MONGO
+    MB_GRPC <-->|Cross-peer<br/>Validation| SUP_GRPC
+    MB_GRPC <-->|Cross-peer<br/>Validation| ANC_GRPC
+    SUP_GRPC <-->|Cross-peer<br/>Validation| ANC_GRPC
+
+    MB_GRPC -->|Submit Blocks| ORD1
+    SUP_GRPC -->|Submit Blocks| ORD1
+    ANC_GRPC -->|Submit Blocks| ORD1
+
+    ORD1 <-->|Raft Consensus| ORD2
+    ORD1 <-->|Raft Consensus| ORD3
+
+    ORD1 -->|Ordered Blocks| MB_GRPC
+    ORD1 -->|Ordered Blocks| SUP_GRPC
+    ORD1 -->|Ordered Blocks| ANC_GRPC
+
+    MB_API --> MB_DB
+    SUP_API --> SUP_DB
+    ANC_API --> ANC_DB
+    JAVA --> SHARED_DB
+
+    PUBLIC -.->|External Access| FE
+    PUBLIC -.->|External Access| JAVA
+    PEER_NW -.->|Internal Comm| MB_GRPC
+    PEER_NW -.->|Internal Comm| SUP_GRPC
+    PEER_NW -.->|Internal Comm| ANC_GRPC
+    ORDERER_NW -.->|Consensus| ORD1
+    ORDERER_NW -.->|Consensus| ORD2
+    ORDERER_NW -.->|Consensus| ORD3
 ```
 
-### Kiến trúc Microservices
+### Kiến trúc Microservices với Multi-peer Network
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Client Layer                             │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                 Angular Frontend                     │    │
-│  │  - Components: Contract, Token, Supplier, Bank      │    │
-│  │  - Services: API calls, Auth, Data management       │    │
-│  │  - UI: Material Design, Responsive                   │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                                 │
-                    HTTP/REST API (Port 8080)
-                                 │
-┌─────────────────────────────────────────────────────────────┐
-│                   Business Logic Layer                      │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │              Java Spring Boot API Gateway            │    │
-│  │  - Controllers: Contract, Token, Supplier            │    │
-│  │  - Services: Business logic, Validation              │    │
-│  │  - Models: DTOs, Entities                            │    │
-│  │  - Proxy: Blockchain operations to Go service        │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                                 │
-                  HTTP/REST API (Port 8081)
-                                 │
-┌─────────────────────────────────────────────────────────────┐
-│                  Blockchain Layer                           │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │           Golang Blockchain Microservice             │    │
-│  │  - Handlers: Contract, Token, Block operations       │    │
-│  │  - Models: Token, Balance, Block, Event              │    │
-│  │  - Blockchain: Event logging, Block creation         │    │
-│  │  - Database: Direct MongoDB operations               │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                                 │
-                      MongoDB Driver
-                                 │
-┌─────────────────────────────────────────────────────────────┐
-│                    Data Persistence Layer                   │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │                    MongoDB                           │    │
-│  │  Collections:                                        │    │
-│  │  - contracts: Contract data & approval status       │    │
-│  │  - tokens: Token metadata                            │    │
-│  │  - balances: Account balances                        │    │
-│  │  - events: Audit trail                               │    │
-│  │  - blocks: Blockchain blocks                         │    │
-│  │  - users: User accounts & roles                      │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Client Layer                                │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                 Angular Frontend                           │    │
+│  │  - Components: Contract, Token, Supplier, Bank            │    │
+│  │  - Services: API calls, Auth, Data management             │    │
+│  │  - UI: Material Design, Responsive                         │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+                                     │
+                        HTTP/REST API (Port 8080)
+                                     │
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Smart API Gateway Layer                         │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │            Java Spring Boot API Gateway                    │    │
+│  │  - Controllers: Contract, Token, Supplier                  │    │
+│  │  - PeerRoutingService: Business logic routing              │    │
+│  │  - Models: DTOs, Entities                                  │    │
+│  │  - Auth: JWT validation, Role-based access                 │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+                                     │
+                  Smart HTTP Routing (Business Logic Based)
+                                     │
+┌─────────────────────────────────────────────────────────────────────┐
+│                   Permissioned Peer Network                          │
+│  ┌─────┬─────┬─────┐    ┌─────┬─────┬─────┐    ┌─────┬─────┐         │
+│  │MB   │SUP  │ANC  │    │MB   │SUP  │ANC  │    │MB   │SUP  │ANC  │  │
+│  │REST │REST │REST │    │gRPC │gRPC │gRPC │    │DB   │DB   │DB   │  │
+│  │API  │API  │API  │    │Srv  │Srv  │Srv  │    │Inst │Inst │Inst │  │
+│  └─────┴─────┴─────┘    └─────┴─────┴─────┘    └─────┴─────┴─────┘  │
+│     Port: 8082-8084         Port: 9092-9094        Isolated DBs     │
+└─────────────────────────────────────────────────────────────────────┘
+                                     │
+                          gRPC Cross-peer Communication
+                                     │
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Orderer Cluster (Public)                        │
+│  ┌─────┬─────┬─────┐    ┌─────────────────────────────┐             │
+│  │ORD1 │ORD2 │ORD3 │    │      Raft Consensus         │             │
+│  │7050 │7060 │7070 │    │  - Global Block Ordering    │             │
+│  └─────┴─────┴─────┘    │  - Transaction Sequencing   │             │
+│                         │  - Consensus Protocol       │             │
+│                         └─────────────────────────────┘             │
+└─────────────────────────────────────────────────────────────────────┘
+                                     │
+                           Globally Ordered Blocks
+                                     │
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Distributed World State                           │
+│  ┌─────┬─────┬─────┬─────┐    ┌─────┬─────┬─────┬─────┐             │
+│  │CTR  │TOK  │BAL  │EVT  │    │CTR  │TOK  │BAL  │EVT  │   ...       │
+│  │Main │Main│Main │Main │    │Sup  │Sup  │Sup  │Sup  │   ...       │
+│  │Bank │Bank│Bank │Bank │    │Bank │Bank │Bank │Bank │             │
+│  └─────┴─────┴─────┴─────┘    └─────┴─────┴─────┴─────┘             │
+│     Isolated Collections             Isolated Collections            │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Công nghệ sử dụng
+### Công nghệ sử dụng với kiến trúc mới
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| Frontend | Angular | 15+ | Single Page Application |
-| Backend | Java Spring Boot | 3.x | REST API Gateway |
-| Blockchain | Golang | 1.19+ | Blockchain operations |
-| Database | MongoDB | 6.x | Document database |
-| Container | Docker | 20.x | Containerization |
-| Orchestration | Docker Compose | 2.x | Multi-container management |
+| **Frontend** | Angular | 17 | Single Page Application với role-based components |
+| **API Gateway** | Java Spring Boot | 3.1.5 | Smart routing, authentication, business logic |
+| **Peer Nodes** | Golang | 1.21 | Permissioned blockchain operations, gRPC services |
+| **Orderer Cluster** | Golang | 1.21 | Raft consensus, global block ordering |
+| **Databases** | MongoDB | 7.x | Isolated World State databases per peer |
+| **Communication** | gRPC + REST | - | Cross-peer validation và API access |
+| **Container** | Docker | 24.x | Multi-service containerization |
+| **Orchestration** | Docker Compose | 2.20 | Complex network topology management |
+| **Networks** | Docker Networks | - | Isolated public/private/orderer networks |
 
 ## Luồng Use Case
 

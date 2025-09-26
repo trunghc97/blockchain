@@ -1,6 +1,6 @@
 package com.example.blockchain.controller;
 
-import com.example.blockchain.service.BlockchainService;
+import com.example.blockchain.service.PeerRoutingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -14,17 +14,17 @@ import java.util.Map;
 @CrossOrigin(origins = "*")
 public class TokenController {
     private static final Logger logger = LoggerFactory.getLogger(TokenController.class);
-    private final BlockchainService blockchainService;
+    private final PeerRoutingService peerRoutingService;
 
-    public TokenController(BlockchainService blockchainService) {
-        this.blockchainService = blockchainService;
+    public TokenController(PeerRoutingService peerRoutingService) {
+        this.peerRoutingService = peerRoutingService;
     }
 
     @GetMapping("/{tokenId}")
     public ResponseEntity<?> getToken(@PathVariable("tokenId") String tokenId) {
         try {
             logger.info("Getting token with ID: {}", tokenId);
-            Map<String, Object> token = blockchainService.getToken(tokenId);
+            Map<String, Object> token = peerRoutingService.getToken(tokenId);
             if (token == null) {
                 logger.warn("Token not found: {}", tokenId);
                 return ResponseEntity.notFound().build();
@@ -43,7 +43,7 @@ public class TokenController {
     public ResponseEntity<?> transferToken(@RequestBody Map<String, Object> transferData) {
         try {
             logger.info("Transferring token: {}", transferData);
-            Map<String, Object> result = blockchainService.transferToken(transferData);
+            Map<String, Object> result = peerRoutingService.transferToken(transferData);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Error transferring token", e);
@@ -55,7 +55,7 @@ public class TokenController {
     public ResponseEntity<?> getTokensIssuedByBank(@PathVariable("bankId") String bankId) {
         try {
             logger.info("Getting tokens issued by bank: {}", bankId);
-            List<Map<String, Object>> tokens = blockchainService.getTokensIssuedByBank(bankId);
+            List<Map<String, Object>> tokens = peerRoutingService.getTokensIssuedByBank(bankId);
             return ResponseEntity.ok(tokens);
         } catch (Exception e) {
             logger.error("Error getting tokens issued by bank", e);
@@ -67,7 +67,7 @@ public class TokenController {
     public ResponseEntity<?> getAllTokens() {
         try {
             logger.info("Getting all tokens");
-            List<Map<String, Object>> tokens = blockchainService.getAllTokens();
+            List<Map<String, Object>> tokens = peerRoutingService.getAllTokens();
             return ResponseEntity.ok(tokens);
         } catch (Exception e) {
             logger.error("Error getting all tokens", e);
@@ -79,7 +79,7 @@ public class TokenController {
     public ResponseEntity<?> getBalancesByAccount(@PathVariable("accountId") String accountId) {
         try {
             logger.info("Getting balances for account: {}", accountId);
-            List<Map<String, Object>> balances = blockchainService.getBalancesByAccount(accountId);
+            List<Map<String, Object>> balances = peerRoutingService.getBalancesByAccount(accountId);
             return ResponseEntity.ok(balances);
         } catch (Exception e) {
             logger.error("Error getting balances for account", e);
@@ -91,7 +91,7 @@ public class TokenController {
     public ResponseEntity<?> getBalancesByToken(@PathVariable("tokenId") String tokenId) {
         try {
             logger.info("Getting balances for token: {}", tokenId);
-            List<Map<String, Object>> balances = blockchainService.getBalancesByToken(tokenId);
+            List<Map<String, Object>> balances = peerRoutingService.getBalancesByToken(tokenId);
             return ResponseEntity.ok(balances);
         } catch (Exception e) {
             logger.error("Error getting balances for token", e);
@@ -103,7 +103,7 @@ public class TokenController {
     public ResponseEntity<?> settleToken(@RequestBody Map<String, Object> settleData) {
         try {
             logger.info("Settling token: {}", settleData);
-            Map<String, Object> result = blockchainService.settleToken(settleData);
+            Map<String, Object> result = peerRoutingService.settleToken(settleData);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Error settling token", e);

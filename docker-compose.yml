@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Frontend (unchanged)
   frontend:
     build: ./frontend
     ports:
@@ -8,50 +9,203 @@ services:
     depends_on:
       - backend
     networks:
-      - blockchain-network
+      - public-network
 
+  # API Gateway (updated with peer routing)
   backend:
     build: ./backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_DATA_MONGODB_HOST=mongo
+      - SPRING_DATA_MONGODB_HOST=mongo-shared
       - SPRING_DATA_MONGODB_PORT=27017
-      - SPRING_DATA_MONGODB_DATABASE=blockchain
+      - SPRING_DATA_MONGODB_DATABASE=blockchain_shared
       - SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE=admin
       - SPRING_DATA_MONGODB_USERNAME=root
       - SPRING_DATA_MONGODB_PASSWORD=example
+      # Peer routing configuration
+      - PEER_MAIN_BANK_URL=http://peer-main-bank:8082
+      - PEER_SUPPLIER_URL=http://peer-supplier:8083
+      - PEER_ANCHOR_URL=http://peer-anchor:8084
     depends_on:
-      - mongo
-      - ms-blockchain
+      - mongo-shared
+      - peer-main-bank
+      - peer-supplier
+      - peer-anchor
     networks:
-      - blockchain-network
+      - public-network
+      - peer-network
 
-  ms-blockchain:
-    build: ./ms-blockchain
+  # Orderer Cluster (3 nodes)
+  orderer-ord1:
+    build:
+      context: ./orderer-cluster
+      dockerfile: Dockerfile
     ports:
-      - "8081:8081"
+      - "7050:7050"
     environment:
-      - MONGO_URI=mongodb://root:example@mongo:27017/blockchain?authSource=admin
-    depends_on:
-      - mongo
+      - ORDERER_NODE_ID=ord1
+      - ORDERER_PORT=7050
+    volumes:
+      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
     networks:
-      - blockchain-network
+      - orderer-network
+      - peer-network
 
-  mongo:
+  orderer-ord2:
+    build:
+      context: ./orderer-cluster
+      dockerfile: Dockerfile
+    ports:
+      - "7060:7060"
+    environment:
+      - ORDERER_NODE_ID=ord2
+      - ORDERER_PORT=7060
+    volumes:
+      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
+    networks:
+      - orderer-network
+      - peer-network
+
+  orderer-ord3:
+    build:
+      context: ./orderer-cluster
+      dockerfile: Dockerfile
+    ports:
+      - "7070:7070"
+    environment:
+      - ORDERER_NODE_ID=ord3
+      - ORDERER_PORT=7070
+    volumes:
+      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
+    networks:
+      - orderer-network
+      - peer-network
+
+  # Peer Nodes
+  peer-main-bank:
+    build: ./peer-main-bank
+    ports:
+      - "8082:8082"
+      - "9092:9092"
+    environment:
+      - PEER_NODE_TYPE=main-bank
+      - PEER_NODE_ID=main-bank-peer-1
+      - PEER_PORT=8082
+      - PEER_GRPC_PORT=9092
+      - ORDERER_ADDR=orderer-ord1:7050
+      - MONGO_URI=mongodb://root:example@mongo-main-bank:27017/blockchain_main_bank?authSource=admin
+    depends_on:
+      - mongo-main-bank
+      - orderer-ord1
+    networks:
+      - peer-network
+
+  peer-supplier:
+    build: ./peer-supplier
+    ports:
+      - "8083:8083"
+      - "9093:9093"
+    environment:
+      - PEER_NODE_TYPE=supplier
+      - PEER_NODE_ID=supplier-peer-1
+      - PEER_PORT=8083
+      - PEER_GRPC_PORT=9093
+      - ORDERER_ADDR=orderer-ord1:7050
+      - MONGO_URI=mongodb://root:example@mongo-supplier:27017/blockchain_supplier?authSource=admin
+    depends_on:
+      - mongo-supplier
+      - orderer-ord1
+    networks:
+      - peer-network
+
+  peer-anchor:
+    build: ./peer-anchor
+    ports:
+      - "8084:8084"
+      - "9094:9094"
+    environment:
+      - PEER_NODE_TYPE=anchor
+      - PEER_NODE_ID=anchor-peer-1
+      - PEER_PORT=8084
+      - PEER_GRPC_PORT=9094
+      - ORDERER_ADDR=orderer-ord1:7050
+      - MONGO_URI=mongodb://root:example@mongo-anchor:27017/blockchain_anchor?authSource=admin
+    depends_on:
+      - mongo-anchor
+      - orderer-ord1
+    networks:
+      - peer-network
+
+  # MongoDB Instances (separate for each peer - World State DB)
+  mongo-shared:
     image: mongo:latest
     ports:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain
+      MONGO_INITDB_DATABASE: blockchain_shared
     volumes:
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-      - ./data/mongodb:/data/db
+      - ./data/mongodb-shared:/data/db
     networks:
-      - blockchain-network
+      - public-network
 
+  mongo-main-bank:
+    image: mongo:latest
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: blockchain_main_bank
+    volumes:
+      - ./peer-main-bank/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./data/mongodb-main-bank:/data/db
+    networks:
+      - peer-network
+
+  mongo-supplier:
+    image: mongo:latest
+    ports:
+      - "27019:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: blockchain_supplier
+    volumes:
+      - ./peer-supplier/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./data/mongodb-supplier:/data/db
+    networks:
+      - peer-network
+
+  mongo-anchor:
+    image: mongo:latest
+    ports:
+      - "27020:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+      MONGO_INITDB_DATABASE: blockchain_anchor
+    volumes:
+      - ./peer-anchor/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      - ./data/mongodb-anchor:/data/db
+    networks:
+      - peer-network
+
+# Network topology
 networks:
-  blockchain-network:
+  # Public-facing network for external access
+  public-network:
     driver: bridge
+
+  # Private network for peer-to-peer communication
+  peer-network:
+    driver: bridge
+    internal: true
+
+  # Isolated network for orderer consensus
+  orderer-network:
+    driver: bridge
+    internal: true

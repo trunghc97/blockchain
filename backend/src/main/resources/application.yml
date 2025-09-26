@@ -14,8 +14,14 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
 
-blockchain:
-  url: http://ms-blockchain:8081
+# Peer routing configuration
+peer:
+  main-bank:
+    url: ${PEER_MAIN_BANK_URL:http://peer-main-bank:8082}
+  supplier:
+    url: ${PEER_SUPPLIER_URL:http://peer-supplier:8083}
+  anchor:
+    url: ${PEER_ANCHOR_URL:http://peer-anchor:8084}
 
 logging:
   level:

@@ -1,0 +1,102 @@
+# Orderer Genesis Configuration
+# This file defines the initial configuration for the Orderer cluster
+
+orderer:
+  type: etcdraft
+  addresses:
+    - ord1:7050
+    - ord2:7060
+    - ord3:7070
+
+  etcdraft:
+    consenters:
+      - host: ord1
+        port: 7050
+        client_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+        server_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+      - host: ord2
+        port: 7060
+        client_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+        server_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+      - host: ord3
+        port: 7070
+        client_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+        server_tls_cert: /etc/hyperledger/fabric/tls/server.crt
+
+    options:
+      tick_interval: 500ms
+      election_tick: 10
+      heartbeat_tick: 1
+      max_inflight_blocks: 5
+      snapshot_interval_size: 16MB
+
+channel:
+  consortium: SampleConsortium
+  application:
+    organizations:
+      - name: MainBankMSP
+        id: MainBankMSP
+        msp_dir: /etc/hyperledger/fabric/msp/mainbank
+        policies:
+          readers:
+            type: signature
+            rule: "OR('MainBankMSP.admin', 'MainBankMSP.peer', 'MainBankMSP.client')"
+          writers:
+            type: signature
+            rule: "OR('MainBankMSP.admin', 'MainBankMSP.client')"
+          admins:
+            type: signature
+            rule: "OR('MainBankMSP.admin')"
+          endorsement:
+            type: signature
+            rule: "OR('MainBankMSP.peer')"
+
+      - name: SupplierMSP
+        id: SupplierMSP
+        msp_dir: /etc/hyperledger/fabric/msp/supplier
+        policies:
+          readers:
+            type: signature
+            rule: "OR('SupplierMSP.admin', 'SupplierMSP.peer', 'SupplierMSP.client')"
+          writers:
+            type: signature
+            rule: "OR('SupplierMSP.admin', 'SupplierMSP.client')"
+          admins:
+            type: signature
+            rule: "OR('SupplierMSP.admin')"
+          endorsement:
+            type: signature
+            rule: "OR('SupplierMSP.peer')"
+
+      - name: AnchorMSP
+        id: AnchorMSP
+        msp_dir: /etc/hyperledger/fabric/msp/anchor
+        policies:
+          readers:
+            type: signature
+            rule: "OR('AnchorMSP.admin', 'AnchorMSP.peer', 'AnchorMSP.client')"
+          writers:
+            type: signature
+            rule: "OR('AnchorMSP.admin', 'AnchorMSP.client')"
+          admins:
+            type: signature
+            rule: "OR('AnchorMSP.admin')"
+          endorsement:
+            type: signature
+            rule: "OR('AnchorMSP.peer')"
+
+capabilities:
+  channel: V2_0
+  orderer: V2_0
+  application: V2_5
+
+policies:
+  readers:
+    type: implicit_meta
+    rule: "ANY Readers"
+  writers:
+    type: implicit_meta
+    rule: "ANY Writers"
+  admins:
+    type: implicit_meta
+    rule: "MAJORITY Admins"

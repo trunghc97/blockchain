@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package blockchain;
+option go_package = "shared/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// Block represents a blockchain block
+message Block {
+  int64 block_number = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  repeated Transaction transactions = 3;
+  string previous_hash = 4;
+  string hash = 5;
+  string peer_id = 6;
+  string orderer_id = 7;
+  string merkle_root = 8;
+}
+
+// Transaction represents a blockchain transaction
+message Transaction {
+  string transaction_id = 1;
+  string transaction_type = 2;
+  string contract_id = 3;
+  string token_id = 4;
+  string sender_id = 5;
+  string receiver_id = 6;
+  double amount = 7;
+  string payload = 8;
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+// Peer communication service
+service PeerService {
+  rpc SubmitTransaction (SubmitTransactionRequest) returns (SubmitTransactionResponse);
+  rpc GetBlocks (GetBlocksRequest) returns (GetBlocksResponse);
+  rpc SyncWorldState (SyncWorldStateRequest) returns (SyncWorldStateResponse);
+  rpc ValidateTransaction (ValidateTransactionRequest) returns (ValidateTransactionResponse);
+}
+
+// Orderer communication service
+service OrdererService {
+  rpc SubmitBlock (SubmitBlockRequest) returns (SubmitBlockResponse);
+  rpc GetOrderedBlocks (GetOrderedBlocksRequest) returns (GetOrderedBlocksResponse);
+  rpc RequestConsensus (RequestConsensusRequest) returns (RequestConsensusResponse);
+}
+
+// Peer service messages
+message SubmitTransactionRequest {
+  string peer_id = 1;
+  Transaction transaction = 2;
+}
+
+message SubmitTransactionResponse {
+  bool success = 1;
+  string message = 2;
+  string transaction_id = 3;
+}
+
+message GetBlocksRequest {
+  string peer_id = 1;
+  int64 start_block = 2;
+  int64 end_block = 3;
+}
+
+message GetBlocksResponse {
+  repeated Block blocks = 1;
+}
+
+message SyncWorldStateRequest {
+  string peer_id = 1;
+  string last_sync_hash = 2;
+}
+
+message SyncWorldStateResponse {
+  bool success = 1;
+  string message = 2;
+  repeated Block new_blocks = 3;
+}
+
+message ValidateTransactionRequest {
+  string peer_id = 1;
+  Transaction transaction = 2;
+}
+
+message ValidateTransactionResponse {
+  bool valid = 1;
+  string message = 2;
+  repeated string validation_errors = 3;
+}
+
+// Orderer service messages
+message SubmitBlockRequest {
+  string peer_id = 1;
+  Block block = 2;
+}
+
+message SubmitBlockResponse {
+  bool success = 1;
+  string message = 2;
+  string block_hash = 3;
+}
+
+message GetOrderedBlocksRequest {
+  string peer_id = 1;
+  int64 last_block_number = 2;
+}
+
+message GetOrderedBlocksResponse {
+  repeated Block blocks = 1;
+}
+
+message RequestConsensusRequest {
+  string orderer_id = 1;
+  Block proposed_block = 2;
+}
+
+message RequestConsensusResponse {
+  bool consensus_reached = 1;
+  string message = 2;
+  Block agreed_block = 3;
+}

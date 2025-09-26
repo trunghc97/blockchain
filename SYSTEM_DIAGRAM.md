@@ -1,14 +1,15 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với Token Management
+# Hệ thống Blockchain Supply Chain Finance (SCF) với Permissioned Network
 
-## Tổng quan kiến trúc
+## Tổng quan kiến trúc mới
 
-Hệ thống blockchain permissioned cho Supply Chain Finance với đầy đủ chức năng quản lý hợp đồng và token transfer, bao gồm:
+Hệ thống blockchain permissioned với kiến trúc multi-peer node, Orderer cluster và API Gateway routing thông minh:
 
-- **Permissioned Blockchain**: Chỉ các node được ủy quyền tham gia
-- **Event Sourcing**: Tất cả thay đổi được ghi thành events
-- **Token Issuance**: Tự động phát hành token khi tạo hợp đồng
-- **Token Transfer**: Chuyển giao token giữa các bên
-- **Immutable Ledger**: Audit trail không thể thay đổi
+- **Permissioned Network**: 3 peer nodes (Main Bank, Supplier, Anchor) với World State DB riêng biệt
+- **Orderer Cluster**: 3 orderer nodes đảm bảo consensus và block ordering
+- **API Gateway Routing**: Smart routing dựa trên business logic và user roles
+- **Private Networks**: Tách biệt public-facing và peer-to-peer communication
+- **Event Sourcing**: Tất cả thay đổi được ghi thành events và ordered bởi Orderer cluster
+- **Token Management**: Multi-peer token circulation với cross-peer validation
 
 ```mermaid
 graph TB
@@ -25,62 +26,88 @@ graph TB
         end
     end
 
-    subgraph "Backend (Spring Boot 3.1.5)"
-        API[REST API Gateway<br/>Port 8080]
+    subgraph "API Gateway (Spring Boot 3.1.5)"
+        AR[API Router<br/>Port 8080<br/>Smart Routing Logic]
         AUTH_S[Authentication Service<br/>JWT Tokens]
-        CONT[Contract Controller<br/>File Upload, CRUD]
-        TOK_S[Token Service<br/>Transfer Logic]
-        BC_C[Blockchain Client<br/>ms-blockchain integration]
+        PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "ms-blockchain (Go 1.21)"
-        REST[REST API<br/>Port 8081]
-        subgraph "Business Logic"
-            CON_H[Contract Handlers<br/>Create, Approve]
-            TOK_H[Token Handlers<br/>Transfer, Query]
-            LED_H[Ledger Handlers<br/>Blocks, Events]
+    subgraph "Orderer Cluster (Public)"
+        ORD1[Orderer Node 1<br/>Port 7050<br/>Consensus Leader]
+        ORD2[Orderer Node 2<br/>Port 7060<br/>Consensus Follower]
+        ORD3[Orderer Node 3<br/>Port 7070<br/>Consensus Follower]
+    end
+
+    subgraph "Peer Main Bank (Permissioned)"
+        MB_API[REST API<br/>Port 8082]
+        MB_GRPC[gRPC Service<br/>Port 9092]
+        subgraph "Main Bank Logic"
+            MB_CON[Contract Approval<br/>Bank Validation]
+            MB_TOK[Token Issuance<br/>Bank Authority]
+            MB_LED[Ledger Management<br/>Bank Oversight]
         end
-        BLDR[Block Builder<br/>Auto-build every 10s]
+        MB_DB[(MongoDB<br/>World State<br/>blockchain_main_bank)]
     end
 
-    subgraph "MongoDB (World State)"
-        USR[users collection<br/>Role-based auth]
-        CON[contracts collection<br/>SCF contracts + files]
-        TOK[tokens collection<br/>Digital assets]
-        BAL[balances collection<br/>Account balances]
-        EVT[events collection<br/>Blockchain events]
-        BLK[blocks collection<br/>Immutable ledger]
+    subgraph "Peer Supplier (Permissioned)"
+        SUP_API[REST API<br/>Port 8083]
+        SUP_GRPC[gRPC Service<br/>Port 9093]
+        subgraph "Supplier Logic"
+            SUP_APP[Contract Approval<br/>Supplier Validation]
+            SUP_TOK[Token Transfer<br/>P2P Circulation]
+            SUP_BAL[Balance Management<br/>Token Holdings]
+        end
+        SUP_DB[(MongoDB<br/>World State<br/>blockchain_supplier)]
     end
 
-    ANC --> API
-    BNK --> API
-    SUP --> API
+    subgraph "Peer Anchor (Permissioned)"
+        ANC_API[REST API<br/>Port 8084]
+        ANC_GRPC[gRPC Service<br/>Port 9094]
+        subgraph "Anchor Logic"
+            ANC_CON[Contract Creation<br/>Anchor Authority]
+            ANC_TOK[Token Reception<br/>Initial Ownership]
+            ANC_LED[Contract Ledger<br/>Anchor Tracking]
+        end
+        ANC_DB[(MongoDB<br/>World State<br/>blockchain_anchor)]
+    end
 
-    API --> AUTH_S
-    API --> CONT
-    API --> TOK_S
-    CONT --> BC_C
-    TOK_S --> BC_C
+    subgraph "Shared Database"
+        SHARED_DB[(MongoDB Shared<br/>User Management<br/>blockchain_shared)]
+    end
 
-    BC_C --> REST
-    REST --> CON_H
-    REST --> TOK_H
-    REST --> LED_H
+    %% Frontend connections
+    ANC --> AR
+    BNK --> AR
+    SUP --> AR
 
-    CON_H --> USR
-    CON_H --> CON
-    TOK_H --> TOK
-    TOK_H --> BAL
-    LED_H --> EVT
-    LED_H --> BLK
+    %% API Gateway routing
+    AR --> PR
+    PR --> MB_API
+    PR --> SUP_API
+    PR --> ANC_API
 
-    BLDR --> EVT
-    BLDR --> BLK
+    %% Orderer connections (consensus)
+    MB_GRPC --> ORD1
+    SUP_GRPC --> ORD1
+    ANC_GRPC --> ORD1
+    ORD1 <--> ORD2
+    ORD1 <--> ORD3
+
+    %% Peer-to-peer communication
+    MB_GRPC <--> SUP_GRPC
+    MB_GRPC <--> ANC_GRPC
+    SUP_GRPC <--> ANC_GRPC
+
+    %% Database connections
+    MB_API --> MB_DB
+    SUP_API --> SUP_DB
+    ANC_API --> ANC_DB
+    AUTH_S --> SHARED_DB
 ```
 
 ## Luồng nghiệp vụ chi tiết
 
-### Quy trình Supply Chain Finance hoàn chỉnh:
+### Quy trình Supply Chain Finance với kiến trúc mới:
 
 ```mermaid
 sequenceDiagram
@@ -88,73 +115,108 @@ sequenceDiagram
     participant Bank
     participant Supplier
     participant Frontend
-    participant Backend
-    participant MSBlockchain
-    participant MongoDB
+    participant APIGateway
+    participant PeerAnchor
+    participant PeerMainBank
+    participant PeerSupplier
+    participant OrdererCluster
+    participant MongoAnchor
+    participant MongoMainBank
+    participant MongoSupplier
 
-    %% 1. Anchor tạo hợp đồng & Token tự động phát hành
+    %% 1. Anchor tạo hợp đồng trên Peer Anchor
     rect rgb(240, 248, 255)
-        Note over Anchor,MongoDB: Tạo hợp đồng + Token tự động
+        Note over Anchor,MongoAnchor: Tạo hợp đồng trên Anchor Peer
         Anchor->>Frontend: Submit contract form (with PDF file)
-        Frontend->>Backend: POST /api/contracts (multipart/form-data)
-        Backend->>MSBlockchain: POST /contract/create
-        MSBlockchain->>MongoDB: Save contract metadata + file
-        MSBlockchain->>MongoDB: Auto-create token (issuer=Bank, owner=Bank)
-        MSBlockchain->>MongoDB: Create balance record (Bank=totalAmount)
-        MSBlockchain->>MongoDB: Insert CREATE event
-        MSBlockchain-->>Backend: Contract + Token created
-        Backend-->>Frontend: Success response
+        Frontend->>APIGateway: POST /api/contracts (multipart/form-data)
+        APIGateway->>PeerAnchor: Route to Anchor Peer /contract/create
+        PeerAnchor->>MongoAnchor: Save contract metadata + file
+        PeerAnchor->>MongoAnchor: Insert CREATE event
+        PeerAnchor->>OrdererCluster: Submit event for ordering
+        OrdererCluster->>PeerAnchor: Return ordered block
+        PeerAnchor->>MongoAnchor: Save ordered block
+        PeerAnchor-->>APIGateway: Contract created
+        APIGateway-->>Frontend: Success response
         Frontend-->>Anchor: Contract created notification
     end
 
-    %% 2. Suppliers phê duyệt & Token transfer
+    %% 2. Bank phê duyệt trên Peer Main Bank
     rect rgb(255, 248, 240)
-        Note over Supplier,MongoDB: Phê duyệt hợp đồng
-        Supplier->>Frontend: Click approve button
-        Frontend->>Backend: POST /api/contracts/{id}/approve
-        Backend->>MSBlockchain: POST /contract/approve
-        MSBlockchain->>MongoDB: Check contract status & approver auth
-        MSBlockchain->>MongoDB: Insert APPROVE_SUPPLIER event
+        Note over Bank,MongoMainBank: Bank phê duyệt contract
+        Bank->>Frontend: Click bank approve button
+        Frontend->>APIGateway: POST /api/contracts/{id}/approve-bank
+        APIGateway->>PeerMainBank: Route to Main Bank Peer /contract/approve-bank
+        PeerMainBank->>MongoMainBank: Check contract status & bank auth
+        PeerMainBank->>MongoMainBank: Update contract bankApproved=true
+        PeerMainBank->>MongoMainBank: Create token (issuer=SYSTEM, owner=Anchor)
+        PeerMainBank->>MongoMainBank: Create initial balance (Anchor=totalAmount)
+        PeerMainBank->>MongoMainBank: Insert BANK_APPROVED_TOKEN_GENERATED event
+        PeerMainBank->>OrdererCluster: Submit event for ordering
+        OrdererCluster->>PeerMainBank: Return ordered block
+        PeerMainBank->>MongoMainBank: Save ordered block
+        PeerMainBank-->>APIGateway: Token created + contract approved
+        APIGateway-->>Frontend: Success response
+        Frontend-->>Bank: Token created notification
+    end
 
+    %% 3. Suppliers phê duyệt trên Peer Supplier
+    rect rgb(248, 255, 240)
+        Note over Supplier,MongoSupplier: Supplier phê duyệt contract
+        Supplier->>Frontend: Click supplier approve button
+        Frontend->>APIGateway: POST /api/contracts/{id}/approve
+        APIGateway->>PeerSupplier: Route to Supplier Peer /contract/approve
+        PeerSupplier->>MongoSupplier: Check contract status & supplier auth
+        PeerSupplier->>MongoSupplier: Update supplier approval status
+        PeerSupplier->>PeerMainBank: Sync contract state via gRPC
+        PeerMainBank->>PeerSupplier: Confirm token availability
         alt All suppliers approved
-            MSBlockchain->>MongoDB: Update contract.approved = true
-            MSBlockchain->>MongoDB: Transfer token ownership (Bank → Supplier)
-            MSBlockchain->>MongoDB: Update balances (Bank=0, Supplier=amount)
-            MSBlockchain->>MongoDB: Insert EXECUTE event
+            PeerSupplier->>MongoSupplier: Update contract.approved = true
+            PeerSupplier->>MongoSupplier: Transfer token ownership (Anchor → Suppliers)
+            PeerSupplier->>MongoSupplier: Update balances proportionally
+            PeerSupplier->>MongoSupplier: Insert CONTRACT_FULLY_APPROVED event
+            PeerSupplier->>OrdererCluster: Submit event for ordering
+            OrdererCluster->>PeerSupplier: Return ordered block
+        else
+            PeerSupplier->>MongoSupplier: Insert SUPPLIER_APPROVED event
         end
-
-        MSBlockchain-->>Backend: Approval successful
-        Backend-->>Frontend: Contract updated
+        PeerSupplier-->>APIGateway: Approval successful
+        APIGateway-->>Frontend: Contract updated
         Frontend-->>Supplier: Approval confirmed
     end
 
-    %% 3. Token transfer giữa Suppliers
+    %% 4. Token transfer giữa Suppliers (Cross-peer)
     rect rgb(248, 255, 240)
-        Note over Supplier,MongoDB: Chuyển token
-        Supplier->>Frontend: Initiate token transfer
-        Frontend->>Backend: POST /api/tokens/transfer
-        Backend->>MSBlockchain: POST /token/transfer
-        MSBlockchain->>MongoDB: Validate sender ownership & balance
-        MSBlockchain->>MongoDB: Debit sender balance
-        MSBlockchain->>MongoDB: Credit receiver balance
-        MSBlockchain->>MongoDB: Update token ownership
-        MSBlockchain->>MongoDB: Insert TRANSFER event
-        MSBlockchain-->>Backend: Transfer successful
-        Backend-->>Frontend: Success response
+        Note over Supplier,MongoSupplier: P2P Token Transfer
+        Supplier->>Frontend: Initiate token transfer to another supplier
+        Frontend->>APIGateway: POST /api/tokens/transfer
+        APIGateway->>PeerSupplier: Route to Supplier Peer /token/transfer
+        PeerSupplier->>MongoSupplier: Validate sender balance & ownership
+        PeerSupplier->>PeerSupplier: Cross-validate with receiver's peer
+        PeerSupplier->>MongoSupplier: Debit sender balance
+        PeerSupplier->>MongoSupplier: Credit receiver balance
+        PeerSupplier->>MongoSupplier: Insert TRANSFER event
+        PeerSupplier->>OrdererCluster: Submit transaction for global ordering
+        OrdererCluster->>PeerSupplier: Return globally ordered block
+        PeerSupplier->>MongoSupplier: Save ordered block
+        PeerSupplier-->>APIGateway: Transfer successful
+        APIGateway-->>Frontend: Success response
         Frontend-->>Supplier: Transfer confirmed
     end
 
-    %% 4. Block builder tự động
+    %% 5. Orderer Cluster consensus và block ordering
     rect rgb(255, 240, 248)
-        Note over MSBlockchain,MongoDB: Block building định kỳ
-        loop Every 10 seconds
-            MSBlockchain->>MongoDB: Find unincluded events (max 10)
-            alt Events found
-                MSBlockchain->>MSBlockchain: Calculate Merkle root
-                MSBlockchain->>MSBlockchain: Generate block hash
-                MSBlockchain->>MongoDB: Create new block
-                MSBlockchain->>MongoDB: Mark events as included
-            end
+        Note over OrdererCluster,PeerAnchor: Distributed Consensus
+        loop Continuous consensus
+            PeerAnchor->>OrdererCluster: Submit local events for ordering
+            PeerMainBank->>OrdererCluster: Submit local events for ordering
+            PeerSupplier->>OrdererCluster: Submit local events for ordering
+            OrdererCluster->>OrdererCluster: Raft consensus among orderers
+            OrdererCluster->>PeerAnchor: Deliver ordered blocks
+            OrdererCluster->>PeerMainBank: Deliver ordered blocks
+            OrdererCluster->>PeerSupplier: Deliver ordered blocks
+            PeerAnchor->>MongoAnchor: Save globally ordered blocks
+            PeerMainBank->>MongoMainBank: Save globally ordered blocks
+            PeerSupplier->>MongoSupplier: Save globally ordered blocks
         end
     end
 
