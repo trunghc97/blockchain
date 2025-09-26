@@ -2,20 +2,51 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
-	pb "orderer-cluster/proto"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// Simple block structure
+type Block struct {
+	BlockNumber  int64
+	Timestamp    int64
+	Transactions []Transaction
+	PreviousHash string
+	Hash         string
+	PeerID       string
+	OrdererID    string
+	MerkleRoot   string
+}
+
+// Simple transaction structure
+type Transaction struct {
+	TransactionID   string
+	TransactionType string
+	ContractID      string
+	TokenID         string
+	SenderID        string
+	ReceiverID      string
+	Amount          float64
+	Payload         string
+	Timestamp       int64
+}
+
+func generateEventID() string {
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+	return hex.EncodeToString(bytes)
+}
 
 type OrdererNode struct {
 	nodeID         string
@@ -24,15 +55,15 @@ type OrdererNode struct {
 	kafkaBrokers   []string
 	scfTopic       string
 	auditTopic     string
-	blockBuffer    chan *pb.Block
+	blockBuffer    chan *Block
 	eventBuffer    chan map[string]interface{}
 	mutex          sync.Mutex
-	currentBlock   *pb.Block
+	currentBlock   *Block
 	kafkaConsumer  sarama.ConsumerGroup
+	db             *mongo.Database
 }
 
 type OrdererService struct {
-	pb.UnimplementedOrdererServiceServer
 	orderer *OrdererNode
 }
 
@@ -44,12 +75,21 @@ func NewOrdererNode(nodeID string, port int, peers []string, kafkaBrokers []stri
 		kafkaBrokers: kafkaBrokers,
 		scfTopic:     scfTopic,
 		auditTopic:   auditTopic,
-		blockBuffer:  make(chan *pb.Block, 100),
+		blockBuffer:  make(chan *Block, 100),
 		eventBuffer:  make(chan map[string]interface{}, 1000),
 	}
 }
 
 func (o *OrdererNode) Start() {
+	log.Printf("Orderer %s starting initialization...", o.nodeID)
+
+	// Connect to MongoDB
+	if err := o.connectToDatabase(); err != nil {
+		log.Printf("Warning: Failed to connect to MongoDB: %v", err)
+	} else {
+		log.Printf("Successfully connected to MongoDB")
+	}
+
 	// Initialize Kafka consumer
 	if err := o.initKafkaConsumer(); err != nil {
 		log.Printf("Warning: Failed to initialize Kafka consumer: %v", err)
@@ -61,20 +101,10 @@ func (o *OrdererNode) Start() {
 	// Start block ordering goroutine
 	go o.orderBlocks()
 
-	// Start gRPC server
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", o.port))
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
+	log.Printf("Orderer %s started on port %d", o.nodeID, o.port)
 
-	grpcServer := grpc.NewServer()
-	pb.RegisterOrdererServiceServer(grpcServer, &OrdererService{orderer: o})
-	reflection.Register(grpcServer)
-
-	log.Printf("Orderer %s listening on port %d", o.nodeID, o.port)
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("Failed to serve: %v", err)
-	}
+	// Keep the service running
+	select {}
 }
 
 func (o *OrdererNode) orderBlocks() {
@@ -91,7 +121,7 @@ func (o *OrdererNode) orderBlocks() {
 	}
 }
 
-func (o *OrdererNode) processBlock(block *pb.Block) {
+func (o *OrdererNode) processBlock(block *Block) {
 	o.mutex.Lock()
 	defer o.mutex.Unlock()
 
@@ -113,13 +143,13 @@ func (o *OrdererNode) createOrderedBlock() {
 	}
 
 	// Create ordered block with consensus
-	orderedBlock := &pb.Block{
-		BlockNumber: o.currentBlock.BlockNumber,
-		Timestamp:   time.Now().Unix(),
+	orderedBlock := &Block{
+		BlockNumber:  o.currentBlock.BlockNumber,
+		Timestamp:    time.Now().Unix(),
 		Transactions: o.currentBlock.Transactions,
 		PreviousHash: o.currentBlock.PreviousHash,
 		Hash:         o.calculateBlockHash(o.currentBlock),
-		OrdererId:    o.nodeID,
+		OrdererID:    o.nodeID,
 	}
 
 	log.Printf("Orderer %s created ordered block %d", o.nodeID, orderedBlock.BlockNumber)
@@ -128,6 +158,34 @@ func (o *OrdererNode) createOrderedBlock() {
 	o.broadcastOrderedBlock(orderedBlock)
 
 	o.currentBlock = nil
+}
+
+func (o *OrdererNode) connectToDatabase() error {
+	// Get MongoDB connection string from environment
+	mongoURI := os.Getenv("MONGO_URI")
+	if mongoURI == "" {
+		// Default for orderer - connect to shared database
+		mongoURI = "mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin"
+	}
+
+	client, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoURI))
+	if err != nil {
+		return err
+	}
+
+	// Ping the database
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx, nil); err != nil {
+		return err
+	}
+
+	// Get database
+	dbName := "blockchain" // shared blockchain database
+	o.db = client.Database(dbName)
+
+	log.Printf("Orderer connected to MongoDB database: %s", dbName)
+	return nil
 }
 
 func (o *OrdererNode) initKafkaConsumer() error {
@@ -185,8 +243,30 @@ func (o *OrdererNode) processEvents() {
 
 func (o *OrdererNode) processEvent(event map[string]interface{}) {
 	// Process the blockchain event from Kafka
-	// This would involve validation, ordering, and block creation
+	// This involves validation, ordering, and block creation
 	log.Printf("Processing event type: %v", event["eventType"])
+
+	// Store event in database for persistence
+	eventDoc := map[string]interface{}{
+		"eventId":    generateEventID(),
+		"eventType":  event["eventType"],
+		"data":       event["data"],
+		"timestamp":  event["timestamp"],
+		"processed":  true,
+		"ordererId":  o.nodeID,
+	}
+
+	// Save to database
+	if o.db != nil {
+		_, err := o.db.Collection("events").InsertOne(context.Background(), eventDoc)
+		if err != nil {
+			log.Printf("Failed to save event to database: %v", err)
+		} else {
+			log.Printf("Event saved to database: %s", eventDoc["eventId"])
+		}
+	} else {
+		log.Printf("Database not connected, would save event: %+v", eventDoc)
+	}
 }
 
 type ConsumerGroupHandler struct {
@@ -228,39 +308,34 @@ func (h *ConsumerGroupHandler) processMessage(message *sarama.ConsumerMessage) {
 	}
 }
 
-func (o *OrdererNode) broadcastToPeers(block *pb.Block) {
+func (o *OrdererNode) broadcastToPeers(block *Block) {
 	// Implementation for broadcasting to other orderer nodes
 	log.Printf("Orderer %s broadcasting block to peers", o.nodeID)
 }
 
-func (o *OrdererNode) broadcastOrderedBlock(block *pb.Block) {
+func (o *OrdererNode) broadcastOrderedBlock(block *Block) {
 	// Implementation for broadcasting ordered block to connected peers
 	log.Printf("Orderer %s broadcasting ordered block %d", o.nodeID, block.BlockNumber)
 }
 
-func (o *OrdererNode) calculateBlockHash(block *pb.Block) string {
+func (o *OrdererNode) calculateBlockHash(block *Block) string {
 	// Simple hash calculation - in real implementation use proper crypto
 	return fmt.Sprintf("hash_%d_%s", block.BlockNumber, o.nodeID)
 }
 
-func (s *OrdererService) SubmitBlock(ctx context.Context, req *pb.SubmitBlockRequest) (*pb.SubmitBlockResponse, error) {
-	block := req.Block
-	log.Printf("Orderer %s received block %d from peer %s", s.orderer.nodeID, block.BlockNumber, req.PeerId)
+// Simplified service methods - no gRPC for now
+func (s *OrdererService) SubmitBlock(peerID string, block *Block) (bool, string) {
+	log.Printf("Orderer %s received block %d from peer %s", s.orderer.nodeID, block.BlockNumber, peerID)
 
 	// Add to ordering queue
 	s.orderer.blockBuffer <- block
 
-	return &pb.SubmitBlockResponse{
-		Success: true,
-		Message: "Block submitted for ordering",
-	}, nil
+	return true, "Block submitted for ordering"
 }
 
-func (s *OrdererService) GetOrderedBlocks(ctx context.Context, req *pb.GetOrderedBlocksRequest) (*pb.GetOrderedBlocksResponse, error) {
+func (s *OrdererService) GetOrderedBlocks(peerID string, lastBlockNumber int64) []*Block {
 	// Return ordered blocks for the requesting peer
-	return &pb.GetOrderedBlocksResponse{
-		Blocks: []*pb.Block{}, // Implement proper block retrieval
-	}, nil
+	return []*Block{} // Implement proper block retrieval
 }
 
 func main() {

@@ -1,12 +1,18 @@
-# Use the shared peer base image
-FROM shared/peer-base:latest
+FROM golang:1.21-alpine AS builder
 
-# Set default environment variables
-ENV PEER_NODE_TYPE=supplier
-ENV PEER_NODE_ID=supplier-peer-1
-ENV PEER_PORT=8083
-ENV PEER_GRPC_PORT=9093
+WORKDIR /app
+COPY . .
 
-EXPOSE 8083 9093
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o peer main.go
+
+FROM alpine:latest
+
+WORKDIR /root/
+
+# Copy the binary from builder stage
+COPY --from=builder /app/peer .
+
+EXPOSE 8083
 
 CMD ["./peer"]

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"net/http"
 	"os"
-
-	"shared/peer-base"
 )
 
 func main() {
@@ -18,13 +18,33 @@ func main() {
 	if os.Getenv("PEER_PORT") == "" {
 		os.Setenv("PEER_PORT", "8084")
 	}
-	if os.Getenv("PEER_GRPC_PORT") == "" {
-		os.Setenv("PEER_GRPC_PORT", "9094")
-	}
-	if os.Getenv("ORDERER_ADDR") == "" {
-		os.Setenv("ORDERER_ADDR", "orderer-cluster-ord1:7050")
+
+	port := os.Getenv("PEER_PORT")
+	log.Printf("Anchor Peer placeholder running on port %s", port)
+
+	// Simple health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"status": "ok", "peer": "anchor", "message": "Peer is running (placeholder)"}`)
+	})
+
+	// CORS middleware
+	handler := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "*")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
 	}
 
-	log.Println("Starting Anchor Peer Node...")
-	peer_base.Main()
+	log.Printf("Anchor Peer listening on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, handler(http.DefaultServeMux)))
 }

@@ -27,8 +27,14 @@ type SupplierDTO struct {
 	Status     string  `json:"status"`
 }
 
+// PeerInterface defines methods that handler can call on peer
+type PeerInterface interface {
+	PublishTransactionToKafka(txType, contractID, tokenID, senderID, receiverID string, amount float64) error
+}
+
 type Handler struct {
-	db *mongo.Database
+	db   *mongo.Database
+	peer PeerInterface
 }
 
 func generateEventID() string {
@@ -107,8 +113,8 @@ func (h *Handler) getNextBlockNumber() int64 {
 	return previousBlockNum + 1
 }
 
-func NewHandler(db *mongo.Database) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *mongo.Database, peer PeerInterface) *Handler {
+	return &Handler{db: db, peer: peer}
 }
 
 // CreateContract creates a new contract (Anchor) - New Contract-Token Implementation
@@ -181,6 +187,13 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log error but don't fail the contract creation
 		fmt.Printf("Failed to log event: %v\n", err)
+	}
+
+	// Publish transaction to Kafka
+	if h.peer != nil {
+		if err := h.peer.PublishTransactionToKafka("CREATE_CONTRACT", req.ID, "", "", "", 0); err != nil {
+			fmt.Printf("Failed to publish contract creation to Kafka: %v\n", err)
+		}
 	}
 
 	// Create block entry
@@ -638,6 +651,13 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 		// Don't fail the approval for logging errors
 	}
 
+	// Publish transaction to Kafka
+	if h.peer != nil {
+		if err := h.peer.PublishTransactionToKafka("BANK_APPROVE_CONTRACT", contractId, tokenId, req.BankId, "", totalAmount); err != nil {
+			fmt.Printf("Failed to publish bank approval to Kafka: %v\n", err)
+		}
+	}
+
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
@@ -824,6 +844,13 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log error but don't fail the transfer
 		fmt.Printf("Failed to log transfer event: %v\n", err)
+	}
+
+	// Publish transaction to Kafka
+	if h.peer != nil {
+		if err := h.peer.PublishTransactionToKafka("TOKEN_TRANSFER", "", req.TokenId, req.From, req.To, req.Amount); err != nil {
+			fmt.Printf("Failed to publish token transfer to Kafka: %v\n", err)
+		}
 	}
 
 	// Create block entry
