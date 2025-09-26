@@ -1,50 +1,78 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"log"
 	"net/http"
-	"os"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/rs/cors"
+
+	"peer-anchor/blockchain"
+	"peer-anchor/config"
+	"peer-anchor/db"
+	"peer-anchor/handlers"
 )
 
 func main() {
-	// Set default environment variables for anchor peer
-	if os.Getenv("PEER_NODE_TYPE") == "" {
-		os.Setenv("PEER_NODE_TYPE", "anchor")
+	// Initialize MongoDB connection
+	client, err := db.Connect()
+	if err != nil {
+		log.Fatal(err)
 	}
-	if os.Getenv("PEER_NODE_ID") == "" {
-		os.Setenv("PEER_NODE_ID", "anchor-peer-1")
-	}
-	if os.Getenv("PEER_PORT") == "" {
-		os.Setenv("PEER_PORT", "8084")
-	}
+	defer client.Disconnect(context.TODO())
 
-	port := os.Getenv("PEER_PORT")
-	log.Printf("Anchor Peer placeholder running on port %s", port)
+	database := client.Database(config.DatabaseName)
 
-	// Simple health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status": "ok", "peer": "anchor", "message": "Peer is running (placeholder)"}`)
+	// Initialize handlers
+	handler := handlers.NewHandler(database)
+
+	// Initialize block builder
+	blockBuilder := blockchain.NewBlockBuilder(database)
+	blockBuilder.Start()
+
+	// Initialize router
+	router := mux.NewRouter()
+
+	// Contract endpoints
+	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
+	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
+	router.HandleFunc("/contract/{id}/approve-bank", handler.ApproveContractByBank).Methods("POST")
+	router.HandleFunc("/contract/list", handler.GetContracts).Methods("GET")
+	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
+	router.HandleFunc("/contract/{id}/ledger", handler.GetContractLedger).Methods("GET")
+
+	// Token endpoints
+	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
+	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
+	router.HandleFunc("/token/settle", handler.SettleToken).Methods("POST")
+	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
+	router.HandleFunc("/tokens", handler.GetAllTokens).Methods("GET")
+	router.HandleFunc("/balances/account/{accountId}", handler.GetBalancesByAccount).Methods("GET")
+	router.HandleFunc("/balances/token/{tokenId}", handler.GetBalancesByToken).Methods("GET")
+
+	// Supplier endpoints
+	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")
+
+	// Utility endpoints
+	router.HandleFunc("/blocks/hash/update", handler.UpdateBlockHashes).Methods("POST")
+
+	// Configure CORS
+	c := cors.New(cors.Options{
+		AllowedOrigins: []string{"*"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders: []string{"*"},
 	})
 
-	// CORS middleware
-	handler := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "*")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			next.ServeHTTP(w, r)
-		})
+	// Start server
+	srv := &http.Server{
+		Handler:      c.Handler(router),
+		Addr:         ":8084",
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
 	}
 
-	log.Printf("Anchor Peer listening on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler(http.DefaultServeMux)))
+	log.Printf("Anchor Peer is running on port 8084")
+	log.Fatal(srv.ListenAndServe())
 }

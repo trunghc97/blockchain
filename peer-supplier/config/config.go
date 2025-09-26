@@ -4,7 +4,7 @@ import "os"
 
 var (
 	MongoURI     = getMongoURI()
-	DatabaseName = "blockchain"
+	DatabaseName = "blockchain_private"
 )
 
 func getMongoURI() string {

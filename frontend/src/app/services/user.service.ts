@@ -10,7 +10,7 @@ import { User } from '../models/user.model';
   providedIn: 'root'
 })
 export class UserService {
-  private apiUrl = `${environment.apiUrl}/api/users`;
+  private apiUrl = `${environment.apiUrl}/api`;
   private currentUserSubject = new BehaviorSubject<User | null>(null);
   currentUser$ = this.currentUserSubject.asObservable();
 
@@ -49,7 +49,7 @@ export class UserService {
   }
 
   getCurrentUser(): Observable<User> {
-    return this.http.get<User>(`${this.apiUrl}/current`, { headers: this.getHeaders() }).pipe(
+    return this.http.get<User>(`${this.apiUrl}/users/current`, { headers: this.getHeaders() }).pipe(
       tap(user => this.currentUserSubject.next(user)),
       catchError((error) => {
         if (error.status === 401 || error.status === 403) {
@@ -61,7 +61,7 @@ export class UserService {
   }
 
   getSuppliers(): Observable<User[]> {
-    return this.http.get<User[]>(`${this.apiUrl}/suppliers`, { headers: this.getHeaders() }).pipe(
+    return this.http.get<User[]>(`${this.apiUrl}/users/suppliers`, { headers: this.getHeaders() }).pipe(
       catchError((error) => {
         if (error.status === 401 || error.status === 403) {
           this.logout();

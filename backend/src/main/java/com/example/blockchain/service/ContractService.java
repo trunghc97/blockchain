@@ -121,6 +121,9 @@ public class ContractService {
     public List<Contract> getContracts() {
         // Query contracts from blockchain service since that's now the authoritative source
         List<Map<String, Object>> blockchainContracts = blockchainService.listContracts();
+        if (blockchainContracts == null) {
+            return java.util.Collections.emptyList();
+        }
         return blockchainContracts.stream()
             .map(this::convertBlockchainContractToLocal)
             .collect(java.util.stream.Collectors.toList());
@@ -210,6 +213,9 @@ public class ContractService {
     public List<Contract> getContractsByUser(String username) {
         // Get all contracts from blockchain service and filter by user
         List<Map<String, Object>> allBlockchainContracts = blockchainService.listContracts();
+        if (allBlockchainContracts == null) {
+            return java.util.Collections.emptyList();
+        }
         return allBlockchainContracts.stream()
             .map(this::convertBlockchainContractToLocal)
             .filter(contract -> isUserInContract(contract, username))

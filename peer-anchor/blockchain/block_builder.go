@@ -11,7 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"ms-blockchain/models"
+	"peer-anchor/models"
 )
 
 type BlockBuilder struct {

@@ -1,6 +1,9 @@
 # Build stage
 FROM golang:1.21-alpine AS build
 
+# Set Go proxy to avoid GitHub authentication issues
+ENV GOPROXY=https://proxy.golang.org,direct
+
 WORKDIR /app
 
 # Copy source code first

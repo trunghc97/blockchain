@@ -95,7 +95,12 @@ public class PeerRoutingService {
      * Default to Anchor peer for contract operations
      */
     public Map<String, Object> getContract(String contractId) {
-        return callPeer(anchorPeerUrl, "/contract/" + contractId, HttpMethod.GET, null);
+        try {
+            return callPeer(anchorPeerUrl, "/contract/" + contractId, HttpMethod.GET, null);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            // Contract not found, return null instead of throwing exception
+            return null;
+        }
     }
 
     public List<Map<String, Object>> listContracts() {
@@ -103,10 +108,17 @@ public class PeerRoutingService {
     }
 
     public LedgerResponse queryLedger(String contractId) {
-        Map<String, Object> response = callPeer(anchorPeerUrl, "/contract/" + contractId + "/ledger", HttpMethod.GET, null);
-        LedgerResponse ledgerResponse = new LedgerResponse();
-        ledgerResponse.setData(response);
-        return ledgerResponse;
+        try {
+            Map<String, Object> response = callPeer(anchorPeerUrl, "/contract/" + contractId + "/ledger", HttpMethod.GET, null);
+            LedgerResponse ledgerResponse = new LedgerResponse();
+            ledgerResponse.setData(response);
+            return ledgerResponse;
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            // Contract not found, return empty ledger response
+            LedgerResponse ledgerResponse = new LedgerResponse();
+            ledgerResponse.setData(new HashMap<>());
+            return ledgerResponse;
+        }
     }
 
     /**
@@ -114,7 +126,12 @@ public class PeerRoutingService {
      * Default to Supplier peer for token operations
      */
     public Map<String, Object> getToken(String tokenId) {
-        return callPeer(supplierPeerUrl, "/token/" + tokenId, HttpMethod.GET, null);
+        try {
+            return callPeer(supplierPeerUrl, "/token/" + tokenId, HttpMethod.GET, null);
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            // Token not found, return null instead of throwing exception
+            return null;
+        }
     }
 
     public List<Map<String, Object>> getAllTokens() {

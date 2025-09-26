@@ -1,14 +1,27 @@
 server:
   port: 8080
 
+# Primary MongoDB connection (Private Blockchain)
 spring:
   data:
     mongodb:
-      host: mongo
+      host: mongo-shared
       port: 27017
-      database: blockchain
+      database: blockchain_private
       username: root
       password: example
+
+# Secondary MongoDB connection (Public Blockchain)
+mongodb:
+  public:
+    host: mongo-shared
+    port: 27017
+    database: blockchain_public
+    username: root
+    password: example
+
+blockchain:
+  url: http://peer-anchor:8084
   main:
     allow-bean-definition-overriding: true
   autoconfigure:

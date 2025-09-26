@@ -17,7 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"ms-blockchain/models"
 )
 
 type SupplierDTO struct {
@@ -434,7 +433,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 					}
 
 					// Create balance for this supplier
-					balance := models.Balance{
+					balance := Balance{
 						TokenId: tokenId,
 						Account: supplierId,
 						Balance: amount,
@@ -590,8 +589,7 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 	// Token should be owned by anchor (buyer) after bank approval
 	anchorId := "ANCHOR001" // Default anchor ID
 
-	token := models.Token{
-		ID:         tokenId,
+	token := Token{
 		ContractId: contractId,
 		Symbol:     symbol,
 		Total:      totalAmount,
@@ -607,7 +605,7 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Create initial balance for anchor (token owner)
-	balance := models.Balance{
+	balance := Balance{
 		TokenId: tokenId,
 		Account: anchorId,
 		Balance: totalAmount,
@@ -707,7 +705,7 @@ func (h *Handler) GetToken(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	tokenId := vars["id"]
 
-	var token models.Token
+	var token Token
 	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": tokenId}).Decode(&token)
 	if err != nil {
 		http.Error(w, "Token not found", http.StatusNotFound)
@@ -733,7 +731,7 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get token info
-	var token models.Token
+	var token Token
 	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": req.TokenId}).Decode(&token)
 	if err != nil {
 		http.Error(w, "Token not found", http.StatusNotFound)
@@ -744,7 +742,7 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	// Allow anyone with balance to transfer their portion
 
 	// Get sender balance
-	var fromBalance models.Balance
+	var fromBalance Balance
 	err = h.db.Collection("balances").FindOne(
 		context.Background(),
 		bson.M{"tokenId": req.TokenId, "account": req.From},
@@ -771,7 +769,7 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update receiver balance
-	var toBalance models.Balance
+	var toBalance Balance
 	err = h.db.Collection("balances").FindOne(
 		context.Background(),
 		bson.M{"tokenId": req.TokenId, "account": req.To},
@@ -779,7 +777,7 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 
 	if err == mongo.ErrNoDocuments {
 		// Create new balance entry for receiver
-		receiverBalance := models.Balance{
+		receiverBalance := Balance{
 			TokenId:         req.TokenId,
 			Account:         req.To,
 			Balance:         req.Amount,
@@ -850,7 +848,7 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	// Check if anchor has no more balance for this token
 	// If so, automatically approve the contract
 	anchorBalanceFilter := bson.M{"tokenId": req.TokenId, "account": "ANCHOR001"}
-	var anchorBalance models.Balance
+	var anchorBalance Balance
 	err = h.db.Collection("balances").FindOne(context.Background(), anchorBalanceFilter).Decode(&anchorBalance)
 
 	// If anchor has no balance or balance is 0, approve the contract
@@ -888,7 +886,7 @@ func (h *Handler) GetTokensIssuedByBank(w http.ResponseWriter, r *http.Request) 
 	}
 	defer cursor.Close(context.Background())
 
-	var tokens []models.Token
+	var tokens []Token
 	if err = cursor.All(context.Background(), &tokens); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1076,7 +1074,7 @@ func (h *Handler) GetAllTokens(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cursor.Close(context.Background())
 
-	var tokens []models.Token
+	var tokens []Token
 	if err = cursor.All(context.Background(), &tokens); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1145,7 +1143,7 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("DEBUG: Supplier %s settling token %s\n", req.SupplierId, req.TokenId)
 
 	// Verify supplier has balance for this token
-	var balance models.Balance
+	var balance Balance
 	err := h.db.Collection("balances").FindOne(
 		context.Background(),
 		bson.M{"tokenId": req.TokenId, "account": req.SupplierId},
@@ -1161,7 +1159,7 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get token info to verify it exists and get bank info
-	var token models.Token
+	var token Token
 	err = h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": req.TokenId}).Decode(&token)
 	if err != nil {
 		http.Error(w, "Token not found", http.StatusNotFound)

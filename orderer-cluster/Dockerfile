@@ -2,6 +2,9 @@ FROM golang:1.21-alpine AS builder
 
 RUN apk add --no-cache git
 
+# Set Go proxy to avoid GitHub authentication issues
+ENV GOPROXY=https://proxy.golang.org,direct
+
 WORKDIR /app
 
 # Copy go mod files

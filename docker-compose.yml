@@ -17,7 +17,7 @@ services:
     environment:
       - SPRING_DATA_MONGODB_HOST=mongo-shared
       - SPRING_DATA_MONGODB_PORT=27017
-      - SPRING_DATA_MONGODB_DATABASE=blockchain_shared
+      - SPRING_DATA_MONGODB_DATABASE=blockchain
       - SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE=admin
       - SPRING_DATA_MONGODB_USERNAME=root
       - SPRING_DATA_MONGODB_PASSWORD=example
@@ -25,6 +25,8 @@ services:
       - PEER_MAIN_BANK_URL=http://peer-main-bank:8082
       - PEER_SUPPLIER_URL=http://peer-supplier:8083
       - PEER_ANCHOR_URL=http://peer-anchor:8084
+      # Blockchain service URL (use anchor peer as default)
+      - BLOCKCHAIN_URL=http://peer-anchor:8084
     depends_on:
       - mongo-shared
       - peer-main-bank
@@ -153,9 +155,9 @@ services:
       - SCF_CHANNEL_TOPIC=scf-channel-tx
       - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
-      - MONGO_URI=mongodb://root:example@mongo-main-bank:27017/blockchain_main_bank?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
-      - mongo-main-bank
+      - mongo-shared
       - kafka
       - orderer-ord1
     networks:
@@ -176,9 +178,9 @@ services:
       - SCF_CHANNEL_TOPIC=scf-channel-tx
       - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
-      - MONGO_URI=mongodb://root:example@mongo-supplier:27017/blockchain_supplier?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
-      - mongo-supplier
+      - mongo-shared
       - kafka
       - orderer-ord1
     networks:
@@ -199,70 +201,30 @@ services:
       - SCF_CHANNEL_TOPIC=scf-channel-tx
       - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
-      - MONGO_URI=mongodb://root:example@mongo-anchor:27017/blockchain_anchor?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
-      - mongo-anchor
+      - mongo-shared
       - kafka
       - orderer-ord1
     networks:
       - peer-network
       - kafka-network
 
-  # MongoDB Instances (separate for each peer - World State DB)
+  # Single MongoDB instance with dual databases (private + public)
   mongo-shared:
     image: mongo:latest
+    container_name: blockchain-mongo-shared
+    restart: unless-stopped
     ports:
       - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain_shared
     volumes:
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
       - ./data/mongodb-shared:/data/db
     networks:
       - public-network
-
-  mongo-main-bank:
-    image: mongo:latest
-    ports:
-      - "27018:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain_main_bank
-    volumes:
-      - ./peer-main-bank/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-      - ./data/mongodb-main-bank:/data/db
-    networks:
-      - peer-network
-
-  mongo-supplier:
-    image: mongo:latest
-    ports:
-      - "27019:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain_supplier
-    volumes:
-      - ./peer-supplier/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-      - ./data/mongodb-supplier:/data/db
-    networks:
-      - peer-network
-
-  mongo-anchor:
-    image: mongo:latest
-    ports:
-      - "27020:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
-      MONGO_INITDB_DATABASE: blockchain_anchor
-    volumes:
-      - ./peer-anchor/db/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
-      - ./data/mongodb-anchor:/data/db
-    networks:
       - peer-network
 
 # Network topology

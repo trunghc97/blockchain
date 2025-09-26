@@ -7,7 +7,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"ms-blockchain/config"
 )
 
 func Connect() (*mongo.Client, error) {
