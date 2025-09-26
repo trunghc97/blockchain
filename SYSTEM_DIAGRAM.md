@@ -508,7 +508,7 @@ erDiagram
 
 ## Component Architecture
 
-### Kiến trúc components chi tiết:
+### Kiến trúc components chi tiết theo layer:
 
 ```mermaid
 graph TB
@@ -549,7 +549,7 @@ graph TB
         end
     end
 
-    subgraph "Spring Boot 3.1.5 Backend"
+    subgraph "Spring Boot 3.1.5 Backend API Gateway"
         subgraph "Controllers"
             UC[User Controller<br/>Auth endpoints]
             CC[Contract Controller<br/>Contract + File APIs]
@@ -563,7 +563,7 @@ graph TB
         end
 
         subgraph "Integration"
-            BC[Blockchain Client<br/>ms-blockchain proxy]
+            BC[Blockchain Client<br/>Peer Services proxy]
         end
 
         subgraph "Security"
@@ -572,29 +572,106 @@ graph TB
         end
     end
 
-    subgraph "Go 1.21 ms-blockchain"
-        subgraph "HTTP Handlers"
-            CH[Contract Handlers<br/>Create, Approve, Query]
-            TH[Token Handlers<br/>Transfer, Balance, Query]
-            LH[Ledger Handlers<br/>Blocks, Events]
-            UH[Utility Handlers<br/>Health, Metrics]
+    subgraph "Kafka Event-Driven Messaging Layer"
+        subgraph "Zookeeper Cluster"
+            ZK1[Zookeeper 1<br/>Port 2181<br/>Coordination Service]
+            ZK2[Zookeeper 2<br/>Port 2182<br/>Coordination Service]
+            ZK3[Zookeeper 3<br/>Port 2183<br/>Coordination Service]
         end
 
-        subgraph "Business Logic"
-            CB[Contract Business<br/>Validation + State]
-            TB[Token Business<br/>Transfer + Ownership]
-            LB[Ledger Business<br/>Event sourcing]
+        subgraph "Kafka Broker Cluster"
+            KB1[Kafka Broker 1<br/>Port 9092<br/>Leader election]
+            KB2[Kafka Broker 2<br/>Port 9093<br/>Replication]
+            KB3[Kafka Broker 3<br/>Port 9094<br/>Replication]
+
+            subgraph "SCF Topics"
+                SCF_TX[scf-channel-tx<br/>Contract & Token Events<br/>Partitions: 1, Replication: 3]
+                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1, Replication: 3]
+            end
+
+            subgraph "Audit Topics"
+                AUDIT_TX[audit-channel-tx<br/>Bank Approval Events<br/>Partitions: 1, Replication: 3]
+                AUDIT_BLOCKS[audit-channel-blocks<br/>Audit Blocks<br/>Partitions: 1, Replication: 3]
+            end
         end
 
-        subgraph "Blockchain Core"
-            BB[Block Builder<br/>Auto block creation]
-            BC_VAL[Block Validation<br/>Hash + Merkle]
-            ES[Event Sourcing<br/>State derivation]
+        subgraph "Kafka Streams Processing"
+            KSP[Kafka Streams<br/>Event aggregation<br/>Real-time processing]
+        end
+    end
+
+    subgraph "Peer Services Layer (Endorsing Peers)"
+        subgraph "Peer Main Bank (✅ IMPLEMENTED)"
+            MB_API[REST API<br/>Port 8082<br/>✅ Contract creation]
+            MB_KAFKA[Kafka Producer<br/>✅ SCF & Audit Events]
+            MB_HANDLER[Contract Handlers<br/>Bank approval, Token issuance]
+            MB_DB[(MongoDB Main Bank<br/>✅ World State<br/>blockchain_main_bank)]
         end
 
-        subgraph "Data Access"
-            MD[Models<br/>Data structures]
-            DB[MongoDB Driver<br/>Database operations]
+        subgraph "Peer Supplier (✅ IMPLEMENTED)"
+            SUP_API[REST API<br/>Port 8083<br/>✅ Token transfer]
+            SUP_KAFKA[Kafka Producer<br/>✅ SCF Events]
+            SUP_HANDLER[Token Handlers<br/>Transfer, Balance mgmt]
+            SUP_DB[(MongoDB Supplier<br/>✅ World State<br/>blockchain_supplier)]
+        end
+
+        subgraph "Peer Anchor (✅ IMPLEMENTED)"
+            ANC_API[REST API<br/>Port 8084<br/>✅ Contract form]
+            ANC_KAFKA[Kafka Producer<br/>✅ SCF Events]
+            ANC_HANDLER[Contract Handlers<br/>Creation, Ledger]
+            ANC_DB[(MongoDB Anchor<br/>✅ World State<br/>blockchain_anchor)]
+        end
+
+        subgraph "Peer Business Logic"
+            PB_VAL[Validation Layer<br/>Input validation<br/>Business rules]
+            PB_ES[Event Sourcing<br/>State management<br/>Transaction logic]
+            PB_SEC[Security Layer<br/>Digital signatures<br/>Access control]
+        end
+    end
+
+    subgraph "Orderer Cluster (Ordering Service) ✅ IMPLEMENTED"
+        subgraph "Orderer Node 1 (Leader)"
+            ORD1_API[gRPC API<br/>Port 7050<br/>✅ Transaction ordering]
+            ORD1_KAFKA[Kafka Consumer<br/>✅ Event consumption]
+            ORD1_PROC[Event Processor<br/>✅ Database storage]
+            ORD1_BLOCK[Block Builder<br/>✅ Consensus logic]
+        end
+
+        subgraph "Orderer Node 2 (Follower)"
+            ORD2_API[gRPC API<br/>Port 7060<br/>✅ Backup ordering]
+            ORD2_KAFKA[Kafka Consumer<br/>✅ Event consumption]
+            ORD2_PROC[Event Processor<br/>Block validation]
+        end
+
+        subgraph "Orderer Node 3 (Follower)"
+            ORD3_API[gRPC API<br/>Port 7070<br/>✅ Backup ordering]
+            ORD3_KAFKA[Kafka Consumer<br/>✅ Event consumption]
+            ORD3_PROC[Event Processor<br/>Block validation]
+        end
+
+        subgraph "Orderer Shared Database"
+            ORD_DB[(MongoDB Shared<br/>✅ Event Storage<br/>blockchain_shared<br/>✅ Events persisted)]
+        end
+
+        subgraph "Orderer Core Components"
+            ORD_CONS[Consensus Engine<br/>Raft/PBFT<br/>Fault tolerance]
+            ORD_CRYPTO[Cryptographic Service<br/>Digital signatures<br/>Hash functions]
+            ORD_LEDGER[Ledger Manager<br/>Block validation<br/>State updates]
+        end
+    end
+
+    subgraph "Data Layer"
+        subgraph "MongoDB Cluster"
+            MDB_SHARED[MongoDB Shared<br/>✅ Events, Users<br/>Port 27017]
+            MDB_MAIN[MongoDB Main Bank<br/>✅ Contracts, Tokens]
+            MDB_SUP[MongoDB Supplier<br/>✅ Balances, Transfers]
+            MDB_ANC[MongoDB Anchor<br/>✅ Contracts, Ledgers]
+        end
+
+        subgraph "Data Access Layer"
+            DAL_MODELS[Data Models<br/>Go structs<br/>Schema definitions]
+            DAL_DRIVER[MongoDB Driver<br/>Connection pooling<br/>CRUD operations]
+            DAL_CACHE[Redis Cache<br/>Session storage<br/>Performance]
         end
     end
 
@@ -625,82 +702,190 @@ graph TB
     TOS --> BC
     AUS --> BC
 
-    BC --> CH
-    BC --> TH
-    BC --> LH
+    %% Backend to Peer Services
+    BC --> MB_API
+    BC --> SUP_API
+    BC --> ANC_API
 
+    %% Peer Services to Kafka (Event Publishing)
+    MB_HANDLER --> MB_KAFKA
+    SUP_HANDLER --> SUP_KAFKA
+    ANC_HANDLER --> ANC_KAFKA
+
+    MB_KAFKA --> SCF_TX
+    MB_KAFKA --> AUDIT_TX
+    SUP_KAFKA --> SCF_TX
+    ANC_KAFKA --> SCF_TX
+
+    %% Orderer Services from Kafka (Event Consumption)
+    SCF_TX --> ORD1_KAFKA
+    SCF_TX --> ORD2_KAFKA
+    SCF_TX --> ORD3_KAFKA
+    AUDIT_TX --> ORD1_KAFKA
+    AUDIT_TX --> ORD2_KAFKA
+    AUDIT_TX --> ORD3_KAFKA
+
+    %% Orderer Processing and Database Storage
+    ORD1_PROC --> ORD_DB
+    ORD2_PROC --> ORD_DB
+    ORD3_PROC --> ORD_DB
+
+    ORD1_PROC --> SCF_BLOCKS
+    ORD2_PROC --> SCF_BLOCKS
+    ORD3_PROC --> SCF_BLOCKS
+
+    %% Peers consume ordered blocks
+    SCF_BLOCKS --> MB_KAFKA
+    SCF_BLOCKS --> SUP_KAFKA
+    SCF_BLOCKS --> ANC_KAFKA
+
+    %% Database connections
+    MB_API --> MB_DB
+    SUP_API --> SUP_DB
+    ANC_API --> ANC_DB
+
+    ORD1_API --> ORD_DB
+    ORD2_API --> ORD_DB
+    ORD3_API --> ORD_DB
+
+    %% Business logic connections
     CH --> CB
     TH --> TB
     LH --> LB
 
-    CB --> ES
-    TB --> ES
-    LB --> ES
+    CB --> PB_VAL
+    TB --> PB_VAL
+    CB --> PB_ES
+    TB --> PB_ES
+    CB --> PB_SEC
+    TB --> PB_SEC
 
-    ES --> BB
-    BB --> BC_VAL
+    PB_ES --> ORD_CONS
+    ORD_CONS --> ORD_CRYPTO
+    ORD_CONS --> ORD_LEDGER
 
-    CB --> MD
-    TB --> MD
-    LB --> MD
+    %% Data layer connections
+    DAL_MODELS --> MDB_SHARED
+    DAL_MODELS --> MDB_MAIN
+    DAL_MODELS --> MDB_SUP
+    DAL_MODELS --> MDB_ANC
 
-    MD --> DB
-    BC_VAL --> DB
+    DAL_DRIVER --> MDB_SHARED
+    DAL_DRIVER --> MDB_MAIN
+    DAL_DRIVER --> MDB_SUP
+    DAL_DRIVER --> MDB_ANC
+
+    DAL_CACHE --> DAL_DRIVER
 ```
 
 ## Deployment Architecture
 
-### Kiến trúc triển khai với Docker Compose:
+### Kiến trúc triển khai với Docker Compose - Multi-layer Architecture:
 
 ```mermaid
 graph TB
-    subgraph "Docker Compose Network (blockchain-network)"
-        subgraph "Frontend Service"
-            NGINX[nginx:80<br/>Angular 17 SPA<br/>Port 4200]
+    subgraph "Public Network (public-network)"
+        subgraph "Frontend Layer"
+            NGINX[nginx:alpine<br/>Angular 17 SPA<br/>Port 4200:80]
             ANG[Angular Build<br/>Static files<br/>TypeScript 5.2]
         end
 
-        subgraph "Backend Service"
-            JAVA[Java 17<br/>Spring Boot 3.1.5<br/>Port 8080]
-            SEC[Spring Security<br/>JWT Authentication]
-            MUL[Multipart Upload<br/>File handling]
+        subgraph "API Gateway Layer"
+            JAVA[Spring Boot 3.1.5<br/>API Gateway<br/>Port 8080:8080]
+            SEC[Spring Security<br/>JWT + CORS]
+            MUL[File Upload<br/>Multipart handling]
         end
 
-        subgraph "ms-blockchain Service"
-            GO[Go 1.21<br/>Gorilla Mux<br/>Port 8081]
-            BB[Block Builder<br/>Auto every 10s]
-            CORS[CORS enabled<br/>Cross-origin]
-        end
-
-        subgraph "MongoDB Service"
-            MONGO[MongoDB latest<br/>Auth enabled<br/>Port 27017]
-            INIT[init-mongo.js<br/>Database setup]
-            DATA[Persistent volumes<br/>Data storage]
+        subgraph "Shared Database Layer"
+            MONGO_SHARED[MongoDB Shared<br/>Events & Users<br/>Port 27017:27017]
+            INIT_SHARED[init-mongo.js<br/>User setup]
+            DATA_SHARED[Persistent volumes<br/>Event storage]
         end
     end
 
-    NGINX --> JAVA
-    JAVA --> GO
-    JAVA --> MONGO
-    GO --> MONGO
-    GO --> BB
+    subgraph "Kafka Network (kafka-network)"
+        subgraph "Zookeeper Layer"
+            ZK[zookeeper:7.4.0<br/>Coordination<br/>Port 2181:2181]
+            ZK_CONF[Zookeeper config<br/>Cluster coordination]
+        end
 
-    BB -.-> MONGO
+        subgraph "Kafka Broker Layer"
+            KAFKA[kafka:7.4.0<br/>Message Broker<br/>Port 9092:29092]
+            KAFKA_TOPICS[Topics created:<br/>scf-channel-tx<br/>audit-channel-tx<br/>Partitions: 1, RF: 1]
+            KAFKA_CONF[Kafka config<br/>Advertised listeners]
+        end
+    end
+
+    subgraph "Orderer Network (orderer-network)"
+        subgraph "Orderer Cluster Layer"
+            ORD1[orderer-ord1: golang<br/>Leader Node<br/>Port 7050:7050]
+            ORD2[orderer-ord2: golang<br/>Follower Node<br/>Port 7060:7060]
+            ORD3[orderer-ord3: golang<br/>Follower Node<br/>Port 7070:7070]
+            ORD_CONF[Orderer config<br/>Kafka brokers<br/>MongoDB URI]
+        end
+    end
+
+    subgraph "Peer Network (peer-network)"
+        subgraph "Peer Main Bank Layer"
+            MB_PEER[peer-main-bank: golang<br/>Main Bank Peer<br/>Port 8082:8082]
+            MB_MONGO[mongo-main-bank<br/>Bank world state]
+            MB_CONF[Bank config<br/>Kafka brokers<br/>MongoDB URI]
+        end
+
+        subgraph "Peer Supplier Layer"
+            SUP_PEER[peer-supplier: golang<br/>Supplier Peer<br/>Port 8083:8083]
+            SUP_MONGO[mongo-supplier<br/>Supplier world state]
+            SUP_CONF[Supplier config<br/>Kafka brokers<br/>MongoDB URI]
+        end
+
+        subgraph "Peer Anchor Layer"
+            ANC_PEER[peer-anchor: golang<br/>Anchor Peer<br/>Port 8084:8084]
+            ANC_MONGO[mongo-anchor<br/>Anchor world state]
+            ANC_CONF[Anchor config<br/>Kafka brokers<br/>MongoDB URI]
+        end
+    end
+
+    %% Network connections
+    NGINX --> JAVA
+    JAVA --> MB_PEER
+    JAVA --> SUP_PEER
+    JAVA --> ANC_PEER
+
+    MB_PEER --> KAFKA
+    SUP_PEER --> KAFKA
+    ANC_PEER --> KAFKA
+
+    ORD1 --> KAFKA
+    ORD2 --> KAFKA
+    ORD3 --> KAFKA
+
+    ORD1 --> MONGO_SHARED
+    ORD2 --> MONGO_SHARED
+    ORD3 --> MONGO_SHARED
+
+    MB_PEER --> MB_MONGO
+    SUP_PEER --> SUP_MONGO
+    ANC_PEER --> ANC_MONGO
+
+    %% Zookeeper coordination
+    ZK -.-> KAFKA
 
     subgraph "External Access Points"
-        subgraph "User Interfaces"
-            ANC_UI[Anchor UI<br/>localhost:4200/anchor<br/>Contract creation]
-            BANK_UI[Bank UI<br/>localhost:4200/bank<br/>Token monitoring]
-            SUP_UI[Supplier UI<br/>localhost:4200/supplier<br/>Token management]
+        subgraph "Web Interfaces"
+            ANC_UI[Anchor Portal<br/>localhost:4200/anchor<br/>Contract creation]
+            BANK_UI[Bank Dashboard<br/>localhost:4200/bank<br/>Token monitoring]
+            SUP_UI[Supplier Portal<br/>localhost:4200/supplier<br/>Token management]
         end
 
-        subgraph "API Endpoints"
-            REST_API[REST APIs<br/>localhost:8080<br/>JSON responses]
-            BC_API[Blockchain APIs<br/>localhost:8081<br/>Direct blockchain]
+        subgraph "Direct API Access"
+            MB_API[Main Bank API<br/>localhost:8082<br/>Contract & Token APIs]
+            SUP_API[Supplier API<br/>localhost:8083<br/>Transfer APIs]
+            ANC_API[Anchor API<br/>localhost:8084<br/>Contract APIs]
         end
 
-        subgraph "Database Access"
-            DB_EXT[MongoDB External<br/>localhost:27017<br/>For development]
+        subgraph "System Monitoring"
+            DB_EXT[MongoDB Direct<br/>localhost:27017<br/>Development access]
+            KAFKA_EXT[Kafka Tools<br/>localhost:9092<br/>Message inspection]
         end
     end
 
@@ -708,55 +893,254 @@ graph TB
     BANK_UI --> NGINX
     SUP_UI --> NGINX
 
-    REST_API --> JAVA
-    BC_API --> GO
-    DB_EXT --> MONGO
+    MB_API --> MB_PEER
+    SUP_API --> SUP_PEER
+    ANC_API --> ANC_PEER
 
-    subgraph "Environment Configuration"
-        ENV1[Frontend<br/>Dockerfile<br/>nginx.conf]
-        ENV2[Backend<br/>application.yml<br/>JVM settings]
-        ENV3[Blockchain<br/>config.go<br/>MongoDB URI]
-        ENV4[MongoDB<br/>docker-compose.yml<br/>Auth credentials]
+    DB_EXT --> MONGO_SHARED
+    KAFKA_EXT --> KAFKA
+
+    subgraph "Docker Networks"
+        PUB_NET[public-network<br/>Frontend, Gateway, Shared DB]
+        KAFKA_NET[kafka-network<br/>Zookeeper, Kafka brokers]
+        ORDERER_NET[orderer-network<br/>Orderer cluster]
+        PEER_NET[peer-network<br/>Peer services]
     end
 
-    subgraph "Development Tools"
-        LOGS[docker-compose logs<br/>Real-time monitoring]
-        SHELL[docker-compose exec<br/>Container access]
-        DEBUG[Hot reload<br/>Development mode]
+    subgraph "Service Dependencies"
+        DEP1[depends_on kafka<br/>All peers & orderers]
+        DEP2[depends_on mongo-shared<br/>Orderers only]
+        DEP3[depends_on mongo-*<br/>Each peer to its DB]
+        DEP4[depends_on orderer-ord1<br/>Peers for ordering]
     end
 
-    subgraph "Production Considerations"
-        SECURE[Security hardening<br/>Secrets management]
-        SCALE[Horizontal scaling<br/>Load balancing]
-        MONITOR[Health checks<br/>Metrics collection]
-        BACKUP[Data backup<br/>Disaster recovery]
+    subgraph "Volume Mounts"
+        VOL1[./orderer-cluster/genesis<br/>Orderer genesis config]
+        VOL2[./init-mongo.js<br/>Database initialization]
+        VOL3[Persistent volumes<br/>Data persistence]
+    end
+
+    subgraph "Environment Variables"
+        ENV_KAFKA[KAFKA_BROKERS=kafka:29092<br/>All services]
+        ENV_MONGO[MONGO_URI=mongodb://...<br/>Service-specific]
+        ENV_PEER[PEER_NODE_TYPE=...<br/>Peer identification]
+        ENV_ORDERER[ORDERER_NODE_ID=...<br/>Orderer identification]
     end
 ```
 
-### Docker Compose Services:
+### Network Architecture - Multi-Network Isolation:
 
-| Service | Image | Ports | Status | Implementation |
-|---------|-------|-------|--------|----------------|
-| **peer-main-bank** | golang:1.21 | 8082:8082 | ✅ Running | Contract creation, bank approval, token issuance, Kafka producer |
-| **peer-supplier** | golang:1.21 | 8083:8083 | ✅ Running | Contract approval, token transfer, balance management, Kafka producer |
-| **peer-anchor** | golang:1.21 | 8084:8084 | ✅ Running | Contract creation, token reception, ledger tracking, Kafka producer |
-| **orderer-ord1** | golang:1.21 | 7050:7050 | ✅ Running | Kafka consumer, event processing, MongoDB storage |
-| **orderer-ord2** | golang:1.21 | 7060:7060 | ✅ Running | Kafka consumer, block ordering |
-| **orderer-ord3** | golang:1.21 | 7070:7070 | ✅ Running | Kafka consumer, block ordering |
-| **kafka** | confluentinc/cp-kafka:7.4.0 | 9092:29092 | ✅ Running | Message broker với topics đã test |
-| **zookeeper** | confluentinc/cp-zookeeper:7.4.0 | 2181:2181 | ✅ Running | Kafka coordination |
-| **mongo-shared** | mongo:latest | 27017:27017 | ✅ Running | Event storage - đã test persistence |
-| **mongo-main-bank** | mongo:latest | - | ✅ Running | Main bank world state |
-| **mongo-supplier** | mongo:latest | - | ✅ Running | Supplier world state |
-| **mongo-anchor** | mongo:latest | - | ✅ Running | Anchor world state |
-| **backend** | openjdk:17 | 8080:8080 | ✅ Running | Spring Boot API gateway |
-| **frontend** | nginx:alpine | 4200:80 | ✅ Running | Angular 17 UI |
+```mermaid
+graph TB
+    subgraph "🔒 Public Network (public-network)"
+        subgraph "External Access Layer"
+            INTERNET((Internet))
+            DEV_TOOLS[Development Tools<br/>localhost:4200, 8080, 27017]
+        end
 
-### Network Architecture:
-- **Internal Network**: `blockchain-network` (bridge driver)
-- **Service Discovery**: DNS resolution giữa containers
-- **Security**: Isolated network, controlled access
-- **Scalability**: Services có thể scale independently
+        subgraph "Web Tier"
+            NGINX[nginx<br/>Port 4200<br/>Static Files]
+            SPRING[Spring Boot<br/>Port 8080<br/>API Gateway]
+        end
+
+        subgraph "Shared Services"
+            MONGO_SHARED[MongoDB Shared<br/>Port 27017<br/>Events, Users]
+        end
+
+        INTERNET --> NGINX
+        INTERNET --> SPRING
+        INTERNET --> DEV_TOOLS
+        NGINX --> SPRING
+        SPRING --> MONGO_SHARED
+    end
+
+    subgraph "📨 Kafka Network (kafka-network)"
+        subgraph "Message Infrastructure"
+            ZOOKEEPER[zookeeper<br/>Port 2181<br/>Coordination]
+            KAFKA[kafka<br/>Port 29092<br/>Message Broker]
+
+            subgraph "Active Topics"
+                SCF_CHANNEL[scf-channel-tx<br/>✅ SCF Events<br/>Partition:1, RF:1]
+                AUDIT_CHANNEL[audit-channel-tx<br/>✅ Bank Events<br/>Partition:1, RF:1]
+            end
+        end
+
+        ZOOKEEPER -.->|coordinates| KAFKA
+    end
+
+    subgraph "🏛️ Orderer Network (orderer-network)"
+        subgraph "Ordering Service"
+            ORDERER1[orderer-ord1<br/>Port 7050<br/>✅ Leader<br/>Kafka Consumer + DB]
+            ORDERER2[orderer-ord2<br/>Port 7060<br/>Follower<br/>Kafka Consumer]
+            ORDERER3[orderer-ord3<br/>Port 7070<br/>Follower<br/>Kafka Consumer]
+        end
+
+        ORDERER1 -->|reads| SCF_CHANNEL
+        ORDERER1 -->|reads| AUDIT_CHANNEL
+        ORDERER2 -->|reads| SCF_CHANNEL
+        ORDERER2 -->|reads| AUDIT_CHANNEL
+        ORDERER3 -->|reads| SCF_CHANNEL
+        ORDERER3 -->|reads| AUDIT_CHANNEL
+
+        ORDERER1 -->|writes| MONGO_SHARED
+        ORDERER2 -->|writes| MONGO_SHARED
+        ORDERER3 -->|writes| MONGO_SHARED
+    end
+
+    subgraph "🏢 Peer Network (peer-network)"
+        subgraph "Endorsing Peers"
+            PEER_MAIN_BANK[peer-main-bank<br/>Port 8082<br/>✅ Main Bank<br/>Kafka Producer]
+            PEER_SUPPLIER[peer-supplier<br/>Port 8083<br/>✅ Supplier<br/>Kafka Producer]
+            PEER_ANCHOR[peer-anchor<br/>Port 8084<br/>✅ Anchor<br/>Kafka Producer]
+        end
+
+        subgraph "Peer Databases"
+            MONGO_MAIN_BANK[mongo-main-bank<br/>Bank World State]
+            MONGO_SUPPLIER[mongo-supplier<br/>Supplier World State]
+            MONGO_ANCHOR[mongo-anchor<br/>Anchor World State]
+        end
+
+        PEER_MAIN_BANK -->|publishes| SCF_CHANNEL
+        PEER_MAIN_BANK -->|publishes| AUDIT_CHANNEL
+        PEER_SUPPLIER -->|publishes| SCF_CHANNEL
+        PEER_ANCHOR -->|publishes| SCF_CHANNEL
+
+        PEER_MAIN_BANK -->|state| MONGO_MAIN_BANK
+        PEER_SUPPLIER -->|state| MONGO_SUPPLIER
+        PEER_ANCHOR -->|state| MONGO_ANCHOR
+    end
+
+    %% Cross-network communication via Kafka
+    SCF_CHANNEL -.->|ordered blocks| PEER_MAIN_BANK
+    SCF_CHANNEL -.->|ordered blocks| PEER_SUPPLIER
+    SCF_CHANNEL -.->|ordered blocks| PEER_ANCHOR
+    AUDIT_CHANNEL -.->|ordered blocks| PEER_MAIN_BANK
+
+    %% API Gateway to Peers
+    SPRING -->|proxies| PEER_MAIN_BANK
+    SPRING -->|proxies| PEER_SUPPLIER
+    SPRING -->|proxies| PEER_ANCHOR
+
+    subgraph "Network Security Zones"
+        ZONE_PUBLIC[🌐 Public Zone<br/>External access<br/>Load balancer]
+        ZONE_KAFKA[📨 Message Zone<br/>Internal messaging<br/>Isolated network]
+        ZONE_ORDERER[🏛️ Ordering Zone<br/>Transaction ordering<br/>Trusted nodes only]
+        ZONE_PEER[🏢 Peer Zone<br/>Business logic<br/>Endorsing peers]
+    end
+
+    subgraph "Network Flow Summary"
+        FLOW1[Public → Kafka<br/>Peers publish events]
+        FLOW2[Kafka → Orderer<br/>Orderer consumes events]
+        FLOW3[Orderer → Shared DB<br/>Events persisted]
+        FLOW4[Orderer → Kafka<br/>Ordered blocks published]
+        FLOW5[Kafka → Peers<br/>Peers consume blocks]
+        FLOW6[Peers → Peer DBs<br/>World state updates]
+        FLOW7[Public → Peers<br/>API calls via Gateway]
+    end
+```
+
+### Docker Compose Services - Detailed Breakdown:
+
+#### **Peer Services (Endorsing Peers)**
+| Service | Network | Ports | Database | Kafka Role | Status |
+|---------|---------|-------|----------|------------|--------|
+| **peer-main-bank** | peer-network | 8082:8082 | mongo-main-bank | Producer (SCF + Audit) | ✅ Running |
+| **peer-supplier** | peer-network | 8083:8083 | mongo-supplier | Producer (SCF) | ✅ Running |
+| **peer-anchor** | peer-network | 8084:8084 | mongo-anchor | Producer (SCF) | ✅ Running |
+
+#### **Orderer Services (Ordering Service)**
+| Service | Network | Ports | Kafka Role | Database | Status |
+|---------|---------|-------|------------|----------|--------|
+| **orderer-ord1** | orderer-network + kafka-network + public-network | 7050:7050 | Consumer + Storage | mongo-shared | ✅ Running |
+| **orderer-ord2** | orderer-network + kafka-network | 7060:7060 | Consumer | - | ✅ Running |
+| **orderer-ord3** | orderer-network + kafka-network | 7070:7070 | Consumer | - | ✅ Running |
+
+#### **Infrastructure Services**
+| Service | Network | Ports | Purpose | Status |
+|---------|---------|-------|---------|--------|
+| **kafka** | kafka-network | 9092:29092 | Message broker | ✅ Running |
+| **zookeeper** | kafka-network | 2181:2181 | Kafka coordination | ✅ Running |
+| **mongo-shared** | public-network | 27017:27017 | Event storage | ✅ Running |
+| **mongo-main-bank** | peer-network | - | Bank world state | ✅ Running |
+| **mongo-supplier** | peer-network | - | Supplier world state | ✅ Running |
+| **mongo-anchor** | peer-network | - | Anchor world state | ✅ Running |
+
+#### **Application Services**
+| Service | Network | Ports | Purpose | Status |
+|---------|---------|-------|---------|--------|
+| **frontend** | public-network | 4200:80 | Angular UI | ✅ Running |
+| **backend** | public-network | 8080:8080 | Spring API Gateway | ✅ Running |
+
+### Network Architecture - Security & Isolation:
+
+#### **4-Layer Network Design** 🔒
+
+| Network | Purpose | Services | Security Level | Access Pattern |
+|---------|---------|----------|----------------|----------------|
+| **public-network** | External access | Frontend, Backend, Mongo-Shared | 🌐 Public | Internet → Services |
+| **kafka-network** | Message broker | Zookeeper, Kafka | 📨 Internal | Service-to-service only |
+| **orderer-network** | Transaction ordering | Orderer cluster | 🏛️ Trusted | Kafka + Shared DB access |
+| **peer-network** | Business logic | Peer services + DBs | 🏢 Restricted | API Gateway + Kafka only |
+
+#### **Cross-Network Communication Flow** 🔄
+
+```mermaid
+flowchart LR
+    subgraph "User Request"
+        UI[Frontend UI<br/>Port 4200]
+        API[API Gateway<br/>Port 8080]
+    end
+
+    subgraph "Business Logic Layer"
+        PEER1[Peer Main Bank<br/>Port 8082]
+        PEER2[Peer Supplier<br/>Port 8083]
+        PEER3[Peer Anchor<br/>Port 8084]
+    end
+
+    subgraph "Messaging Layer"
+        KAFKA[Kafka Broker<br/>Port 29092]
+        TOPICS[Topics: scf-channel-tx<br/>audit-channel-tx]
+    end
+
+    subgraph "Ordering Layer"
+        ORDERER[Orderer Cluster<br/>Ports 7050-7070]
+    end
+
+    subgraph "Storage Layer"
+        SHARED_DB[MongoDB Shared<br/>Port 27017]
+        PEER_DB[Peer Databases<br/>Isolated per peer]
+    end
+
+    UI --> API
+    API --> PEER1
+    API --> PEER2
+    API --> PEER3
+
+    PEER1 --> KAFKA
+    PEER2 --> KAFKA
+    PEER3 --> KAFKA
+
+    KAFKA --> ORDERER
+    ORDERER --> SHARED_DB
+
+    ORDERER --> KAFKA
+    KAFKA --> PEER1
+    KAFKA --> PEER2
+    KAFKA --> PEER3
+
+    PEER1 --> PEER_DB
+    PEER2 --> PEER_DB
+    PEER3 --> PEER_DB
+```
+
+#### **Key Architecture Principles** 🏗️
+
+- **🔒 Network Isolation**: Each layer runs in separate Docker networks
+- **📨 Async Communication**: Kafka enables decoupled event-driven architecture
+- **🏛️ Consensus Separation**: Orderers handle transaction ordering, peers handle business logic
+- **💾 Data Segregation**: Shared events vs. private world state databases
+- **🔄 Fault Tolerance**: Multiple orderer nodes for high availability
+- **📊 Scalability**: Horizontal scaling possible for each layer independently
 
 ## Business Process Summary
 
