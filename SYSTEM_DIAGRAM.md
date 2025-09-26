@@ -1,15 +1,15 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với Permissioned Network
+# Hệ thống Blockchain Supply Chain Finance (SCF) với Kafka Event-Driven Architecture
 
-## Tổng quan kiến trúc mới
+## Tổng quan kiến trúc với Kafka Messaging
 
-Hệ thống blockchain permissioned với kiến trúc multi-peer node, Orderer cluster và API Gateway routing thông minh:
+Hệ thống blockchain permissioned sử dụng Kafka làm messaging backbone cho event-driven communication:
 
-- **Permissioned Network**: 3 peer nodes (Main Bank, Supplier, Anchor) với World State DB riêng biệt
-- **Orderer Cluster**: 3 orderer nodes đảm bảo consensus và block ordering
-- **API Gateway Routing**: Smart routing dựa trên business logic và user roles
-- **Private Networks**: Tách biệt public-facing và peer-to-peer communication
-- **Event Sourcing**: Tất cả thay đổi được ghi thành events và ordered bởi Orderer cluster
-- **Token Management**: Multi-peer token circulation với cross-peer validation
+- **Kafka-based Event Streaming**: Peers publish events vào Kafka topics, Orderers consume và order globally
+- **Decoupled Architecture**: Async processing với message persistence và fault tolerance
+- **Channel-based Topics**: `scf-channel-tx` cho SCF transactions, `audit-channel-tx` cho bank approvals
+- **Consumer Groups**: Orderer nodes chia sẻ load qua Kafka consumer groups
+- **High Throughput**: Async messaging cho phép horizontal scaling và better performance
+- **Event Sourcing**: Tất cả blockchain events flow qua Kafka cho global ordering
 
 ```mermaid
 graph TB
@@ -32,15 +32,32 @@ graph TB
         PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "Orderer Cluster (Public)"
-        ORD1[Orderer Node 1<br/>Port 7050<br/>Consensus Leader]
-        ORD2[Orderer Node 2<br/>Port 7060<br/>Consensus Follower]
-        ORD3[Orderer Node 3<br/>Port 7070<br/>Consensus Follower]
+    subgraph "Kafka Messaging Layer"
+        subgraph "Zookeeper"
+            ZK[Zookeeper<br/>Port: 2181<br/>Coordination Service]
+        end
+        subgraph "Kafka Broker"
+            KB[Kafka Broker<br/>Port: 9092<br/>Message Broker]
+            subgraph "Transaction Topics"
+                SCF_TX[scf-channel-tx<br/>SCF Events<br/>Partitions: 1]
+                AUDIT_TX[audit-channel-tx<br/>Bank Approval Events<br/>Partitions: 1]
+            end
+            subgraph "Block Topics"
+                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1]
+                AUDIT_BLOCKS[audit-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1]
+            end
+        end
     end
 
-    subgraph "Peer Main Bank (Permissioned)"
+    subgraph "Orderer Cluster (Kafka Consumers)"
+        ORD1[Orderer Node 1<br/>Port 7050<br/>Consumer Group: orderer-ord1-group<br/>Kafka Consumer + Block Ordering]
+        ORD2[Orderer Node 2<br/>Port 7060<br/>Consumer Group: orderer-ord2-group<br/>Kafka Consumer + Block Ordering]
+        ORD3[Orderer Node 3<br/>Port 7070<br/>Consumer Group: orderer-ord3-group<br/>Kafka Consumer + Block Ordering]
+    end
+
+    subgraph "Peer Main Bank (Kafka Producers)"
         MB_API[REST API<br/>Port 8082]
-        MB_GRPC[gRPC Service<br/>Port 9092]
+        MB_KAFKA[Kafka Producer<br/>Audit Channel Events]
         subgraph "Main Bank Logic"
             MB_CON[Contract Approval<br/>Bank Validation]
             MB_TOK[Token Issuance<br/>Bank Authority]
@@ -49,9 +66,9 @@ graph TB
         MB_DB[(MongoDB<br/>World State<br/>blockchain_main_bank)]
     end
 
-    subgraph "Peer Supplier (Permissioned)"
+    subgraph "Peer Supplier (Kafka Producers)"
         SUP_API[REST API<br/>Port 8083]
-        SUP_GRPC[gRPC Service<br/>Port 9093]
+        SUP_KAFKA[Kafka Producer<br/>SCF Channel Events]
         subgraph "Supplier Logic"
             SUP_APP[Contract Approval<br/>Supplier Validation]
             SUP_TOK[Token Transfer<br/>P2P Circulation]
@@ -60,9 +77,9 @@ graph TB
         SUP_DB[(MongoDB<br/>World State<br/>blockchain_supplier)]
     end
 
-    subgraph "Peer Anchor (Permissioned)"
+    subgraph "Peer Anchor (Kafka Producers)"
         ANC_API[REST API<br/>Port 8084]
-        ANC_GRPC[gRPC Service<br/>Port 9094]
+        ANC_KAFKA[Kafka Producer<br/>SCF Channel Events]
         subgraph "Anchor Logic"
             ANC_CON[Contract Creation<br/>Anchor Authority]
             ANC_TOK[Token Reception<br/>Initial Ownership]
@@ -75,39 +92,56 @@ graph TB
         SHARED_DB[(MongoDB Shared<br/>User Management<br/>blockchain_shared)]
     end
 
-    %% Frontend connections
+    %% Event Flow: Frontend → API Gateway → Peer → Kafka → Orderer
     ANC --> AR
     BNK --> AR
     SUP --> AR
 
-    %% API Gateway routing
     AR --> PR
     PR --> MB_API
     PR --> SUP_API
     PR --> ANC_API
 
-    %% Orderer connections (consensus)
-    MB_GRPC --> ORD1
-    SUP_GRPC --> ORD1
-    ANC_GRPC --> ORD1
-    ORD1 <--> ORD2
-    ORD1 <--> ORD3
+    %% Peer publishes events to Kafka topics
+    MB_API --> MB_KAFKA
+    SUP_API --> SUP_KAFKA
+    ANC_API --> ANC_KAFKA
 
-    %% Peer-to-peer communication
-    MB_GRPC <--> SUP_GRPC
-    MB_GRPC <--> ANC_GRPC
-    SUP_GRPC <--> ANC_GRPC
+    MB_KAFKA -->|Bank Approvals| AUDIT_TX
+    SUP_KAFKA -->|SCF Transactions| SCF_TX
+    ANC_KAFKA -->|SCF Transactions| SCF_TX
+
+    %% Orderer consumes from Kafka topics
+    SCF_TX --> ORD1
+    SCF_TX --> ORD2
+    SCF_TX --> ORD3
+    AUDIT_TX --> ORD1
+    AUDIT_TX --> ORD2
+    AUDIT_TX --> ORD3
+
+    %% Orderer publishes ordered blocks back to topics
+    ORD1 --> SCF_BLOCKS
+    ORD2 --> SCF_BLOCKS
+    ORD3 --> SCF_BLOCKS
+
+    %% Peers consume ordered blocks
+    SCF_BLOCKS --> MB_API
+    SCF_BLOCKS --> SUP_API
+    SCF_BLOCKS --> ANC_API
 
     %% Database connections
     MB_API --> MB_DB
     SUP_API --> SUP_DB
     ANC_API --> ANC_DB
     AUTH_S --> SHARED_DB
+
+    %% Kafka infrastructure
+    ZK -.->|Coordination| KB
 ```
 
 ## Luồng nghiệp vụ chi tiết
 
-### Quy trình Supply Chain Finance với kiến trúc mới:
+### Quy trình Supply Chain Finance với Kafka Event-Driven Flow:
 
 ```mermaid
 sequenceDiagram
@@ -119,30 +153,44 @@ sequenceDiagram
     participant PeerAnchor
     participant PeerMainBank
     participant PeerSupplier
+    participant Kafka
     participant OrdererCluster
     participant MongoAnchor
     participant MongoMainBank
     participant MongoSupplier
 
-    %% 1. Anchor tạo hợp đồng trên Peer Anchor
+    %% 1. Anchor tạo hợp đồng - publish to Kafka
     rect rgb(240, 248, 255)
-        Note over Anchor,MongoAnchor: Tạo hợp đồng trên Anchor Peer
+        Note over Anchor,Kafka: Contract Creation via Kafka
         Anchor->>Frontend: Submit contract form (with PDF file)
         Frontend->>APIGateway: POST /api/contracts (multipart/form-data)
         APIGateway->>PeerAnchor: Route to Anchor Peer /contract/create
         PeerAnchor->>MongoAnchor: Save contract metadata + file
         PeerAnchor->>MongoAnchor: Insert CREATE event
-        PeerAnchor->>OrdererCluster: Submit event for ordering
-        OrdererCluster->>PeerAnchor: Return ordered block
-        PeerAnchor->>MongoAnchor: Save ordered block
-        PeerAnchor-->>APIGateway: Contract created
+        PeerAnchor->>Kafka: Publish CONTRACT_CREATED event to scf-channel-tx
+        Kafka-->>PeerAnchor: Event published (async)
+        PeerAnchor-->>APIGateway: Contract created (immediate response)
         APIGateway-->>Frontend: Success response
         Frontend-->>Anchor: Contract created notification
     end
 
-    %% 2. Bank phê duyệt trên Peer Main Bank
+    %% Kafka → Orderer processing (async background)
+    rect rgb(255, 248, 220)
+        Note over Kafka,OrdererCluster: Async Event Processing
+        Kafka->>OrdererCluster: Deliver CONTRACT_CREATED event via consumer group
+        OrdererCluster->>OrdererCluster: Process and order event into block
+        OrdererCluster->>Kafka: Publish ordered block to scf-channel-blocks
+        Kafka->>PeerAnchor: Deliver ordered block to all peers
+        PeerAnchor->>MongoAnchor: Save globally ordered block
+        Kafka->>PeerMainBank: Deliver ordered block to all peers
+        PeerMainBank->>MongoMainBank: Save globally ordered block
+        Kafka->>PeerSupplier: Deliver ordered block to all peers
+        PeerSupplier->>MongoSupplier: Save globally ordered block
+    end
+
+    %% 2. Bank phê duyệt - publish to audit channel
     rect rgb(255, 248, 240)
-        Note over Bank,MongoMainBank: Bank phê duyệt contract
+        Note over Bank,Kafka: Bank Approval via Audit Channel
         Bank->>Frontend: Click bank approve button
         Frontend->>APIGateway: POST /api/contracts/{id}/approve-bank
         APIGateway->>PeerMainBank: Route to Main Bank Peer /contract/approve-bank
@@ -151,69 +199,64 @@ sequenceDiagram
         PeerMainBank->>MongoMainBank: Create token (issuer=SYSTEM, owner=Anchor)
         PeerMainBank->>MongoMainBank: Create initial balance (Anchor=totalAmount)
         PeerMainBank->>MongoMainBank: Insert BANK_APPROVED_TOKEN_GENERATED event
-        PeerMainBank->>OrdererCluster: Submit event for ordering
-        OrdererCluster->>PeerMainBank: Return ordered block
-        PeerMainBank->>MongoMainBank: Save ordered block
-        PeerMainBank-->>APIGateway: Token created + contract approved
+        PeerMainBank->>Kafka: Publish BANK_APPROVED_TOKEN_GENERATED to audit-channel-tx
+        Kafka-->>PeerMainBank: Event published (async)
+        PeerMainBank-->>APIGateway: Token created + contract approved (immediate)
         APIGateway-->>Frontend: Success response
         Frontend-->>Bank: Token created notification
     end
 
-    %% 3. Suppliers phê duyệt trên Peer Supplier
+    %% 3. Suppliers phê duyệt - publish to SCF channel
     rect rgb(248, 255, 240)
-        Note over Supplier,MongoSupplier: Supplier phê duyệt contract
+        Note over Supplier,Kafka: Supplier Approval via SCF Channel
         Supplier->>Frontend: Click supplier approve button
         Frontend->>APIGateway: POST /api/contracts/{id}/approve
         APIGateway->>PeerSupplier: Route to Supplier Peer /contract/approve
         PeerSupplier->>MongoSupplier: Check contract status & supplier auth
         PeerSupplier->>MongoSupplier: Update supplier approval status
-        PeerSupplier->>PeerMainBank: Sync contract state via gRPC
-        PeerMainBank->>PeerSupplier: Confirm token availability
         alt All suppliers approved
             PeerSupplier->>MongoSupplier: Update contract.approved = true
             PeerSupplier->>MongoSupplier: Transfer token ownership (Anchor → Suppliers)
             PeerSupplier->>MongoSupplier: Update balances proportionally
             PeerSupplier->>MongoSupplier: Insert CONTRACT_FULLY_APPROVED event
-            PeerSupplier->>OrdererCluster: Submit event for ordering
-            OrdererCluster->>PeerSupplier: Return ordered block
+            PeerSupplier->>Kafka: Publish CONTRACT_FULLY_APPROVED to scf-channel-tx
         else
             PeerSupplier->>MongoSupplier: Insert SUPPLIER_APPROVED event
+            PeerSupplier->>Kafka: Publish SUPPLIER_APPROVED to scf-channel-tx
         end
-        PeerSupplier-->>APIGateway: Approval successful
+        Kafka-->>PeerSupplier: Events published (async)
+        PeerSupplier-->>APIGateway: Approval successful (immediate)
         APIGateway-->>Frontend: Contract updated
         Frontend-->>Supplier: Approval confirmed
     end
 
-    %% 4. Token transfer giữa Suppliers (Cross-peer)
+    %% 4. Token transfer - publish to SCF channel
     rect rgb(248, 255, 240)
-        Note over Supplier,MongoSupplier: P2P Token Transfer
+        Note over Supplier,Kafka: P2P Token Transfer via SCF Channel
         Supplier->>Frontend: Initiate token transfer to another supplier
         Frontend->>APIGateway: POST /api/tokens/transfer
         APIGateway->>PeerSupplier: Route to Supplier Peer /token/transfer
         PeerSupplier->>MongoSupplier: Validate sender balance & ownership
-        PeerSupplier->>PeerSupplier: Cross-validate with receiver's peer
         PeerSupplier->>MongoSupplier: Debit sender balance
         PeerSupplier->>MongoSupplier: Credit receiver balance
         PeerSupplier->>MongoSupplier: Insert TRANSFER event
-        PeerSupplier->>OrdererCluster: Submit transaction for global ordering
-        OrdererCluster->>PeerSupplier: Return globally ordered block
-        PeerSupplier->>MongoSupplier: Save ordered block
-        PeerSupplier-->>APIGateway: Transfer successful
+        PeerSupplier->>Kafka: Publish TOKEN_TRANSFERRED to scf-channel-tx
+        Kafka-->>PeerSupplier: Event published (async)
+        PeerSupplier-->>APIGateway: Transfer successful (immediate)
         APIGateway-->>Frontend: Success response
         Frontend-->>Supplier: Transfer confirmed
     end
 
-    %% 5. Orderer Cluster consensus và block ordering
+    %% 5. Orderer Cluster Kafka-based consensus
     rect rgb(255, 240, 248)
-        Note over OrdererCluster,PeerAnchor: Distributed Consensus
-        loop Continuous consensus
-            PeerAnchor->>OrdererCluster: Submit local events for ordering
-            PeerMainBank->>OrdererCluster: Submit local events for ordering
-            PeerSupplier->>OrdererCluster: Submit local events for ordering
-            OrdererCluster->>OrdererCluster: Raft consensus among orderers
-            OrdererCluster->>PeerAnchor: Deliver ordered blocks
-            OrdererCluster->>PeerMainBank: Deliver ordered blocks
-            OrdererCluster->>PeerSupplier: Deliver ordered blocks
+        Note over Kafka,PeerAnchor: Kafka-based Global Ordering
+        loop Continuous event processing
+            Kafka->>OrdererCluster: Deliver events via consumer groups (load balanced)
+            OrdererCluster->>OrdererCluster: Process and globally order events
+            OrdererCluster->>Kafka: Publish ordered blocks to block topics
+            Kafka->>PeerAnchor: Broadcast ordered blocks to all peers
+            Kafka->>PeerMainBank: Broadcast ordered blocks to all peers
+            Kafka->>PeerSupplier: Broadcast ordered blocks to all peers
             PeerAnchor->>MongoAnchor: Save globally ordered blocks
             PeerMainBank->>MongoMainBank: Save globally ordered blocks
             PeerSupplier->>MongoSupplier: Save globally ordered blocks

@@ -24,14 +24,15 @@ import (
 )
 
 type PeerNode struct {
-	nodeID       string
-	nodeType     string // "main-bank", "supplier", "anchor"
-	port         int
-	grpcPort     int
-	ordererAddr  string
-	db           *mongo.Database
-	blockBuilder *blockchain.BlockBuilder
-	grpcClient   pb.OrdererServiceClient
+	nodeID        string
+	nodeType      string // "main-bank", "supplier", "anchor"
+	port          int
+	grpcPort      int
+	ordererAddr   string
+	db            *mongo.Database
+	blockBuilder  *blockchain.BlockBuilder
+	grpcClient    pb.OrdererServiceClient
+	kafkaProducer *KafkaProducer
 }
 
 func NewPeerNode(nodeType string) *PeerNode {
@@ -87,6 +88,11 @@ func (p *PeerNode) Initialize() error {
 	// Initialize block builder
 	p.blockBuilder = blockchain.NewBlockBuilder(p.db)
 	p.blockBuilder.Start()
+
+	// Initialize Kafka producer
+	if err := p.initKafkaProducer(); err != nil {
+		log.Printf("Warning: Failed to initialize Kafka producer: %v", err)
+	}
 
 	// Connect to Orderer cluster
 	if err := p.connectToOrderer(); err != nil {
@@ -217,6 +223,16 @@ func (p *PeerNode) SubmitToOrderer(block *pb.Block) error {
 
 	log.Printf("Block %d submitted to orderer successfully", block.BlockNumber)
 	return nil
+}
+
+// PublishEventToKafka publishes blockchain events to Kafka
+func (p *PeerNode) PublishEventToKafka(event map[string]interface{}, channel string) error {
+	return p.publishEventToKafka(event, channel)
+}
+
+// PublishTransactionToKafka publishes transactions to Kafka
+func (p *PeerNode) PublishTransactionToKafka(transaction *pb.Transaction, channel string) error {
+	return p.publishTransactionToKafka(transaction, channel)
 }
 
 func main() {

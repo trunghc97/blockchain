@@ -12,25 +12,25 @@
 ## Tổng quan hệ thống
 
 ### Mục đích
-Hệ thống Blockchain Permissioned Network cho Supply Chain Finance là nền tảng phân quyền với kiến trúc multi-peer node và Orderer cluster. Hệ thống cho phép:
-- **Permissioned Network**: 3 peer nodes độc lập (Main Bank, Supplier, Anchor) với World State DB riêng biệt
-- **Orderer Cluster**: 3 orderer nodes đảm bảo global consensus và block ordering
-- **Smart API Gateway**: Routing thông minh dựa trên business logic và user roles
-- **Cross-peer Communication**: gRPC-based communication giữa các peer nodes
-- **Immutable Audit Trail**: Global ordering đảm bảo tính nhất quán và không thể thay đổi
-- **Scalable Architecture**: Dễ dàng mở rộng thêm peer nodes cho nhiều ngân hàng và suppliers
+Hệ thống Blockchain Permissioned Network với Kafka Messaging cho Supply Chain Finance là nền tảng phân quyền sử dụng event-driven architecture. Hệ thống cho phép:
+- **Kafka-based Messaging**: Event-driven communication giữa Peer nodes và Orderer cluster
+- **Decoupled Architecture**: Peers publish events asynchronously, Orderers consume và order globally
+- **Channel-based Topics**: SCF transactions và Audit events trên các Kafka topics riêng biệt
+- **High Throughput**: Async processing với Kafka's scalable messaging infrastructure
+- **Fault Tolerance**: Kafka's replication và persistence đảm bảo message durability
+- **Event Sourcing**: Tất cả blockchain events được publish và consume qua Kafka
 
 ### Phạm vi
-- **Multi-peer Architecture**: Tách biệt logic và data giữa Main Bank, Supplier, và Anchor peers
-- **Orderer Cluster**: Global consensus cho tất cả transactions across peers
-- **Business Logic Routing**: API Gateway route requests dựa trên user role và operation type
-- **Private Networks**: Tách biệt public access và internal peer communication
-- **World State Isolation**: Mỗi peer có MongoDB riêng cho data privacy và performance
-- **Cross-peer Validation**: gRPC communication để validate transactions across peers
+- **Event-Driven Architecture**: Kafka làm messaging backbone cho tất cả blockchain events
+- **Channel Segregation**: `scf-channel-tx` cho SCF transactions, `audit-channel-tx` cho bank approvals
+- **Async Processing**: Peers publish events và continue, Orderers process asynchronously
+- **Message Persistence**: Kafka đảm bảo không mất events với replication và persistence
+- **Consumer Groups**: Orderer nodes chia sẻ load qua Kafka consumer groups
+- **Network Isolation**: Private network cho Peer+Kafka, Orderer access qua bridge
 
 ## Kiến trúc hệ thống
 
-### Mô hình kết nối tổng thể với kiến trúc mới
+### Mô hình kết nối với Kafka Event-Driven Architecture
 
 ```mermaid
 graph TB
@@ -42,30 +42,46 @@ graph TB
         JAVA[Java Spring Boot<br/>Port: 8080<br/>Smart Routing & Auth]
     end
 
+    subgraph "Kafka Messaging Layer"
+        subgraph "Zookeeper"
+            ZK[Zookeeper<br/>Port: 2181<br/>Coordination]
+        end
+
+        subgraph "Kafka Broker"
+            KB[Kafka Broker<br/>Port: 9092<br/>Message Broker]
+            subgraph "Topics"
+                SCF_TX[scf-channel-tx<br/>SCF Transactions]
+                AUDIT_TX[audit-channel-tx<br/>Bank Approvals]
+                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks]
+                AUDIT_BLOCKS[audit-channel-blocks<br/>Ordered Blocks]
+            end
+        end
+    end
+
     subgraph "Permissioned Peer Network"
         subgraph "Peer Main Bank"
             MB_API[REST API<br/>Port: 8082]
-            MB_GRPC[gRPC Service<br/>Port: 9092]
+            MB_KAFKA[Kafka Producer<br/>Audit Events]
             MB_DB[(MongoDB<br/>blockchain_main_bank)]
         end
 
         subgraph "Peer Supplier"
             SUP_API[REST API<br/>Port: 8083]
-            SUP_GRPC[gRPC Service<br/>Port: 9093]
+            SUP_KAFKA[Kafka Producer<br/>SCF Events]
             SUP_DB[(MongoDB<br/>blockchain_supplier)]
         end
 
         subgraph "Peer Anchor"
             ANC_API[REST API<br/>Port: 8084]
-            ANC_GRPC[gRPC Service<br/>Port: 9094]
+            ANC_KAFKA[Kafka Producer<br/>SCF Events]
             ANC_DB[(MongoDB<br/>blockchain_anchor)]
         end
     end
 
-    subgraph "Orderer Cluster (Public)"
-        ORD1[Orderer Node 1<br/>Port: 7050<br/>Raft Consensus]
-        ORD2[Orderer Node 2<br/>Port: 7060<br/>Raft Follower]
-        ORD3[Orderer Node 3<br/>Port: 7070<br/>Raft Follower]
+    subgraph "Orderer Cluster"
+        ORD1[Orderer Node 1<br/>Port: 7050<br/>Kafka Consumer<br/>Block Ordering]
+        ORD2[Orderer Node 2<br/>Port: 7060<br/>Kafka Consumer<br/>Block Ordering]
+        ORD3[Orderer Node 3<br/>Port: 7070<br/>Kafka Consumer<br/>Block Ordering]
     end
 
     subgraph "Shared Services"
@@ -73,45 +89,59 @@ graph TB
     end
 
     subgraph "Network Topology"
-        PUBLIC[Public Network<br/>External Access]
-        PEER_NW[Peer Network<br/>Internal gRPC<br/>Isolated]
-        ORDERER_NW[Orderer Network<br/>Consensus<br/>Isolated]
+        PUBLIC_NW[Public Network<br/>External Access]
+        PRIVATE_NW[Private Network<br/>Peer + Kafka<br/>Isolated]
+        KAFKA_BRIDGE[Kafka Bridge<br/>Orderer Access]
     end
 
-    %% Connections
+    %% Event Flow
     FE -->|HTTP| JAVA
     JAVA -->|Smart Routing| MB_API
     JAVA -->|Smart Routing| SUP_API
     JAVA -->|Smart Routing| ANC_API
 
-    MB_GRPC <-->|Cross-peer<br/>Validation| SUP_GRPC
-    MB_GRPC <-->|Cross-peer<br/>Validation| ANC_GRPC
-    SUP_GRPC <-->|Cross-peer<br/>Validation| ANC_GRPC
+    MB_API -->|Bank Approval Events| MB_KAFKA
+    SUP_API -->|SCF Events| SUP_KAFKA
+    ANC_API -->|SCF Events| ANC_KAFKA
 
-    MB_GRPC -->|Submit Blocks| ORD1
-    SUP_GRPC -->|Submit Blocks| ORD1
-    ANC_GRPC -->|Submit Blocks| ORD1
+    MB_KAFKA -->|Publish| AUDIT_TX
+    SUP_KAFKA -->|Publish| SCF_TX
+    ANC_KAFKA -->|Publish| SCF_TX
 
-    ORD1 <-->|Raft Consensus| ORD2
-    ORD1 <-->|Raft Consensus| ORD3
+    SCF_TX -->|Consume| ORD1
+    SCF_TX -->|Consume| ORD2
+    SCF_TX -->|Consume| ORD3
+    AUDIT_TX -->|Consume| ORD1
+    AUDIT_TX -->|Consume| ORD2
+    AUDIT_TX -->|Consume| ORD3
 
-    ORD1 -->|Ordered Blocks| MB_GRPC
-    ORD1 -->|Ordered Blocks| SUP_GRPC
-    ORD1 -->|Ordered Blocks| ANC_GRPC
+    ORD1 -->|Ordered Blocks| SCF_BLOCKS
+    ORD2 -->|Ordered Blocks| SCF_BLOCKS
+    ORD3 -->|Ordered Blocks| SCF_BLOCKS
+
+    SCF_BLOCKS -->|Broadcast| MB_API
+    SCF_BLOCKS -->|Broadcast| SUP_API
+    SCF_BLOCKS -->|Broadcast| ANC_API
 
     MB_API --> MB_DB
     SUP_API --> SUP_DB
     ANC_API --> ANC_DB
     JAVA --> SHARED_DB
 
-    PUBLIC -.->|External Access| FE
-    PUBLIC -.->|External Access| JAVA
-    PEER_NW -.->|Internal Comm| MB_GRPC
-    PEER_NW -.->|Internal Comm| SUP_GRPC
-    PEER_NW -.->|Internal Comm| ANC_GRPC
-    ORDERER_NW -.->|Consensus| ORD1
-    ORDERER_NW -.->|Consensus| ORD2
-    ORDERER_NW -.->|Consensus| ORD3
+    ZK -.->|Coordination| KB
+    KB -.->|Topics| SCF_TX
+    KB -.->|Topics| AUDIT_TX
+    KB -.->|Topics| SCF_BLOCKS
+    KB -.->|Topics| AUDIT_BLOCKS
+
+    PUBLIC_NW -.->|External Access| FE
+    PUBLIC_NW -.->|External Access| JAVA
+    PRIVATE_NW -.->|Internal| MB_KAFKA
+    PRIVATE_NW -.->|Internal| SUP_KAFKA
+    PRIVATE_NW -.->|Internal| ANC_KAFKA
+    KAFKA_BRIDGE -.->|Orderer Access| ORD1
+    KAFKA_BRIDGE -.->|Orderer Access| ORD2
+    KAFKA_BRIDGE -.->|Orderer Access| ORD3
 ```
 
 ### Kiến trúc Microservices với Multi-peer Network

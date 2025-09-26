@@ -3,6 +3,7 @@ module orderer-cluster
 go 1.21
 
 require (
+	github.com/Shopify/sarama v1.38.1
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
 )

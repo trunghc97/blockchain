@@ -16,6 +16,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	timestamp_pb "google.golang.org/protobuf/types/known/timestamppb"
 
 	"shared/peer-base/models"
 	pb "shared/proto"
@@ -23,6 +24,8 @@ import (
 
 type PeerNode interface {
 	SubmitToOrderer(block *pb.Block) error
+	PublishEventToKafka(event map[string]interface{}, channel string) error
+	PublishTransactionToKafka(transaction *pb.Transaction, channel string) error
 }
 
 type Handler struct {
@@ -212,17 +215,17 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Failed to create block: %v\n", err)
 	}
 
-	// Submit block to Orderer cluster
+	// Publish event to Kafka instead of calling Orderer directly
 	go func() {
-		pbBlock := &pb.Block{
-			BlockNumber:  blockNumber,
-			Timestamp:    &timestamp_pb.Timestamp{Seconds: time.Now().Unix()},
-			Transactions: []*pb.Transaction{}, // Convert events to transactions
-			PreviousHash: previousHash,
-			Hash:         blockHash,
-			PeerId:       h.nodeType,
+		channel := "scf" // Default channel for SCF transactions
+		if h.nodeType == "main-bank" && (event["eventType"] == "BANK_APPROVED_TOKEN_GENERATED") {
+			channel = "audit" // Bank approvals go to audit channel
 		}
-		h.peerNode.SubmitToOrderer(pbBlock)
+
+		err := h.peerNode.PublishEventToKafka(event, channel)
+		if err != nil {
+			fmt.Printf("Failed to publish event to Kafka: %v\n", err)
+		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -332,9 +335,23 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 
 	// ... (token transfer logic)
 
-	// Submit to Orderer after successful transfer
+	// Publish transfer event to Kafka
 	go func() {
-		// Convert to protobuf and submit
+		transferEvent := map[string]interface{}{
+			"eventId":     generateEventID(),
+			"eventType":   "TOKEN_TRANSFERRED",
+			"tokenId":     req.TokenId,
+			"from":        req.From,
+			"to":          req.To,
+			"amount":      req.Amount,
+			"timestamp":   time.Now().Format(time.RFC3339),
+		}
+
+		channel := "scf" // Token transfers go to SCF channel
+		err := h.peerNode.PublishEventToKafka(transferEvent, channel)
+		if err != nil {
+			fmt.Printf("Failed to publish transfer event to Kafka: %v\n", err)
+		}
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
