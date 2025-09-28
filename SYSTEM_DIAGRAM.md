@@ -54,19 +54,24 @@ Sample stored event:
 
 ### ✅ **Implemented APIs**
 
-**Peer Main Bank (Port 8082):**
-- `POST /contract/create` - Tạo contract
-- `POST /contract/{id}/approve-bank` - Bank approve
-- `GET /contract/list` - List contracts
+**Peer Anchor (Port 8084) - Contract Creation:**
+- `POST /contract/create` - Anchor tạo contract + ledger entry + Kafka publish
 - `GET /contract/{id}` - Contract details
-- `GET /contract/{id}/ledger` - Contract ledger
-
-**Peer Supplier (Port 8083):**
-- `POST /contract/{id}/approve` - Supplier approve
-- `POST /token/transfer` - Token transfer
+- `GET /contract/list` - Danh sách contracts đã tạo
 - `GET /health` - Health check
 
-**Peer Anchor (Port 8084):**
+**Peer Main Bank (Port 8082) - Bank Operations:**
+- `POST /contract/{id}/approve-bank` - Bank phê duyệt + token issuance
+- `GET /contract/list` - List tất cả contracts
+- `GET /contract/{id}` - Contract details
+- `GET /contract/{id}/ledger` - Contract audit trail
+- `GET /token/issued/{bankId}` - Tokens issued by bank
+- `GET /tokens` - All tokens issued by bank
+
+**Peer Supplier (Port 8083) - Token Operations:**
+- `POST /contract/{id}/approve` - Supplier phê duyệt contract
+- `POST /token/transfer` - Token transfer giữa suppliers
+- `GET /balances/account/{accountId}` - Account balances
 - `GET /health` - Health check
 
 ```mermaid
@@ -1174,21 +1179,37 @@ flowchart LR
 | POST | `/api/tokens/transfer` | Transfer token giữa users | JWT Bearer |
 | GET | `/api/tokens/issued/{bankId}` | Bank xem tokens đã phát hành | JWT Bearer |
 
-### Blockchain APIs (Go ms-blockchain):
+### Peer Service APIs (Go Peer Services):
 
+#### **Peer Anchor (Port 8084) - Contract Creation:**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/contract/create` | Tạo contract + auto token issuance |
-| POST | `/contract/approve` | Phê duyệt contract + token transfer |
-| GET | `/contract/{id}` | Chi tiết contract |
-| GET | `/contract/list` | Danh sách contracts |
+| POST | `/contract/create` | Anchor tạo contract + ledger entry + Kafka publish |
+| GET | `/contract/{id}` | Chi tiết contract từ anchor perspective |
+| GET | `/contract/list` | Danh sách contracts đã tạo |
+
+#### **Peer Supplier (Port 8083) - Token Operations:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/contract/{id}/approve` | Supplier phê duyệt contract + token transfer |
+| POST | `/token/transfer` | Token transfer giữa suppliers |
+| GET | `/balances/account/{accountId}` | Account balances của supplier |
+| GET | `/health` | Health check |
+
+#### **Peer Main Bank (Port 8082) - Bank Operations:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/contract/{id}/approve-bank` | Bank phê duyệt + token issuance |
+| GET | `/contract/list` | Bank xem tất cả contracts |
 | GET | `/contract/{id}/ledger` | Contract audit trail |
-| GET | `/token/{id}` | Token information |
-| POST | `/token/transfer` | Direct token transfer |
 | GET | `/token/issued/{bankId}` | Tokens issued by bank |
-| GET | `/tokens` | All tokens |
-| GET | `/balances/account/{accountId}` | Account balances |
-| GET | `/balances/token/{tokenId}` | Token balances |
+| GET | `/tokens` | All tokens issued by bank |
+
+#### **Common Endpoints:**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/token/{id}` | Token information |
+| GET | `/balances/token/{tokenId}` | Token balances across all accounts |
 | GET | `/suppliers` | Supplier list |
 | POST | `/blocks/hash/update` | Update block hashes |
 

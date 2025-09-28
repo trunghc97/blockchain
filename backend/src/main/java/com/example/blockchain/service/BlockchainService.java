@@ -18,24 +18,32 @@ import java.util.Map;
 @Service
 public class BlockchainService {
     private final RestTemplate restTemplate;
-    private final String blockchainUrl;
+    private final String peerAnchorUrl;
+    private final String peerSupplierUrl;
+    private final String peerMainBankUrl;
 
     public BlockchainService(
             RestTemplate restTemplate,
-            @Value("${blockchain.url:http://localhost:8081}") String blockchainUrl
+            @Value("${peer.anchor.url:http://peer-anchor:8084}") String peerAnchorUrl,
+            @Value("${peer.supplier.url:http://peer-supplier:8083}") String peerSupplierUrl,
+            @Value("${peer.main-bank.url:http://peer-main-bank:8082}") String peerMainBankUrl
     ) {
         this.restTemplate = restTemplate;
-        this.blockchainUrl = blockchainUrl;
+        this.peerAnchorUrl = peerAnchorUrl;
+        this.peerSupplierUrl = peerSupplierUrl;
+        this.peerMainBankUrl = peerMainBankUrl;
     }
 
+    // Contract operations - routed based on user role
     public Map<String, Object> createContract(Map<String, Object> contractData) {
+        // Always route to peer-anchor for contract creation (only anchor can create contracts)
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(contractData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/create",
+                peerAnchorUrl + "/contract/create",
                 HttpMethod.POST,
                 request,
                 Map.class
@@ -44,8 +52,9 @@ public class BlockchainService {
     }
 
     public Map<String, Object> getContract(String contractId) {
+        // Route to peer-anchor for contract details
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/" + contractId,
+                peerAnchorUrl + "/contract/" + contractId,
                 HttpMethod.GET,
                 null,
                 Map.class
@@ -54,8 +63,9 @@ public class BlockchainService {
     }
 
     public Map<String, Object> getToken(String tokenId) {
+        // Route to peer-anchor for token details
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/token/" + tokenId,
+                peerAnchorUrl + "/token/" + tokenId,
                 HttpMethod.GET,
                 null,
                 Map.class
@@ -64,6 +74,7 @@ public class BlockchainService {
     }
 
     public Map<String, Object> approveContract(String contractId, String supplierId) {
+        // Route to peer-supplier for supplier approval
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -74,7 +85,7 @@ public class BlockchainService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/" + contractId + "/approve",
+                peerSupplierUrl + "/contract/" + contractId + "/approve",
                 HttpMethod.POST,
                 request,
                 Map.class
@@ -83,6 +94,7 @@ public class BlockchainService {
     }
 
     public Map<String, Object> approveContractByBank(String contractId, String bankId) {
+        // Route to peer-main-bank for bank approval
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -93,7 +105,7 @@ public class BlockchainService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/" + contractId + "/approve-bank",
+                peerMainBankUrl + "/contract/" + contractId + "/approve-bank",
                 HttpMethod.POST,
                 request,
                 Map.class
@@ -102,8 +114,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> listContracts() {
+        // Route to peer-anchor for contract list
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/contract/list",
+                peerAnchorUrl + "/contract/list",
                 HttpMethod.GET,
                 null,
                 List.class
@@ -112,8 +125,9 @@ public class BlockchainService {
     }
 
     public LedgerResponse queryLedger(String contractId) {
+        // Route to peer-anchor for ledger query
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/contract/" + contractId + "/ledger",
+                peerAnchorUrl + "/contract/" + contractId + "/ledger",
                 HttpMethod.GET,
                 null,
                 Map.class
@@ -124,8 +138,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> getUsers() {
+        // Route to peer-supplier for user data
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/users",
+                peerSupplierUrl + "/users",
                 HttpMethod.GET,
                 null,
                 List.class
@@ -134,13 +149,14 @@ public class BlockchainService {
     }
 
     public Map<String, Object> transferToken(Map<String, Object> transferData) {
+        // Route to peer-supplier for token transfer
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(transferData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/token/transfer",
+                peerSupplierUrl + "/token/transfer",
                 HttpMethod.POST,
                 request,
                 Map.class
@@ -152,7 +168,7 @@ public class BlockchainService {
         System.out.println("DEBUG: Calling blockchain service for tokens issued by: " + bankId);
         try {
             ResponseEntity<List> response = restTemplate.exchange(
-                    blockchainUrl + "/token/issued/" + bankId,
+                    peerMainBankUrl + "/token/issued/" + bankId,
                     HttpMethod.GET,
                     null,
                     List.class
@@ -166,8 +182,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> getAllSuppliers() {
+        // Route to peer-supplier for supplier data
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/suppliers",
+                peerSupplierUrl + "/suppliers",
                 HttpMethod.GET,
                 null,
                 List.class
@@ -176,8 +193,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> getAllTokens() {
+        // Route to peer-anchor for all tokens
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/tokens",
+                peerAnchorUrl + "/tokens",
                 HttpMethod.GET,
                 null,
                 List.class
@@ -186,8 +204,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> getBalancesByAccount(String accountId) {
+        // Route to peer-supplier for account balances
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/balances/account/" + accountId,
+                peerSupplierUrl + "/balances/account/" + accountId,
                 HttpMethod.GET,
                 null,
                 List.class
@@ -196,8 +215,9 @@ public class BlockchainService {
     }
 
     public List<Map<String, Object>> getBalancesByToken(String tokenId) {
+        // Route to peer-anchor for token balances
         ResponseEntity<List> response = restTemplate.exchange(
-                blockchainUrl + "/balances/token/" + tokenId,
+                peerAnchorUrl + "/balances/token/" + tokenId,
                 HttpMethod.GET,
                 null,
                 List.class
@@ -206,13 +226,14 @@ public class BlockchainService {
     }
 
     public Map<String, Object> settleToken(Map<String, Object> settleData) {
+        // Route to peer-supplier for token settlement
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(settleData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                blockchainUrl + "/token/settle",
+                peerSupplierUrl + "/token/settle",
                 HttpMethod.POST,
                 request,
                 Map.class
