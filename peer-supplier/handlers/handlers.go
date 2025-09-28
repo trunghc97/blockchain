@@ -16,7 +16,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
 )
 
 type SupplierDTO struct {
@@ -27,7 +26,8 @@ type SupplierDTO struct {
 }
 
 type Handler struct {
-	db *mongo.Database
+	db       *mongo.Database // Private database for blockchain operations
+	publicDb *mongo.Database // Public database for user operations
 }
 
 func generateEventID() string {
@@ -106,8 +106,8 @@ func (h *Handler) getNextBlockNumber() int64 {
 	return previousBlockNum + 1
 }
 
-func NewHandler(db *mongo.Database) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *mongo.Database, publicDb *mongo.Database) *Handler {
+	return &Handler{db: db, publicDb: publicDb}
 }
 
 // CreateContract creates a new contract (Anchor) - New Contract-Token Implementation
@@ -266,7 +266,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 				if supplierName, ok := supplier["name"].(string); ok {
 					// Get user by supplierId to get their username
 					var user map[string]interface{}
-					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
+					err := h.publicDb.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
 					if err == nil {
 						if username, ok := user["username"].(string); ok && username == supplierName {
 							isValidSupplier = true
@@ -309,7 +309,7 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 				// Check if supplierId is null and supplier name matches user username
 				if supplierName, ok := supplier["name"].(string); ok {
 					var user map[string]interface{}
-					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
+					err := h.publicDb.Collection("users").FindOne(context.Background(), bson.M{"id": req.SupplierId}).Decode(&user)
 					if err == nil {
 						if username, ok := user["username"].(string); ok && username == supplierName {
 							isApprovingSupplier = true
@@ -387,52 +387,53 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 
 	tokenId := fmt.Sprintf("token_%s", contractId)
 
-	if allApproved {
-		// All suppliers approved - distribute tokens proportionally
+	// Distribute tokens to the newly approved supplier immediately
+	// Instead of waiting for all suppliers to approve
 
-		// Update contract approval status
-		update := bson.M{"$set": bson.M{"approved": true}}
-		_, err = h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	// Find the approved supplier and distribute their portion immediately
+	if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+		for _, supplierInterface := range suppliersArray {
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				continue
+			}
 
-		// Distribute token balances to all approved suppliers
-		if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
-			for _, supplierInterface := range suppliersArray {
-				var supplier map[string]interface{}
-				if s, ok := supplierInterface.(map[string]interface{}); ok {
-					supplier = s
-				} else if s, ok := supplierInterface.(primitive.M); ok {
-					supplier = map[string]interface{}(s)
-				} else {
-					continue
-				}
-
-				// Get supplier ID
-				supplierId := ""
-				if id, ok := supplier["supplierId"].(string); ok && id != "" {
-					supplierId = id
-				} else if name, ok := supplier["name"].(string); ok {
-					// Find user by name to get ID
-					var user map[string]interface{}
-					err := h.db.Collection("users").FindOne(context.Background(), bson.M{"username": name}).Decode(&user)
-					if err == nil {
-						if id, ok := user["id"].(string); ok {
-							supplierId = id
-						}
+			// Get supplier ID
+			supplierId := ""
+			if id, ok := supplier["supplierId"].(string); ok && id != "" {
+				supplierId = id
+			} else if name, ok := supplier["name"].(string); ok {
+				// Find user by name to get ID
+				var user map[string]interface{}
+				err := h.publicDb.Collection("users").FindOne(context.Background(), bson.M{"username": name}).Decode(&user)
+				if err == nil {
+					if id, ok := user["id"].(string); ok {
+						supplierId = id
 					}
 				}
+			}
 
-				if supplierId != "" {
-					// Get supplier amount
-					amount := 0.0
-					if amt, ok := supplier["amount"].(float64); ok {
-						amount = amt
-					}
+			// Check if this is the supplier who just approved
+			if supplierId == req.SupplierId {
+				// Get supplier amount
+				amount := 0.0
+				if amt, ok := supplier["amount"].(float64); ok {
+					amount = amt
+				}
 
-					// Create balance for this supplier
+				// Check if this supplier already has a balance
+				var existingBalance Balance
+				err = h.db.Collection("balances").FindOne(
+					context.Background(),
+					bson.M{"tokenId": tokenId, "account": supplierId},
+				).Decode(&existingBalance)
+
+				if err == mongo.ErrNoDocuments {
+					// Create new balance for this supplier
 					balance := Balance{
 						TokenId: tokenId,
 						Account: supplierId,
@@ -441,21 +442,41 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 
 					_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
 					if err != nil {
-						// Continue with other suppliers
+						fmt.Printf("DEBUG: Error creating balance for supplier %s: %v\n", supplierId, err)
+					} else {
+						fmt.Printf("DEBUG: Successfully distributed %f tokens to approved supplier %s\n", amount, supplierId)
 					}
+				} else if err != nil {
+					fmt.Printf("DEBUG: Error checking existing balance for supplier %s: %v\n", supplierId, err)
+				} else {
+					fmt.Printf("DEBUG: Supplier %s already has balance, skipping distribution\n", supplierId)
 				}
+				break
 			}
 		}
+	}
 
-		// Remove anchor's balance since tokens are now distributed
+	// Check if all suppliers are now approved
+	if allApproved {
+		// Update contract approval status only when all are approved
+		update := bson.M{"$set": bson.M{"approved": true}}
+		_, err = h.db.Collection("contracts").UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Remove anchor's balance since contract is now fully approved
 		h.db.Collection("balances").DeleteOne(context.Background(), bson.M{
 			"tokenId": tokenId,
 			"account": "ANCHOR001",
 		})
+
+		fmt.Printf("DEBUG: All suppliers approved, contract fully approved\n")
 	}
 
 	// Log approval event
-	eventType := "SUPPLIER_APPROVED"
+	eventType := "SUPPLIER_APPROVED_TOKEN_DISTRIBUTED"
 	if allApproved {
 		eventType = "CONTRACT_FULLY_APPROVED"
 	}
@@ -586,15 +607,13 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 	tokenId := fmt.Sprintf("token_%s", contractId)
 	symbol := fmt.Sprintf("TK%s", contractId[len(contractId)-4:]) // Last 4 chars of contract ID
 
-	// Token should be owned by anchor (buyer) after bank approval
-	anchorId := "ANCHOR001" // Default anchor ID
-
+	// Token will be distributed directly to approved suppliers after bank approval
 	token := Token{
 		ContractId: contractId,
 		Symbol:     symbol,
 		Total:      totalAmount,
-		Issuer:     "SYSTEM", // System auto-generates token for anchor
-		Owner:      anchorId, // Owned by anchor after bank approval
+		Issuer:     "SYSTEM", // System auto-generates token for suppliers
+		Owner:      "SYSTEM", // Owned by system, distributed to suppliers
 		CreatedAt:  time.Now().Format(time.RFC3339),
 	}
 
@@ -604,29 +623,88 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Create initial balance for anchor (token owner)
-	balance := Balance{
-		TokenId: tokenId,
-		Account: anchorId,
-		Balance: totalAmount,
+	// Distribute token balances directly to approved suppliers
+	// Instead of giving everything to anchor, distribute based on contract suppliers
+	if suppliersArray, ok := contract["suppliers"].(primitive.A); ok {
+		fmt.Printf("DEBUG: Distributing tokens to %d suppliers\n", len(suppliersArray))
+
+		for _, supplierInterface := range suppliersArray {
+			var supplier map[string]interface{}
+			if s, ok := supplierInterface.(map[string]interface{}); ok {
+				supplier = s
+			} else if s, ok := supplierInterface.(primitive.M); ok {
+				supplier = map[string]interface{}(s)
+			} else {
+				fmt.Printf("DEBUG: Cannot convert supplier to map\n")
+				continue
+			}
+
+			// Get supplier ID
+			supplierId := ""
+			if id, ok := supplier["supplierId"].(string); ok && id != "" {
+				supplierId = id
+			} else if name, ok := supplier["name"].(string); ok {
+				// Find user by name to get ID
+				var user map[string]interface{}
+				err := h.publicDb.Collection("users").FindOne(context.Background(), bson.M{"username": name}).Decode(&user)
+				if err == nil {
+					if id, ok := user["id"].(string); ok {
+						supplierId = id
+					}
+				}
+			}
+
+			if supplierId != "" {
+				// Get supplier amount and status
+				amount := 0.0
+				if amt, ok := supplier["amount"].(float64); ok {
+					amount = amt
+				}
+
+				status := ""
+				if st, ok := supplier["status"].(string); ok {
+					status = st
+				}
+
+				// Only distribute to approved suppliers
+				if status == "APPROVED" && amount > 0 {
+					fmt.Printf("DEBUG: Creating balance for approved supplier %s: %f tokens\n", supplierId, amount)
+
+					// Create balance for this approved supplier
+					balance := Balance{
+						TokenId: tokenId,
+						Account: supplierId,
+						Balance: amount,
+					}
+
+					_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
+					if err != nil {
+						fmt.Printf("DEBUG: Error creating balance for supplier %s: %v\n", supplierId, err)
+						// Continue with other suppliers
+					} else {
+						fmt.Printf("DEBUG: Successfully created balance for supplier %s\n", supplierId)
+					}
+				} else {
+					fmt.Printf("DEBUG: Skipping supplier %s (status: %s, amount: %f)\n", supplierId, status, amount)
+				}
+			} else {
+				fmt.Printf("DEBUG: Could not find supplier ID for supplier\n")
+			}
+		}
+	} else {
+		fmt.Printf("DEBUG: No suppliers array found in contract - no token distribution\n")
+		// No fallback distribution if no suppliers array
 	}
 
-	_, err = h.db.Collection("balances").InsertOne(context.Background(), balance)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Log bank approval and token generation event
+	// Log bank approval and token distribution event
 	event := map[string]interface{}{
 		"eventId":     generateEventID(),
-		"eventType":   "CONTRACT_BANK_APPROVED_TOKEN_GENERATED",
+		"eventType":   "CONTRACT_BANK_APPROVED_TOKEN_DISTRIBUTED",
 		"contractId":  contractId,
 		"tokenId":     tokenId,
 		"bankId":      req.BankId,
-		"anchorId":    anchorId,
 		"totalAmount": totalAmount,
-		"description": "Bank approved contract and system auto-generated token for anchor",
+		"description": "Bank approved contract and system auto-distributed tokens to approved suppliers",
 		"timestamp":   time.Now().Format(time.RFC3339),
 	}
 
@@ -1243,7 +1321,7 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 
 // GetSuppliers returns all users with role SUPPLIER
 func (h *Handler) GetSuppliers(w http.ResponseWriter, r *http.Request) {
-	cursor, err := h.db.Collection("users").Find(context.Background(), bson.M{"role": "SUPPLIER"})
+	cursor, err := h.publicDb.Collection("users").Find(context.Background(), bson.M{"role": "SUPPLIER"})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

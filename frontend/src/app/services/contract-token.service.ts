@@ -54,6 +54,10 @@ export class ContractTokenService {
     return this.http.get<any[]>(this.tokensApiUrl, { headers: this.getHeaders() });
   }
 
+  getContracts(): Observable<any[]> {
+    return this.http.get<any[]>(this.contractsApiUrl, { headers: this.getHeaders() });
+  }
+
   getBalancesByAccount(accountId: string): Observable<any[]> {
     return this.http.get<any[]>(`${this.tokensApiUrl}/balances/account/${accountId}`, { headers: this.getHeaders() });
   }

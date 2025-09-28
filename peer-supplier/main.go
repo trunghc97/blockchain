@@ -50,17 +50,20 @@ func main() {
 		log.Fatal("Failed to ping MongoDB:", err)
 	}
 
-	// Get database
-	databaseName := "blockchain_supplier"
+	// Get private database for blockchain operations
+	databaseName := "blockchain_private"
 	if dbName := os.Getenv("DB_NAME"); dbName != "" {
 		databaseName = dbName
 	}
 	db := client.Database(databaseName)
 
-	log.Printf("Connected to MongoDB database: %s", databaseName)
+	// Get public database for user operations
+	publicDb := client.Database("blockchain_public")
+
+	log.Printf("Connected to MongoDB databases: private=%s, public=blockchain_public", databaseName)
 
 	// Initialize handlers
-	h := handlers.NewHandler(db)
+	h := handlers.NewHandler(db, publicDb)
 
 	// Setup routes
 	router := mux.NewRouter()

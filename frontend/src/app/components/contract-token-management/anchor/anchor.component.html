@@ -77,7 +77,7 @@
           <thead>
             <tr>
               <th>Contract ID</th>
-              <th>Supplier</th>
+              <th>Anchor</th>
               <th>Bank</th>
               <th>Amount</th>
               <th>Status</th>
@@ -86,16 +86,16 @@
           </thead>
           <tbody>
             <tr *ngFor="let contract of contracts">
-              <td>{{ contract.id }}</td>
-              <td>{{ contract.supplierId }}</td>
+              <td>{{ contract.contractId || contract.id }}</td>
+              <td>{{ contract.buyer || contract.anchorId }}</td>
               <td>{{ contract.bankId }}</td>
-              <td>{{ contract.amount | currency }}</td>
+              <td>{{ contract.totalAmount | currency }}</td>
               <td>
-                <span class="badge" [ngClass]="contract.approved ? 'bg-success' : 'bg-warning'">
-                  {{ contract.approved ? 'Approved' : 'Pending' }}
+                <span class="badge" [ngClass]="getStatusBadgeClass(contract.status)">
+                  {{ getStatusText(contract.status) }}
                 </span>
               </td>
-              <td>{{ contract.createdAt | date }}</td>
+              <td>{{ contract.createdAt | date:'short' }}</td>
             </tr>
             <tr *ngIf="contracts.length === 0">
               <td colspan="6" class="text-center text-muted">No contracts found</td>

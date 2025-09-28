@@ -33,11 +33,17 @@
                   </td>
                   <td>{{ getTokenBalance(token.id) | currency }}</td>
                   <td>
-                    <button class="btn btn-success btn-sm me-2" (click)="transferForm.patchValue({tokenId: token.id})">
+                    <button class="btn btn-success btn-sm me-2"
+                            (click)="selectTokenForTransfer(token)"
+                            [disabled]="getTokenBalance(token.id) <= 0"
+                            title="Fill token into transfer form">
                       Transfer
                     </button>
-                    <button class="btn btn-warning btn-sm" (click)="onPayBack(token)">
-                      Settle with Bank
+                    <button class="btn btn-warning btn-sm"
+                            (click)="quickSettleToken(token)"
+                            [disabled]="getTokenBalance(token.id) <= 0"
+                            title="Quick settle with bank">
+                      Settle
                     </button>
                   </td>
                 </tr>
@@ -58,11 +64,11 @@
       </div>
     </div>
 
-    <!-- Transfer Form -->
+    <!-- Transfer Form (Alternative to modal) -->
     <div class="col-lg-4">
       <div class="card">
         <div class="card-header">
-          <h5>Transfer Token</h5>
+          <h5>Quick Transfer</h5>
         </div>
         <div class="card-body">
           <!-- Thông tin người chuyển -->
@@ -76,13 +82,13 @@
             </div>
           </div>
 
-          <form [formGroup]="transferForm" (ngSubmit)="onTransfer()">
+          <form [formGroup]="quickTransferForm" (ngSubmit)="onQuickTransfer()" class="quick-transfer-form">
             <div class="mb-3">
-              <label for="tokenId" class="form-label">Token ID</label>
-              <select class="form-select" id="tokenId" formControlName="tokenId" required>
+              <label for="quickTokenId" class="form-label">Token ID</label>
+              <select class="form-select" id="quickTokenId" formControlName="tokenId" required>
                 <option value="">Select a token</option>
                 <option *ngFor="let token of availableTokens" [value]="token.id">
-                  {{ token.symbol }} - {{ token.total | currency }}
+                  {{ token.symbol }} - Balance: {{ getTokenBalance(token.id) | currency }}
                 </option>
               </select>
             </div>
@@ -93,12 +99,12 @@
                 <input type="text"
                        matInput
                        formControlName="to"
-                       [matAutocomplete]="supplierAuto"
+                       [matAutocomplete]="quickSupplierAuto"
                        placeholder="Type to search suppliers..."
                        required>
-                <mat-autocomplete #supplierAuto="matAutocomplete"
+                <mat-autocomplete #quickSupplierAuto="matAutocomplete"
                                   [displayWith]="displaySupplier"
-                                  (optionSelected)="selectSupplier($event)">
+                                  (optionSelected)="selectQuickSupplier($event)">
                   <mat-option *ngFor="let supplier of filteredSuppliers" [value]="supplier">
                     <div class="d-flex flex-column">
                       <span class="fw-bold">{{ supplier.id }}</span>
@@ -111,12 +117,13 @@
             </div>
 
             <div class="mb-3">
-              <label for="amount" class="form-label">Amount</label>
-              <input type="number" class="form-control" id="amount" formControlName="amount"
-                     step="0.01" min="0" required>
+              <label for="quickAmount" class="form-label">Amount</label>
+              <input type="number" class="form-control" id="quickAmount" formControlName="amount"
+                     step="0.01" min="0" required [max]="maxQuickTransferAmount">
+              <div class="form-text">Max: {{ maxQuickTransferAmount | currency }}</div>
             </div>
 
-            <button type="submit" class="btn btn-success w-100" [disabled]="transferForm.invalid || loading">
+            <button type="submit" class="btn btn-success w-100" [disabled]="quickTransferForm.invalid || loading">
               <span *ngIf="loading" class="spinner-border spinner-border-sm me-2"></span>
               Transfer Token
             </button>
@@ -124,18 +131,6 @@
         </div>
       </div>
 
-      <!-- Settle with Bank Info -->
-      <div class="card mt-3">
-        <div class="card-header">
-          <h6>Settle with Bank</h6>
-        </div>
-        <div class="card-body">
-          <p class="text-muted small">
-            Use the "Settle with Bank" button next to any token to settle your token balance with the bank.
-            This will remove all your token balance and mark the settlement as complete.
-          </p>
-        </div>
-      </div>
     </div>
   </div>
 </div>

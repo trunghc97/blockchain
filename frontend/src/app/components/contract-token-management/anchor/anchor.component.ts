@@ -69,11 +69,45 @@ export class AnchorComponent {
   }
 
   loadContracts(): void {
-    // Load contracts created by this anchor
-    // Implementation would depend on backend API for filtering by anchor
+    // Load all contracts - anchor can see all contracts in the system
+    this.contractTokenService.getContracts().subscribe({
+      next: (allContracts: any[]) => {
+        this.contracts = allContracts;
+        console.log('Loaded contracts for anchor:', this.contracts);
+      },
+      error: (error: any) => {
+        console.error('Error loading contracts:', error);
+        this.contracts = [];
+      }
+    });
   }
 
   ngOnInit(): void {
     this.loadContracts();
+  }
+
+  getStatusBadgeClass(status: string): string {
+    switch (status) {
+      case 'BANK_APPROVED':
+        return 'bg-info';
+      case 'EXECUTED':
+        return 'bg-success';
+      case 'PENDING_BANK_APPROVAL':
+      default:
+        return 'bg-warning';
+    }
+  }
+
+  getStatusText(status: string): string {
+    switch (status) {
+      case 'BANK_APPROVED':
+        return 'Bank Approved';
+      case 'EXECUTED':
+        return 'Executed';
+      case 'PENDING_BANK_APPROVAL':
+        return 'Pending Bank Approval';
+      default:
+        return status || 'Unknown';
+    }
   }
 }

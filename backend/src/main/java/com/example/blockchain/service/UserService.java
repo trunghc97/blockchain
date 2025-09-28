@@ -8,6 +8,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -26,7 +27,7 @@ public class UserService {
     private static final String JWT_SECRET = "blockchain-secret-key";
     private static final long JWT_EXPIRATION = 86400000L; // 1 day
 
-    public UserService(MongoTemplate mongoTemplate) {
+    public UserService(@Qualifier("publicMongoTemplate") MongoTemplate mongoTemplate) {
         this.mongoTemplate = mongoTemplate;
         this.passwordEncoder = new BCryptPasswordEncoder();
     }
@@ -60,7 +61,7 @@ public class UserService {
             .claim("role", user.getRole())
             .setIssuedAt(new Date())
             .setExpiration(new Date(System.currentTimeMillis() + JWT_EXPIRATION))
-            .signWith(io.jsonwebtoken.SignatureAlgorithm.HS512, JWT_SECRET.getBytes())
+            .signWith(SignatureAlgorithm.HS512, JWT_SECRET.getBytes())
             .compact();
     }
 

@@ -81,3 +81,25 @@
 .sender-name {
   font-size: 1.1rem;
 }
+
+/* Highlight effect for transfer form */
+.highlight-form {
+  animation: highlight 2s ease-out;
+  border: 2px solid #28a745 !important;
+  box-shadow: 0 0 15px rgba(40, 167, 69, 0.3) !important;
+}
+
+@keyframes highlight {
+  0% {
+    border-color: #28a745;
+    box-shadow: 0 0 15px rgba(40, 167, 69, 0.3);
+  }
+  50% {
+    border-color: #ffc107;
+    box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+  }
+  100% {
+    border-color: #28a745;
+    box-shadow: 0 0 15px rgba(40, 167, 69, 0.3);
+  }
+}

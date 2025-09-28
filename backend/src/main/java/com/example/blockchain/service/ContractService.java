@@ -96,16 +96,21 @@ public class ContractService {
             System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
             if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
-                // Contract is now managed by blockchain service only
+                // Save contract to local MongoDB for immediate availability
+                mongoTemplate.save(contract, "contracts");
+
                 // Get the created contract from blockchain service to return complete data
                 String createdContractId = (String) blockchainResponse.get("contractId");
                 if (createdContractId != null) {
                     Map<String, Object> blockchainContract = blockchainService.getContract(createdContractId);
                     if (blockchainContract != null) {
-                        return convertBlockchainContractToLocal(blockchainContract);
+                        Contract localContract = convertBlockchainContractToLocal(blockchainContract);
+                        // Update local MongoDB with blockchain data
+                        mongoTemplate.save(localContract, "contracts");
+                        return localContract;
                     }
                 }
-                // Fallback to original contract if blockchain query fails
+                // Return the local contract if blockchain data is not available
                 return contract;
             } else {
                 throw new RuntimeException("Failed to create contract on blockchain");
@@ -119,14 +124,80 @@ public class ContractService {
 
 
     public List<Contract> getContracts() {
-        // Query contracts from blockchain service since that's now the authoritative source
-        List<Map<String, Object>> blockchainContracts = blockchainService.listContracts();
-        if (blockchainContracts == null) {
-            return java.util.Collections.emptyList();
+        // Query contracts from MongoDB local first
+        List<Contract> localContracts = mongoTemplate.findAll(Contract.class, "contracts");
+
+        // Group contracts by contractId to remove duplicates, keeping the most complete one
+        Map<String, Contract> contractMap = new java.util.HashMap<>();
+
+        for (Contract contract : localContracts) {
+            String contractId = contract.getContractId();
+            Contract existing = contractMap.get(contractId);
+
+            if (existing == null) {
+                contractMap.put(contractId, contract);
+            } else {
+                // Keep the contract with more complete information
+                Contract betterContract = chooseBetterContract(existing, contract);
+                contractMap.put(contractId, betterContract);
+            }
         }
-        return blockchainContracts.stream()
-            .map(this::convertBlockchainContractToLocal)
-            .collect(java.util.stream.Collectors.toList());
+
+        return new java.util.ArrayList<>(contractMap.values());
+    }
+
+    private Contract chooseBetterContract(Contract contract1, Contract contract2) {
+        // Prefer contract with more complete information
+        int score1 = calculateCompletenessScore(contract1);
+        int score2 = calculateCompletenessScore(contract2);
+
+        if (score1 > score2) {
+            return contract1;
+        } else if (score2 > score1) {
+            return contract2;
+        } else {
+            // Same score, prefer local contract (UUID) over blockchain contract (ObjectID)
+            boolean isContract1Local = isLocalContract(contract1);
+            boolean isContract2Local = isLocalContract(contract2);
+
+            if (isContract1Local && !isContract2Local) {
+                return contract1;
+            } else if (isContract2Local && !isContract1Local) {
+                return contract2;
+            } else {
+                // Both same type or both blockchain, prefer Contract2 (later processed)
+                return contract2;
+            }
+        }
+    }
+
+    private boolean isLocalContract(Contract contract) {
+        // Local contracts have UUID-style IDs, blockchain contracts have MongoDB ObjectIDs
+        String id = contract.getId();
+        if (id == null) return false;
+
+        // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+        // MongoDB ObjectID: 24 hex chars
+        return id.length() == 36 && id.contains("-");
+    }
+
+    private int calculateCompletenessScore(Contract contract) {
+        int score = 0;
+        if (contract.getDescription() != null && !contract.getDescription().isEmpty()) score += 2;
+        if (contract.getBuyer() != null && !contract.getBuyer().isEmpty()) score += 1;
+        if (contract.getSuppliers() != null && !contract.getSuppliers().isEmpty()) score += 3;
+        if (contract.getTotalAmount() != null && contract.getTotalAmount() > 0) score += 2;
+        if (contract.getBankId() != null && !contract.getBankId().isEmpty()) score += 1;
+        return score;
+    }
+
+    private void saveContractToLocal(Contract contract) {
+        // Save contract to local MongoDB if not exists
+        Query query = new Query(Criteria.where("contractId").is(contract.getContractId()));
+        Contract existing = mongoTemplate.findOne(query, Contract.class, "contracts");
+        if (existing == null) {
+            mongoTemplate.save(contract, "contracts");
+        }
     }
 
     private Contract convertBlockchainContractToLocal(Map<String, Object> blockchainContract) {

@@ -3,6 +3,7 @@ import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ContractTokenService } from '../../../services/contract-token.service';
 import { UserService } from '../../../services/user.service';
 import { firstValueFrom, Observable, startWith, map } from 'rxjs';
+declare var bootstrap: any; // Bootstrap modal
 
 @Component({
   selector: 'app-supplier',
@@ -12,12 +13,14 @@ import { firstValueFrom, Observable, startWith, map } from 'rxjs';
 export class SupplierComponent implements OnInit {
   tokens: any[] = [];
   transferForm: FormGroup;
+  quickTransferForm: FormGroup;
   loading = false;
   supplierId = ''; // Will be set from current user
   suppliers: any[] = []; // List of all suppliers for autocomplete
   filteredSuppliers: any[] = []; // Filtered suppliers for autocomplete
   balances: any[] = []; // User's token balances
-  selectedSupplier: any = null; // Store selected supplier object
+  selectedSupplier: any = null; // Store selected supplier object for modal transfer
+  selectedQuickSupplier: any = null; // Store selected supplier for quick transfer
 
   constructor(
     private fb: FormBuilder,
@@ -25,6 +28,12 @@ export class SupplierComponent implements OnInit {
     private userService: UserService
   ) {
     this.transferForm = this.fb.group({
+      tokenId: [''], // Will be set when opening modal
+      to: ['', Validators.required],
+      amount: [0, [Validators.required, Validators.min(0.01)]]
+    });
+
+    this.quickTransferForm = this.fb.group({
       tokenId: ['', Validators.required],
       to: ['', Validators.required],
       amount: [0, [Validators.required, Validators.min(0.01)]]
@@ -62,6 +71,67 @@ export class SupplierComponent implements OnInit {
     });
   }
 
+  selectTokenForTransfer(token: any): void {
+    // Fill token ID into the quick transfer form on the right side
+    this.quickTransferForm.patchValue({
+      tokenId: token.id,
+      to: '', // Reset recipient
+      amount: '' // Reset amount
+    });
+    this.selectedQuickSupplier = null; // Reset selected supplier
+
+    // Optional: Scroll to the transfer form or highlight it
+    const transferForm = document.querySelector('.quick-transfer-form');
+    if (transferForm) {
+      transferForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add a visual highlight effect
+      transferForm.classList.add('highlight-form');
+      setTimeout(() => {
+        transferForm.classList.remove('highlight-form');
+      }, 2000);
+    }
+
+    console.log(`Token ${token.symbol} selected for transfer`);
+  }
+
+  quickSettleToken(token: any): void {
+    const balance = this.getTokenBalance(token.id);
+    if (balance <= 0) {
+      alert('You have no balance for this token to settle.');
+      return;
+    }
+
+    // Show confirmation popup
+    const confirmed = confirm(`Settle Token ${token.symbol}\n\nBalance to settle: ${balance.toLocaleString()} USD\n\n⚠️ This action cannot be undone!\n\nAre you sure you want to settle this token with the bank?`);
+
+    if (confirmed) {
+      this.loading = true;
+      const settleData = {
+        tokenId: token.id,
+        supplierId: this.supplierId
+      };
+
+      this.contractTokenService.settleToken(settleData).subscribe({
+        next: (response) => {
+          console.log('Token settled with bank:', response);
+          alert(`✅ Token ${token.symbol} settled successfully!\n\nBalance settled: ${balance.toLocaleString()} USD`);
+
+          // Reset form selections and refresh data
+          this.quickTransferForm.patchValue({ tokenId: '' });
+          this.loadMyTokens();
+          this.loadBalances();
+        },
+        error: (error) => {
+          console.error('Error settling token with bank:', error);
+          alert('❌ Error settling token with bank: ' + (error.message || 'Unknown error'));
+        },
+        complete: () => {
+          this.loading = false;
+        }
+      });
+    }
+  }
+
   onTransfer(): void {
     if (this.transferForm.valid && this.selectedSupplier) {
       this.loading = true;
@@ -76,9 +146,18 @@ export class SupplierComponent implements OnInit {
         next: (response) => {
           console.log('Token transferred:', response);
           alert('Token transferred successfully!');
+
+          // Close modal
+          const modal = bootstrap.Modal.getInstance(document.getElementById('transferModal'));
+          modal.hide();
+
+          // Reset form and selections
           this.transferForm.reset();
-          this.selectedSupplier = null; // Reset selected supplier
+          this.selectedSupplier = null;
+
+          // Refresh data
           this.loadBalances();
+          this.loadMyTokens();
         },
         error: (error) => {
           console.error('Error transferring token:', error);
@@ -105,35 +184,52 @@ export class SupplierComponent implements OnInit {
     }
   }
 
-  onPayBack(token: any): void {
-    const balance = this.getTokenBalance(token.id);
-    if (balance <= 0) {
-      alert('You have no balance for this token to settle.');
-      return;
-    }
 
-    if (confirm(`Are you sure you want to settle this token with the bank?\nAmount to settle: ${balance}\nThis will remove all your balance for this token.`)) {
+  onQuickTransfer(): void {
+    if (this.quickTransferForm.valid && this.selectedQuickSupplier) {
       this.loading = true;
-      const settleData = {
-        tokenId: token.id,
-        supplierId: this.supplierId
+      const transferData = {
+        tokenId: this.quickTransferForm.value.tokenId,
+        from: this.supplierId,
+        to: this.selectedQuickSupplier.id,
+        amount: this.quickTransferForm.value.amount
       };
 
-      this.contractTokenService.settleToken(settleData).subscribe({
+      this.contractTokenService.transferToken(transferData).subscribe({
         next: (response) => {
-          console.log('Token settled with bank:', response);
-          alert('Token settled with bank successfully!');
-          this.loadMyTokens();
+          console.log('Token transferred:', response);
+          alert('Token transferred successfully!');
+          this.quickTransferForm.reset();
+          this.selectedQuickSupplier = null;
           this.loadBalances();
+          this.loadMyTokens();
         },
         error: (error) => {
-          console.error('Error settling token with bank:', error);
-          alert('Error settling token with bank: ' + error.message);
+          console.error('Error transferring token:', error);
+          let errorMessage = 'Error transferring token';
+          if (error.error?.includes('Insufficient balance')) {
+            errorMessage = 'Insufficient balance for this transfer';
+          } else if (error.error?.includes('Token not found')) {
+            errorMessage = 'Token not found';
+          }
+          alert(errorMessage);
+          this.selectedQuickSupplier = null;
         },
         complete: () => {
           this.loading = false;
         }
       });
+    }
+  }
+
+  selectQuickSupplier(event: any): void {
+    const selectedSupplier = event.option.value;
+    if (selectedSupplier) {
+      const displayValue = this.displaySupplier(selectedSupplier);
+      this.quickTransferForm.patchValue({
+        to: displayValue
+      });
+      this.selectedQuickSupplier = selectedSupplier;
     }
   }
 
@@ -209,5 +305,11 @@ export class SupplierComponent implements OnInit {
   getTokenBalance(tokenId: string): number {
     const balanceEntry = this.balances.find(b => b.tokenId === tokenId);
     return balanceEntry ? balanceEntry.balance : 0;
+  }
+
+  get maxQuickTransferAmount(): number {
+    const tokenId = this.quickTransferForm?.value?.tokenId;
+    if (!tokenId) return 0;
+    return this.getTokenBalance(tokenId);
   }
 }
