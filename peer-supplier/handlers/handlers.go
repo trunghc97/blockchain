@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
+	"github.com/Shopify/sarama"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -26,8 +28,11 @@ type SupplierDTO struct {
 }
 
 type Handler struct {
-	db       *mongo.Database // Private database for blockchain operations
-	publicDb *mongo.Database // Public database for user operations
+	db            *mongo.Database
+	publicDb      *mongo.Database
+	kafkaProducer sarama.SyncProducer
+	scfTopic      string
+	auditTopic    string
 }
 
 func generateEventID() string {
@@ -106,8 +111,68 @@ func (h *Handler) getNextBlockNumber() int64 {
 	return previousBlockNum + 1
 }
 
+// sendToKafka sends a message to the specified Kafka topic
+func (h *Handler) sendToKafka(topic string, event map[string]interface{}) error {
+	if h.kafkaProducer == nil {
+		fmt.Printf("Kafka producer not initialized, skipping message send\n")
+		return nil // Don't fail if Kafka is not available
+	}
+
+	messageBytes, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %v", err)
+	}
+
+	msg := &sarama.ProducerMessage{
+		Topic: topic,
+		Value: sarama.StringEncoder(messageBytes),
+	}
+
+	partition, offset, err := h.kafkaProducer.SendMessage(msg)
+	if err != nil {
+		return fmt.Errorf("failed to send message to Kafka: %v", err)
+	}
+
+	fmt.Printf("Message sent to Kafka topic %s, partition %d, offset %d\n", topic, partition, offset)
+	return nil
+}
+
 func NewHandler(db *mongo.Database, publicDb *mongo.Database) *Handler {
-	return &Handler{db: db, publicDb: publicDb}
+	// Initialize Kafka producer
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokers == "" {
+		kafkaBrokers = "kafka:29092"
+	}
+	kafkaBrokersList := strings.Split(kafkaBrokers, ",")
+
+	config := sarama.NewConfig()
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Retry.Max = 5
+	config.Producer.Return.Successes = true
+
+	producer, err := sarama.NewSyncProducer(kafkaBrokersList, config)
+	if err != nil {
+		fmt.Printf("Failed to create Kafka producer: %v\n", err)
+		// Continue without producer for now
+	}
+
+	scfTopic := os.Getenv("SCF_CHANNEL_TOPIC")
+	if scfTopic == "" {
+		scfTopic = "scf-channel-tx"
+	}
+
+	auditTopic := os.Getenv("AUDIT_CHANNEL_TOPIC")
+	if auditTopic == "" {
+		auditTopic = "audit-channel-tx"
+	}
+
+	return &Handler{
+		db:            db,
+		publicDb:      publicDb,
+		kafkaProducer: producer,
+		scfTopic:      scfTopic,
+		auditTopic:    auditTopic,
+	}
 }
 
 // CreateContract creates a new contract (Anchor) - New Contract-Token Implementation
@@ -1306,6 +1371,30 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("DEBUG: Error creating settlement block: %v\n", err)
 		// Don't fail the settlement for block creation errors
+	} else {
+		// Send settlement event to Kafka for orderer processing
+		settlementEvent := map[string]interface{}{
+			"eventType":   "TOKEN_SETTLED",
+			"eventId":     event["eventId"],
+			"blockNumber": blockNumber,
+			"blockHash":   blockHash,
+			"timestamp":   time.Now().Format(time.RFC3339),
+			"events":      eventIds,
+			"contractId":  token.ContractId,
+			"peerId":      "peer-supplier",
+			"data": map[string]interface{}{
+				"tokenId":       req.TokenId,
+				"supplierId":    req.SupplierId,
+				"bankId":        bankId,
+				"settledAmount": balance.Balance,
+				"description":   fmt.Sprintf("Supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+			},
+		}
+
+		if err := h.sendToKafka(h.scfTopic, settlementEvent); err != nil {
+			fmt.Printf("Failed to send settlement event to Kafka: %v\n", err)
+			// Continue, don't fail the settlement
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -1,122 +1,163 @@
-# Blockchain API Flow Diagrams
+# 🔗 Blockchain SCF API Flow Diagrams
 
-This document contains Mermaid flow diagrams for all API endpoints in the Golang blockchain microservice.
+This document contains Mermaid flow diagrams for all API endpoints across the **Multi-Peer Blockchain SCF System** with **Kafka Event-Driven Architecture**.
 
-## Legend
+## 📋 System Overview
+
+### Architecture Components
+- **Peer Services**: Independent microservices for each business role
+  - `peer-anchor` (Port 8084): Contract creation
+  - `peer-main-bank` (Port 8082): Bank approvals, token issuance
+  - `peer-supplier` (Port 8083): Supplier approvals, token transfers & settlements
+- **Orderer Cluster**: Event ordering and block creation
+- **Kafka**: Async messaging between peers and orderer
+- **MongoDB**: Multi-database architecture (private per peer + shared public ledger)
+
+### Flow Patterns
 - 🟢 **Start/End**: Process start or end
-- 🔵 **Process**: Main processing step
+- 🔵 **Process**: Main business logic step
 - 🟡 **Decision**: Conditional check
-- 🟠 **Database**: Database operation
+- 🟠 **Database**: Database operation (private peer DB)
 - 🟣 **Response**: API response
 - 🔴 **Error**: Error handling
+- 📨 **Kafka**: Message publishing/consuming
+- 🏛️ **Orderer**: Block ordering & public ledger persistence
 
 ---
 
-## Contract Management APIs
+## 🔗 **Contract Management APIs**
 
-### POST /contract/create - Create New Contract
+### **Peer Anchor (Port 8084)**
+
+### POST /contract/create - Anchor Creates Contract
 ```mermaid
 flowchart TD
-    A[🟢 Receive Contract Data] --> B[🔵 Validate Input Data]
+    A[🟢 Receive Contract Data] --> B[🔵 Validate Anchor Authorization]
     B --> C[🟡 Check Contract ID]
-    C -->|No ID provided| D[🔵 Generate Random Contract ID]
+    C -->|No ID provided| D[🔵 Generate UUID Contract ID]
     C -->|ID provided| E[🔵 Use Provided ID]
-    D --> F[🟠 Save Contract to MongoDB]
+    D --> F[🟠 Save Contract to anchor DB]
     E --> F
-    F --> G[🔵 Log CONTRACT_CREATED Event]
-    G --> H[🟠 Create Block Entry]
-    H --> I[🟣 Return Success Response]
+    F --> G[🔵 Log CONTRACT_CREATED Event to anchor DB]
+    G --> H[🟠 Create Block Entry in anchor DB]
+    H --> I[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    I --> J[🟣 Return Success Response]
+
+    J --> K[🏛️ Orderer Consumes Kafka Message]
+    K --> L[🏛️ Order Block & Save to Public Ledger]
+    L --> M[🏛️ Broadcast Ordered Block to All Peers]
 ```
 
-### POST /contract/{id}/approve-bank - Bank Approve Contract
+### **Peer Main Bank (Port 8082)**
+
+### POST /contract/{id}/approve-bank - Bank Approves Contract & Issues Token
 ```mermaid
 flowchart TD
-    A[🟢 Receive Bank Approval Request] --> B[🔵 Validate Bank ID]
-    B --> C[🟠 Get Contract from Database]
+    A[🟢 Receive Bank Approval Request] --> B[🔵 Validate Bank Authorization]
+    B --> C[🟠 Get Contract from main-bank DB]
     C --> D[🟡 Contract Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
     D -->|Yes| F[🟡 Bank Has Permission?]
     F -->|No| G[🔴 Return 403 Forbidden]
-    F -->|Yes| H[🟠 Update bankApproved = true]
+    F -->|Yes| H[🟠 Update bankApproved = true in main-bank DB]
     H --> I[🔵 Calculate Total Amount from Suppliers]
-    I --> J[🟠 Create Token with Issuer = SYSTEM]
-    J --> K[🟠 Create Initial Balance for Anchor]
-    K --> L[🔵 Log CONTRACT_BANK_APPROVED_TOKEN_GENERATED Event]
-    L --> M[🟠 Create Block Entry]
-    M --> N[🟣 Return Success Response with Token ID]
+    I --> J[🟠 Create Token with Issuer = Bank in main-bank DB]
+    J --> K[🟠 Create Initial Balance for Anchor in main-bank DB]
+    K --> L[🔵 Log CONTRACT_BANK_APPROVED_TOKEN_GENERATED in main-bank DB]
+    L --> M[🟠 Create Block Entry in main-bank DB]
+    M --> N[📨 Publish BLOCK_CREATED to Kafka audit-channel-tx]
+    N --> O[🟣 Return Success Response with Token ID]
+
+    O --> P[🏛️ Orderer Consumes Kafka Message]
+    P --> Q[🏛️ Order Block & Save to Public Ledger]
+    Q --> R[🏛️ Broadcast Ordered Block to All Peers]
 ```
 
-### POST /contract/{id}/approve - Supplier Approve Contract
+### **Peer Supplier (Port 8083)**
+
+### POST /contract/{id}/approve - Supplier Approves Contract
 ```mermaid
 flowchart TD
-    A[🟢 Receive Supplier Approval Request] --> B[🔵 Validate Supplier ID]
-    B --> C[🟠 Get Contract from Database]
+    A[🟢 Receive Supplier Approval Request] --> B[🔵 Validate Supplier Authorization]
+    B --> C[🟠 Get Contract from supplier DB]
     C --> D[🟡 Contract Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
     D -->|Yes| F[🟡 Bank Approved Contract?]
     F -->|No| G[🔴 Return 403 Forbidden]
     F -->|Yes| H[🟡 Supplier Authorized for Contract?]
     H -->|No| I[🔴 Return 403 Forbidden]
-    H -->|Yes| J[🟠 Update Supplier Status to APPROVED]
+    H -->|Yes| J[🟠 Update Supplier Status to APPROVED in supplier DB]
     J --> K[🟠 Refresh Contract Data]
     K --> L[🔵 Check All Suppliers Approved?]
-    L -->|No| M[🔵 Log SUPPLIER_APPROVED Event]
-    L -->|Yes| N[🟠 Update Contract Status to approved]
-    N --> O[🟠 Distribute Token Balances to All Suppliers]
-    O --> P[🟠 Remove Anchor's Balance]
-    P --> Q[🔵 Log CONTRACT_FULLY_APPROVED Event]
-    M --> R[🟠 Create Block Entry]
+    L -->|No| M[🔵 Log SUPPLIER_APPROVED Event in supplier DB]
+    L -->|Yes| N[🟠 Update Contract Status to approved in supplier DB]
+    N --> O[🟠 Distribute Token Balances to All Suppliers in supplier DB]
+    O --> P[🟠 Remove Anchor's Balance in supplier DB]
+    P --> Q[🔵 Log CONTRACT_FULLY_APPROVED Event in supplier DB]
+    M --> R[🟠 Create Block Entry in supplier DB]
     Q --> R
-    R --> S[🟣 Return Success Response]
+    R --> S[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    S --> T[🟣 Return Success Response]
+
+    T --> U[🏛️ Orderer Consumes Kafka Message]
+    U --> V[🏛️ Order Block & Save to Public Ledger]
+    V --> W[🏛️ Broadcast Ordered Block to All Peers]
 ```
 
 ---
 
-## Token Management APIs
+## 💰 **Token Management APIs**
 
-### POST /token/transfer - Transfer Token Between Accounts
+### POST /token/transfer - Supplier Transfers Token (Peer Supplier)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Transfer Request] --> B[🔵 Validate Transfer Data]
-    B --> C[🟠 Get Token Info from Database]
+    A[🟢 Receive Transfer Request] --> B[🔵 Validate Supplier Authorization]
+    B --> C[🟠 Get Token Info from supplier DB]
     C --> D[🟡 Token Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
-    D -->|Yes| F[🟠 Get Sender Balance]
+    D -->|Yes| F[🟠 Get Sender Balance from supplier DB]
     F --> G[🟡 Sender Has Balance?]
     G -->|No| H[🔴 Return 400 Insufficient Balance]
     G -->|Yes| I[🟡 Balance Sufficient?]
     I -->|No| J[🔴 Return 400 Insufficient Balance]
-    I -->|Yes| K[🟠 Update Sender Balance - amount]
-    K --> L[🟠 Get Receiver Balance]
+    I -->|Yes| K[🟠 Update Sender Balance - amount in supplier DB]
+    K --> L[🟠 Get Receiver Balance from supplier DB]
     L --> M[🟡 Receiver Balance Exists?]
-    M -->|No| N[🟠 Create New Balance for Receiver]
-    M -->|Yes| O[🟠 Update Receiver Balance + amount]
-    N --> P[🔵 Log TOKEN_TRANSFERRED Event]
+    M -->|No| N[🟠 Create New Balance for Receiver in supplier DB]
+    M -->|Yes| O[🟠 Update Receiver Balance + amount in supplier DB]
+    N --> P[🔵 Log TOKEN_TRANSFERRED Event in supplier DB]
     O --> P
-    P --> Q[🟠 Create Block Entry]
-    Q --> R[🟡 Anchor Has Zero Balance?]
-    R -->|Yes| S[🟠 Auto-approve Contract]
-    R -->|No| T[🟣 Return Success Response]
-    S --> T
+    P --> Q[🟠 Create Block Entry in supplier DB]
+    Q --> R[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    R --> S[🟣 Return Success Response]
+
+    S --> T[🏛️ Orderer Consumes Kafka Message]
+    T --> U[🏛️ Order Block & Save to Public Ledger]
+    U --> V[🏛️ Broadcast Ordered Block to All Peers]
 ```
 
-### POST /token/settle - Settle Token with Bank
+### POST /token/settle - Supplier Settles Token with Bank (Peer Supplier)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Settlement Request] --> B[🔵 Validate TokenId & SupplierId]
-    B --> C[🟠 Get Supplier Balance for Token]
+    A[🟢 Receive Settlement Request] --> B[🔵 Validate Supplier Authorization]
+    B --> C[🟠 Get Supplier Balance for Token from supplier DB]
     C --> D[🟡 Balance Exists?]
     D -->|No| E[🔴 Return 400 No Balance]
-    D -->|Yes| F[🟠 Get Token Info from Database]
+    D -->|Yes| F[🟠 Get Token Info from supplier DB]
     F --> G[🟡 Token Exists?]
     G -->|No| H[🔴 Return 404 Not Found]
-    G -->|Yes| I[🟠 Get Contract Info from Token]
+    G -->|Yes| I[🟠 Get Contract Info from supplier DB]
     I --> J[🟡 Contract Exists?]
     J -->|No| K[🔴 Return 404 Not Found]
-    J -->|Yes| L[🟠 Delete Supplier's Balance]
-    L --> M[🔵 Log TOKEN_SETTLED Event]
-    M --> N[🟠 Create Block Entry]
-    N --> O[🟣 Return Success Response]
+    J -->|Yes| L[🟠 Delete Supplier's Balance from supplier DB]
+    L --> M[🔵 Log TOKEN_SETTLED Event in supplier DB]
+    M --> N[🟠 Create Block Entry in supplier DB]
+    N --> O[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    O --> P[🟣 Return Success Response]
+
+    P --> Q[🏛️ Orderer Consumes Kafka Message]
+    Q --> R[🏛️ Order Block & Save to Public Ledger]
+    R --> S[🏛️ Broadcast Ordered Block to All Peers]
 ```
 
 ### GET /token/{id} - Get Token Information
@@ -130,39 +171,48 @@ flowchart TD
 
 ---
 
-## Query APIs
+## 🔍 **Query APIs**
 
-### GET /contract/list - Get All Contracts
+### GET /contract/list - Get All Contracts (Peer Anchor)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Request] --> B[🟠 Query All Contracts from Database]
+    A[🟢 Receive Request] --> B[🟠 Query All Contracts from anchor DB]
     B --> C[🟡 Query Successful?]
     C -->|No| D[🔴 Return 500 Internal Error]
     C -->|Yes| E[🟣 Return Contracts Array]
 ```
 
-### GET /tokens - Get All Tokens
+### GET /contract/list - Get All Contracts (Peer Main Bank)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Request] --> B[🟠 Query All Tokens from Database]
+    A[🟢 Receive Request] --> B[🟠 Query All Contracts from main-bank DB]
+    B --> C[🟡 Query Successful?]
+    C -->|No| D[🔴 Return 500 Internal Error]
+    C -->|Yes| E[🟣 Return Contracts Array]
+```
+
+### GET /tokens - Get All Tokens (Peer Main Bank)
+```mermaid
+flowchart TD
+    A[🟢 Receive Request] --> B[🟠 Query All Tokens from main-bank DB]
     B --> C[🟡 Query Successful?]
     C -->|No| D[🔴 Return 500 Internal Error]
     C -->|Yes| E[🟣 Return Tokens Array]
 ```
 
-### GET /balances/account/{accountId} - Get Account Balances
+### GET /balances/account/{accountId} - Get Account Balances (Peer Supplier)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Account ID] --> B[🟠 Query Balances by Account ID]
+    A[🟢 Receive Account ID] --> B[🟠 Query Balances by Account ID from supplier DB]
     B --> C[🟡 Query Successful?]
     C -->|No| D[🔴 Return 500 Internal Error]
     C -->|Yes| E[🟣 Return Balances Array]
 ```
 
-### GET /suppliers - Get All Suppliers
+### GET /suppliers - Get All Suppliers (Peer Supplier)
 ```mermaid
 flowchart TD
-    A[🟢 Receive Request] --> B[🟠 Query Users with Role SUPPLIER]
+    A[🟢 Receive Request] --> B[🟠 Query Users with Role SUPPLIER from shared DB]
     B --> C[🟡 Query Successful?]
     C -->|No| D[🔴 Return 500 Internal Error]
     C -->|Yes| E[🟣 Return Suppliers Array]
@@ -202,48 +252,203 @@ flowchart TD
 
 ---
 
-## Common Block Creation Flow
+### **Complete System Flow**
+
 ```mermaid
 flowchart TD
-    A[🔵 Event Logged] --> B[🟠 Get Next Block Number]
-    B --> C[🟠 Get Current Timestamp]
-    C --> D[🟠 Get Previous Block Hash]
-    D --> E[🔵 Calculate Block Hash]
-    E --> F[🟠 Save Block to Database]
-    F --> G[🟣 Continue with API Response]
+    subgraph "User Actions"
+        A1[Anchor Creates Contract]
+        A2[Bank Approves Contract]
+        A3[Supplier Approves Contract]
+        A4[Supplier Transfers Token]
+        A5[Supplier Settles Token]
+    end
+
+    subgraph "Peer Services"
+        P1[peer-anchor:8084]
+        P2[peer-main-bank:8082]
+        P3[peer-supplier:8083]
+    end
+
+    subgraph "Private Databases"
+        DB1[(anchor DB)]
+        DB2[(main-bank DB)]
+        DB3[(supplier DB)]
+    end
+
+    subgraph "Kafka Messaging"
+        K1[📨 scf-channel-tx]
+        K2[📨 audit-channel-tx]
+    end
+
+    subgraph "Orderer Cluster"
+        O1[🏛️ Orderer Nodes 7050-7070]
+    end
+
+    subgraph "Public Ledger"
+        PDB[(Shared MongoDB)]
+    end
+
+    A1 --> P1
+    P1 --> DB1
+    P1 --> K1
+
+    A2 --> P2
+    P2 --> DB2
+    P2 --> K2
+
+    A3 --> P3
+    A3 --> DB3
+    A3 --> K1
+
+    A4 --> P3
+    A4 --> DB3
+    A4 --> K1
+
+    A5 --> P3
+    A5 --> DB3
+    A5 --> K1
+
+    K1 --> O1
+    K2 --> O1
+    O1 --> PDB
+    PDB --> P1
+    PDB --> P2
+    PDB --> P3
 ```
 
 ---
 
-## Error Handling Patterns
+## 🏗️ **Multi-Peer Architecture Patterns**
+
+### **Database Collections Per Peer**
+| Collection | Peer Anchor | Peer Main Bank | Peer Supplier | Shared DB |
+|------------|-------------|----------------|---------------|-----------|
+| **contracts** | ✅ Private | ✅ Private | ✅ Private | ❌ |
+| **tokens** | ❌ | ✅ Private | ✅ Private | ❌ |
+| **balances** | ❌ | ✅ Private | ✅ Private | ❌ |
+| **events** | ✅ Private | ✅ Private | ✅ Private | ✅ Public |
+| **blocks** | ✅ Private | ✅ Private | ✅ Private | ❌ |
+| **users** | ❌ | ❌ | ❌ | ✅ Public |
+
+### **Business Logic Distribution**
+
+#### **Contract Management Flow**
 ```mermaid
-flowchart TD
-    A[🟡 Operation Failed?] -->|Yes| B[🔴 Log Error Message]
-    B --> C[🔴 Return HTTP Error Response]
-    C --> D[🟢 End]
-    A -->|No| E[🟣 Return Success Response]
-    E --> D
+flowchart LR
+    A[Anchor Creates Contract] --> B[peer-anchor DB]
+    B --> C[Kafka Publish]
+    C --> D[Orderer Ordering]
+    D --> E[Public Ledger]
+    E --> F[Sync to All Peers]
 ```
 
-## Database Collections Used
-- **contracts**: Contract information and approval status
-- **tokens**: Token metadata (issuer, owner, total amount)
-- **balances**: Token balances per account
-- **events**: Audit trail of all blockchain operations
-- **blocks**: Block data with hashes and event references
-- **users**: User information and roles
+#### **Token Issuance Flow**
+```mermaid
+flowchart LR
+    A[Bank Approves Contract] --> B[peer-main-bank DB]
+    B --> C[Create Token + Initial Balance]
+    C --> D[Kafka Publish to audit-channel]
+    D --> E[Orderer Ordering]
+    E --> F[Public Ledger]
+    F --> G[Sync to All Peers]
+```
 
-## Key Business Logic Flows
+#### **Token Circulation Flow**
+```mermaid
+flowchart LR
+    A[Supplier Transfers Token] --> B[peer-supplier DB]
+    B --> C[Update Balances]
+    C --> D[Kafka Publish to scf-channel]
+    D --> E[Orderer Ordering]
+    E --> F[Public Ledger]
+    F --> G[Sync to All Peers]
+```
 
-### Token Lifecycle
-1. **Creation**: Bank approves contract → System creates token → Anchor receives initial balance
-2. **Distribution**: All suppliers approve → Token distributed to suppliers → Anchor balance removed
-3. **Transfer**: Suppliers transfer tokens between themselves
-4. **Settlement**: Supplier settles with bank → Balance removed → Contract closed
+#### **Token Settlement Flow**
+```mermaid
+flowchart LR
+    A[Supplier Settles Token] --> B[peer-supplier DB]
+    B --> C[Delete Supplier Balance]
+    C --> D[Kafka Publish to scf-channel]
+    D --> E[Orderer Ordering]
+    E --> F[Public Ledger]
+    F --> G[Contract Closed]
+```
 
-### Block Creation
-Every significant operation creates:
-1. An event record with details
-2. A block containing the event
-3. Block hash calculated from previous block + current data
-4. Immutable audit trail maintained
+### **Event Streaming Patterns**
+
+#### **Kafka Topic Usage**
+- **`scf-channel-tx`**: Contract operations, token transfers, settlements
+- **`audit-channel-tx`**: Bank approvals, compliance events
+- **`scf-channel-blocks`**: Ordered SCF blocks broadcast
+- **`audit-channel-blocks`**: Ordered audit blocks broadcast
+
+#### **Orderer Processing**
+```mermaid
+flowchart TD
+    A[📨 Receive Kafka Events] --> B[🏛️ Validate Event Sequence]
+    B --> C[🏛️ Order Events by Timestamp]
+    C --> D[🏛️ Create Ordered Block]
+    D --> E[🏛️ Calculate Block Hash]
+    E --> F[🏛️ Save to Public Ledger]
+    F --> G[🏛️ Broadcast to All Peers]
+```
+
+### **Data Consistency Guarantees**
+
+#### **Eventual Consistency**
+- Private peer databases maintain local state
+- Public shared database maintains global ledger
+- Kafka ensures reliable message delivery
+- Orderer ensures global ordering
+
+#### **Audit Trail**
+- Every operation creates immutable event
+- Events grouped into ordered blocks
+- Block hash chain ensures integrity
+- Public ledger provides universal truth
+
+---
+
+## 📋 **API Summary by Peer Service**
+
+### **Peer Anchor (Port 8084)**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/contract/create` | Create contract + Kafka publish |
+| GET | `/contract/list` | List contracts |
+| GET | `/contract/{id}` | Get contract details |
+| GET | `/health` | Health check |
+
+### **Peer Main Bank (Port 8082)**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/contract/{id}/approve-bank` | Bank approve + token issuance |
+| GET | `/contract/list` | List all contracts |
+| GET | `/contract/{id}` | Get contract details |
+| GET | `/contract/{id}/ledger` | Contract audit trail |
+| GET | `/token/issued/{bankId}` | Tokens issued by bank |
+| GET | `/tokens` | All tokens issued by bank |
+
+### **Peer Supplier (Port 8083)**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/contract/{id}/approve` | Supplier approve contract |
+| POST | `/token/transfer` | Transfer tokens between suppliers |
+| POST | `/token/settle` | Settle token with bank |
+| GET | `/balances/account/{accountId}` | Account balances |
+| GET | `/suppliers` | List all suppliers |
+| GET | `/health` | Health check |
+
+### **Common Query Endpoints**
+| Method | Endpoint | Available On |
+|--------|----------|--------------|
+| GET | `/token/{id}` | All peers |
+| GET | `/balances/token/{tokenId}` | All peers |
+
+---
+
+## 🔄 **Complete API Flow Reference**
+
+**This document provides comprehensive flow diagrams for all APIs in the Multi-Peer Blockchain SCF System, showing the complete journey from user action through peer processing, Kafka messaging, orderer consensus, to public ledger persistence.**

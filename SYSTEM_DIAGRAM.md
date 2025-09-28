@@ -71,6 +71,7 @@ Sample stored event:
 **Peer Supplier (Port 8083) - Token Operations:**
 - `POST /contract/{id}/approve` - Supplier phê duyệt contract
 - `POST /token/transfer` - Token transfer giữa suppliers
+- `POST /token/settle` - Supplier settle token với bank
 - `GET /balances/account/{accountId}` - Account balances
 - `GET /health` - Health check
 
@@ -1193,6 +1194,7 @@ flowchart LR
 |--------|----------|-------------|
 | POST | `/contract/{id}/approve` | Supplier phê duyệt contract + token transfer |
 | POST | `/token/transfer` | Token transfer giữa suppliers |
+| POST | `/token/settle` | Supplier settle token với bank + Kafka publish |
 | GET | `/balances/account/{accountId}` | Account balances của supplier |
 | GET | `/health` | Health check |
 
