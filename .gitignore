@@ -35,6 +35,8 @@ data/
 .docker/
 *.env
 
+# Secrets (private keys)
+secrets/
 
 # OS specific
 .DS_Store

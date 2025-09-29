@@ -1,14 +1,15 @@
-# 🔗 Blockchain Supply Chain Finance (SCF) System
+# 🔗 Blockchain Supply Chain Finance (SCF) System với PBFT Consensus
 
 ## 📋 Tổng quan
 
-Hệ thống blockchain permissioned thế hệ mới cho Supply Chain Finance, tích hợp **Kafka Event-Driven Architecture** và **Multi-Peer Architecture** để đảm bảo:
+Hệ thống blockchain permissioned thế hệ mới cho Supply Chain Finance, tích hợp **PBFT Consensus Architecture** và **Multi-Peer Architecture** để đảm bảo:
 
 - **✅ Minh bạch tuyệt đối**: Tất cả giao dịch được ghi nhận immutable trên blockchain
 - **✅ Phân quyền linh hoạt**: Multi-peer architecture với role-based access
-- **✅ High Throughput**: Kafka messaging cho event streaming và async processing
-- **✅ Fault Tolerance**: Orderer cluster với consensus mechanism
+- **✅ High Throughput**: PBFT consensus cho transaction ordering và finality
+- **✅ Fault Tolerance**: 3-node PBFT cluster với f=1 fault tolerance (2f+1 signatures)
 - **✅ Scalability**: Horizontal scaling cho từng peer type
+- **✅ No External Dependencies**: Chạy hoàn toàn local-only với gRPC communication
 
 ### 🎯 Các bên tham gia trong hệ thống SCF
 
@@ -17,7 +18,7 @@ Hệ thống blockchain permissioned thế hệ mới cho Supply Chain Finance, 
 | **Anchor/Buyer** | Tạo hợp đồng SCF | `peer-anchor:8084` | `blockchain_anchor` |
 | **Main Bank** | Phát hành token, phê duyệt | `peer-main-bank:8082` | `blockchain_main_bank` |
 | **Supplier** | Phê duyệt, chuyển token | `peer-supplier:8083` | `blockchain_supplier` |
-| **Orderer Cluster** | Ordering & Consensus | `orderer-ord1/2/3` | `blockchain` (shared) |
+| **Orderer Cluster** | PBFT Consensus & Ordering | `orderer-ord1/2/3:7050/60/70` | `blockchain` (shared) |
 
 ## Mục lục
 
@@ -29,12 +30,13 @@ Hệ thống blockchain permissioned thế hệ mới cho Supply Chain Finance, 
 
 ### Mục tiêu hệ thống
 
-Hệ thống blockchain SCF permissioned được thiết kế để:
+Hệ thống blockchain SCF permissioned với PBFT consensus được thiết kế để:
 
 - **Minh bạch**: Tất cả giao dịch được ghi nhận trên blockchain và có thể truy vết
-- **Bất biến**: Dữ liệu đã ghi không thể thay đổi
+- **Bất biến**: Dữ liệu đã ghi không thể thay đổi nhờ PBFT cryptographic signatures
 - **Phân quyền**: Chỉ các bên được ủy quyền mới có thể tham gia
 - **Tự động hóa**: Quy trình phê duyệt và thực thi hợp đồng được tự động hóa
+- **Consensus Guarantee**: PBFT đảm bảo transaction ordering và finality với 2f+1 signatures
 
 
 
@@ -44,8 +46,8 @@ Hệ thống blockchain SCF permissioned được thiết kế để:
 ## Tài liệu chi tiết
 
 ### 📊 **Kiến trúc và thiết kế hệ thống**
-Chi tiết kiến trúc Multi-Peer với Kafka Event-Driven:
-- **[SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md)** - Kiến trúc tổng quan, component diagrams, data flow, database schema, business logic
+Chi tiết kiến trúc Multi-Peer với PBFT Consensus:
+- **[SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md)** - Kiến trúc tổng quan, PBFT consensus flow, component diagrams, data flow, database schema, business logic
 
 ### 🔗 **API Documentation**
 Luồng xử lý chi tiết cho tất cả APIs:
@@ -53,15 +55,49 @@ Luồng xử lý chi tiết cho tất cả APIs:
 
 ## 🚀 Cách chạy hệ thống
 
+### 🔐 Thiết lập Keys cho Orderer Nodes
+
+**Quan trọng**: Trước khi chạy hệ thống, bạn cần tạo private keys cho PBFT orderer nodes.
+
+#### **Tạo Keys tự động**
+
+```bash
+# Chạy script tạo key ECDSA PKCS8 cho 3 orderer nodes
+node scripts/generate-orderer-keys.js
+```
+
+Script sẽ tạo:
+- `secrets/ord1/private.pem` & `secrets/ord1/public.pem`
+- `secrets/ord2/private.pem` & `secrets/ord2/public.pem`
+- `secrets/ord3/private.pem` & `secrets/ord3/public.pem`
+
+#### **Tạo Keys thủ công (tùy chọn)**
+
+Nếu muốn tạo keys thủ công bằng OpenSSL:
+
+```bash
+# Tạo thư mục secrets
+mkdir -p secrets/ord1 secrets/ord2 secrets/ord3
+
+# Tạo ECDSA key pair cho từng orderer
+for ord in ord1 ord2 ord3; do
+    # Tạo private key (PKCS8 format)
+    openssl ecparam -genkey -name prime256v1 -out secrets/${ord}/private.pem
+
+    # Tạo public key
+    openssl ec -in secrets/${ord}/private.pem -pubout -out secrets/${ord}/public.pem
+done
+```
+
 ### 📋 Yêu cầu hệ thống
 
 | Tài nguyên | Tối thiểu | Khuyến nghị | Mục đích |
 |-----------|-----------|-------------|----------|
 | **Docker** | 20.10+ với Compose V2 | Latest | Container orchestration |
 | **RAM** | 4GB | 8GB+ | Multi-service chạy đồng thời |
-| **CPU** | 2 cores | 4 cores+ | Kafka, MongoDB processing |
+| **CPU** | 2 cores | 4 cores+ | PBFT consensus, MongoDB processing |
 | **Disk** | 5GB | 10GB+ | Logs, databases, containers |
-| **Network** | Stable internet | High-speed | Kafka messaging |
+| **Network** | Stable internet | High-speed | gRPC communication |
 
 ### ⚙️ Ports cần khả dụng
 
@@ -72,9 +108,10 @@ Luồng xử lý chi tiết cho tất cả APIs:
 | **8082** | peer-main-bank | Bank operations |
 | **8083** | peer-supplier | Supplier operations |
 | **8084** | peer-anchor | Anchor operations |
+| **7050** | orderer-ord1 | PBFT Primary Node |
+| **7060** | orderer-ord2 | PBFT Replica Node |
+| **7070** | orderer-ord3 | PBFT Replica Node |
 | **27017** | MongoDB | Database access |
-| **9092** | Kafka | External monitoring |
-| **2181** | Zookeeper | Kafka coordination |
 
 ### 🛠️ Lệnh triển khai nhanh
 
@@ -83,16 +120,19 @@ Luồng xử lý chi tiết cho tất cả APIs:
 git clone <repository-url>
 cd blockchain
 
-# 2. Chạy tất cả services (recommended cho lần đầu)
+# 2. Tạo private keys cho orderer nodes (bắt buộc)
+node scripts/generate-orderer-keys.js
+
+# 3. Chạy tất cả services (recommended cho lần đầu)
 docker-compose up --build
 
-# 3. Hoặc chạy background (production-like)
+# 4. Hoặc chạy background (production-like)
 docker-compose up -d --build
 
-# 4. Kiểm tra health của tất cả services
+# 5. Kiểm tra health của tất cả services
 docker-compose ps
 
-# 5. Xem logs để monitor khởi động
+# 6. Xem logs để monitor khởi động
 docker-compose logs -f
 ```
 
@@ -134,12 +174,14 @@ PEER_MAIN_BANK_URL=http://peer-main-bank:8082
 PEER_SUPPLIER_URL=http://peer-supplier:8083
 
 # Peer Services (Go)
-KAFKA_BROKERS=kafka:29092
+ORDERER_ADDR=orderer-ord1:7050
 MONGO_URI=mongodb://root:example@mongo-shared:27017/{database}
 
-# Orderer Cluster
-ORDERER_NODE_ID=ord1
-SCF_CHANNEL_TOPIC=scf-channel-tx
+# Orderer Cluster (PBFT)
+PBFT_NODE_ID=ord1
+ORDERER_PORT=7050
+PBFT_F=1
+MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
 ```
 
 #### **MongoDB Multi-Database Architecture**
@@ -147,10 +189,10 @@ SCF_CHANNEL_TOPIC=scf-channel-tx
 Hệ thống sử dụng **data segregation** với databases riêng biệt:
 
 ```
-mongo-shared:blockchain (Public Ledger)
-├── events: Global event log
-├── blocks: Ordered blocks
-└── users: User authentication
+mongo-shared:blockchain (Public Ledger - PBFT Signed)
+├── blocks: PBFT signed blocks with ECDSA signatures
+├── users: User authentication
+└── events: Legacy event log (if needed)
 
 mongo-main-bank:blockchain_main_bank (Private)
 ├── contracts: Bank-approved contracts
@@ -167,16 +209,21 @@ mongo-anchor:blockchain_anchor (Private)
 └── ledger: Contract history
 ```
 
-#### **Kafka Topics Configuration**
+#### **PBFT Consensus Configuration**
 
 ```yaml
-# Transaction Topics (Events)
-SCF_CHANNEL_TX=scf-channel-tx        # SCF events (contracts, transfers)
-AUDIT_CHANNEL_TX=audit-channel-tx    # Bank approval events
+# PBFT Parameters
+PBFT_F=1                              # Max faulty nodes (3f+1 = 4 nodes total)
+PBFT_NODE_ID=ord1|ord2|ord3         # Unique node identifier
+PBFT_QUORUM=3                        # 2f+1 = 3 signatures required
 
-# Block Topics (Ordered Results)
-SCF_CHANNEL_BLOCKS=scf-channel-blocks      # Ordered SCF blocks
-AUDIT_CHANNEL_BLOCKS=audit-channel-blocks  # Ordered audit blocks
+# gRPC Communication
+ORDERER_ADDR=orderer-ord1:7050       # Primary orderer for peers
+ORDERER_PORT=7050|7060|7070         # Individual orderer ports
+
+# Cryptographic Keys
+secrets/ord*/private.pem             # ECDSA private keys (auto-generated)
+secrets/ord*/public.pem              # ECDSA public keys (auto-generated)
 ```
 
 ### Monitoring & Debugging
@@ -188,8 +235,11 @@ docker-compose logs -f
 
 # Xem logs service cụ thể
 docker-compose logs -f backend
-docker-compose logs -f ms-blockchain
-docker-compose logs -f mongo
+docker-compose logs -f orderer-ord1
+docker-compose logs -f peer-anchor
+docker-compose logs -f peer-main-bank
+docker-compose logs -f peer-supplier
+docker-compose logs -f mongo-shared
 
 # Xem logs với timestamp
 docker-compose logs -f --timestamps
@@ -208,7 +258,8 @@ docker-compose up --build --force-recreate backend
 
 # Truy cập container shell
 docker-compose exec backend bash
-docker-compose exec ms-blockchain sh
+docker-compose exec orderer-ord1 sh
+docker-compose exec peer-anchor sh
 ```
 
 ### Troubleshooting
@@ -229,10 +280,10 @@ lsof -i :27017
 **2. MongoDB connection failed**
 ```bash
 # Kiểm tra MongoDB container
-docker-compose logs mongo
+docker-compose logs mongo-shared
 
 # Kiểm tra MongoDB connectivity
-docker-compose exec mongo mongo --username root --password example --authenticationDatabase admin
+docker-compose exec mongo-shared mongo --username root --password example --authenticationDatabase admin
 ```
 
 **3. Services không start được**
@@ -303,19 +354,14 @@ Hệ thống hỗ trợ **horizontal scaling** cho peer services. Dưới đây 
       - PEER_NODE_TYPE=main-bank-2
       - PEER_NODE_ID=main-bank-peer-2
       - PEER_PORT=8082
-      - PEER_GRPC_PORT=9095
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
       - MONGO_URI=mongodb://root:example@mongo-main-bank-2:27017/blockchain_main_bank_2?authSource=admin
     depends_on:
       - mongo-shared
-      - kafka
       - orderer-ord1
     networks:
       - peer-network
-      - kafka-network
+      - public-network
 
   mongo-main-bank-2:
     image: mongo:latest
@@ -383,40 +429,55 @@ curl http://localhost:8085/health
 
 ## 🎯 **Trạng thái triển khai hiện tại**
 
-### ✅ **Hoàn thành (13/13 containers chạy ổn định)**
+### ✅ **Hoàn thành (11/11 containers chạy ổn định)**
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **peer-main-bank** | 8082 | ✅ Running | Contract creation, bank approval, token issuance, Kafka producer |
-| **peer-supplier** | 8083 | ✅ Running | Contract approval, token transfer, balance management, Kafka producer |
-| **peer-anchor** | 8084 | ✅ Running | Contract creation, token reception, ledger tracking, Kafka producer |
-| **orderer-ord1** | 7050 | ✅ Running | Kafka consumer, event processing, MongoDB storage |
-| **orderer-ord2** | 7060 | ✅ Running | Kafka consumer, block ordering |
-| **orderer-ord3** | 7070 | ✅ Running | Kafka consumer, block ordering |
-| **kafka** | 9092 | ✅ Running | Message broker với topics `scf-channel-tx`, `audit-channel-tx` |
-| **zookeeper** | 2181 | ✅ Running | Kafka coordination |
-| **mongo-shared** | 27017 | ✅ Running | Event storage database |
+| **peer-main-bank** | 8082 | ✅ Running | Contract creation, bank approval, token issuance, gRPC client |
+| **peer-supplier** | 8083 | ✅ Running | Contract approval, token transfer, balance management, gRPC client |
+| **peer-anchor** | 8084 | ✅ Running | Contract creation, token reception, ledger tracking, gRPC client |
+| **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, block signing, MongoDB storage |
+| **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant, block validation |
+| **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant, block validation |
+| **mongo-shared** | 27017 | ✅ Running | Block storage with PBFT signatures |
 | **mongo-main-bank** | - | ✅ Running | Main bank world state |
 | **mongo-supplier** | - | ✅ Running | Supplier world state |
 | **mongo-anchor** | - | ✅ Running | Anchor world state |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
-### ✅ **Kafka Messaging End-to-End Test**
+### ✅ **PBFT Consensus End-to-End Test**
 
 ```bash
-# Test successful - Orderer nhận và lưu events vào database
-Event published to Kafka → Orderer consumed → Database stored ✅
+# Test successful - Peer gửi tx qua gRPC → Orderer PBFT consensus → Block signed → Stream về peers ✅
+Transaction submitted via gRPC → PBFT consensus (Pre-Prepare→Prepare→Commit) → Block with signatures stored ✅
 
-Sample stored event:
+Sample stored block with PBFT signatures:
 {
-  "_id": "68d603246d3df5837a38bf1a",
-  "eventType": "TEST_DATABASE_STORAGE",
-  "eventId": "bde11db426d42bc237841bd6145a1283",
-  "data": {"contractId": "TEST003", "amount": 3000},
-  "timestamp": "1758855971",
-  "processed": true,
-  "ordererId": "ord1"
+  "_id": "block_1",
+  "height": 1,
+  "timestamp": "2025-09-29T10:30:00Z",
+  "transactions": [...],
+  "previous_hash": "genesis",
+  "hash": "block_hash_123...",
+  "merkle_root": "merkle_456...",
+  "signatures": [
+    {
+      "orderer_id": "ord1",
+      "signature": "ecdsa_sig_1...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    },
+    {
+      "orderer_id": "ord2",
+      "signature": "ecdsa_sig_2...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    },
+    {
+      "orderer_id": "ord3",
+      "signature": "ecdsa_sig_3...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    }
+  ]
 }
 ```
 
@@ -428,13 +489,18 @@ curl -s http://localhost:8082/health
 curl -s http://localhost:8083/health
 curl -s http://localhost:8084/health
 
-# Kafka messaging test
-echo '{"eventType": "TEST", "timestamp": "'$(date +%s)'", "data": {"message": "test"}}' | \
-docker-compose exec -T kafka kafka-console-producer --bootstrap-server localhost:9092 --topic scf-channel-tx
+# Check orderer gRPC endpoints
+grpcurl -plaintext localhost:7050 list
+grpcurl -plaintext localhost:7060 list
+grpcurl -plaintext localhost:7070 list
 
-# Database verification
+# Database verification - check PBFT signed blocks
 docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
-blockchain --eval "db.events.find().toArray()"
+blockchain --eval "db.blocks.find().sort({height: -1}).limit(3).toArray()"
+
+# Verify ECDSA signatures in blocks
+docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
+blockchain --eval "db.blocks.find({}, {height: 1, signatures: 1}).sort({height: -1}).limit(1)"
 ```
 
 ### Cleanup Commands
@@ -455,11 +521,34 @@ docker system prune -a --volumes --force
 
 ---
 
+## 🔐 **PBFT Consensus Overview**
+
+### Practical Byzantine Fault Tolerance (PBFT)
+PBFT là thuật toán consensus cho phép hệ thống chịu được **f faulty nodes** trong tổng số **3f+1 nodes**. Với f=1, chúng ta cần **4 nodes** để chịu được 1 node bị lỗi.
+
+### PBFT Phases
+1. **Pre-Prepare**: Primary node broadcast proposed block
+2. **Prepare**: Replica nodes validate và send prepare messages
+3. **Commit**: Quorum reached (2f+1), block finalized with signatures
+
+### Cryptographic Security
+- **ECDSA Signatures**: Mỗi orderer ký blocks với private key
+- **Quorum Validation**: Cần 2f+1 signatures để block valid
+- **Public Key Verification**: Peers verify signatures với public keys
+
+### Advantages over Traditional Consensus
+- **No External Dependencies**: Chạy hoàn toàn local-only
+- **Low Latency**: Direct gRPC communication
+- **Deterministic Finality**: Blocks finalized trong vòng vài giây
+- **Cryptographic Proofs**: Mỗi block có cryptographic evidence
+
+---
+
 ## 📚 **Tài liệu tham khảo**
 
-- **[SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md)** - Kiến trúc chi tiết, diagrams, database schema
+- **[SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md)** - Kiến trúc chi tiết, PBFT consensus flow, diagrams, database schema
 - **[API_Flow_Diagrams.md](API_Flow_Diagrams.md)** - API flow diagrams, business logic patterns
 
 ---
 
-**🎉 Hệ thống Blockchain Supply Chain Finance đã sẵn sàng với đầy đủ functionality!**
+**🎉 Hệ thống Blockchain Supply Chain Finance đã chuyển đổi thành công sang kiến trúc PBFT-only với consensus ordering!**
