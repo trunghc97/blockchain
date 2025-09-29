@@ -12,14 +12,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shopify/sarama"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	grpcclient "peer-anchor/grpc-client"
 	"peer-anchor/models"
+	"peer-anchor/proto"
 )
 
 type SupplierDTO struct {
@@ -31,9 +33,8 @@ type SupplierDTO struct {
 
 type Handler struct {
 	db            *mongo.Database
-	kafkaProducer sarama.SyncProducer
-	scfTopic      string
-	auditTopic    string
+	ordererClient *grpcclient.OrdererClient
+	peerID        string
 }
 
 func generateEventID() string {
@@ -112,66 +113,41 @@ func (h *Handler) getNextBlockNumber() int64 {
 	return previousBlockNum + 1
 }
 
-// sendToKafka sends a message to the specified Kafka topic
-func (h *Handler) sendToKafka(topic string, event map[string]interface{}) error {
-	if h.kafkaProducer == nil {
-		fmt.Printf("Kafka producer not initialized, skipping message send\n")
-		return nil // Don't fail if Kafka is not available
+// submitToOrderer submits a transaction to the orderer cluster via gRPC
+func (h *Handler) submitToOrderer(tx *proto.Transaction) error {
+	if h.ordererClient == nil {
+		fmt.Printf("Orderer client not initialized, skipping transaction submission\n")
+		return nil // Don't fail if orderer is not available
 	}
 
-	messageBytes, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal event: %v", err)
-	}
-
-	msg := &sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(messageBytes),
-	}
-
-	partition, offset, err := h.kafkaProducer.SendMessage(msg)
-	if err != nil {
-		return fmt.Errorf("failed to send message to Kafka: %v", err)
-	}
-
-	fmt.Printf("Message sent to Kafka topic %s, partition %d, offset %d\n", topic, partition, offset)
-	return nil
+	return h.ordererClient.SubmitTransaction(h.peerID, tx)
 }
 
 func NewHandler(db *mongo.Database) *Handler {
-	// Initialize Kafka producer
-	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
-	if kafkaBrokers == "" {
-		kafkaBrokers = "kafka:29092"
+	// Initialize gRPC client to orderer
+	ordererAddr := os.Getenv("ORDERER_ADDR")
+	if ordererAddr == "" {
+		ordererAddr = "orderer-ord1:7050"
 	}
-	kafkaBrokersList := strings.Split(kafkaBrokers, ",")
 
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
+	peerID := os.Getenv("PEER_NODE_ID")
+	if peerID == "" {
+		peerID = "peer-anchor"
+	}
 
-	producer, err := sarama.NewSyncProducer(kafkaBrokersList, config)
+	var ordererClient *grpcclient.OrdererClient
+	client, err := grpcclient.NewOrdererClient(ordererAddr)
 	if err != nil {
-		fmt.Printf("Failed to create Kafka producer: %v\n", err)
-		// Continue without producer for now
-	}
-
-	scfTopic := os.Getenv("SCF_CHANNEL_TOPIC")
-	if scfTopic == "" {
-		scfTopic = "scf-channel-tx"
-	}
-
-	auditTopic := os.Getenv("AUDIT_CHANNEL_TOPIC")
-	if auditTopic == "" {
-		auditTopic = "audit-channel-tx"
+		fmt.Printf("Failed to create orderer client: %v\n", err)
+		// Continue without client for now
+	} else {
+		ordererClient = client
 	}
 
 	return &Handler{
 		db:            db,
-		kafkaProducer: producer,
-		scfTopic:      scfTopic,
-		auditTopic:    auditTopic,
+		ordererClient: ordererClient,
+		peerID:        peerID,
 	}
 }
 
@@ -267,28 +243,22 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 		// Log error but don't fail the contract creation
 		fmt.Printf("Failed to create block: %v\n", err)
 	} else {
-		// Send block creation event to Kafka for orderer processing
-		blockEvent := map[string]interface{}{
-			"eventType":   "BLOCK_CREATED",
-			"eventId":     generateEventID(),
-			"blockNumber": blockNumber,
-			"blockHash":   blockHash,
-			"timestamp":   time.Now().Format(time.RFC3339),
-			"events":      eventIds,
-			"contractId":  req.ID,
-			"peerId":      "peer-anchor", // This service acts as a peer for block creation
-			"data": map[string]interface{}{
-				"contractId":  req.ID,
-				"anchorId":    req.AnchorId,
-				"bankId":      req.BankId,
-				"totalAmount": req.Amount,
-				"description": req.Description,
-				"suppliers":   req.Suppliers,
-			},
+		// Submit transaction to orderer via gRPC
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "CONTRACT_CREATED",
+			ContractId:      req.ID,
+			SenderId:        req.AnchorId,
+			ReceiverId:      req.BankId,
+			Amount:          req.Amount,
+			Payload:         fmt.Sprintf("Contract created: %s", req.Description),
+			Timestamp:       protoTimestamp,
 		}
 
-		if err := h.sendToKafka(h.scfTopic, blockEvent); err != nil {
-			fmt.Printf("Failed to send block event to Kafka: %v\n", err)
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit transaction to orderer: %v\n", err)
 			// Continue, don't fail the contract creation
 		}
 	}

@@ -36,48 +36,8 @@ services:
       - public-network
       - peer-network
 
-  # Kafka Cluster (Messaging Layer)
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
-    hostname: zookeeper
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - kafka-network
 
-  kafka:
-    image: confluentinc/cp-kafka:7.4.0
-    hostname: kafka
-    container_name: kafka
-    depends_on:
-      - zookeeper
-    ports:
-      - "9092:29092"
-      - "9101:9101"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      # Pre-create SCF topics
-      KAFKA_CREATE_TOPICS: |
-        scf-channel-tx:1:1,
-        audit-channel-tx:1:1,
-        scf-channel-blocks:1:1,
-        audit-channel-blocks:1:1
-    networks:
-      - kafka-network
-      - peer-network
-      - orderer-network
-
-  # Orderer Cluster (3 nodes) - now consumes from Kafka
+  # Orderer Cluster (3 nodes) - PBFT consensus
   orderer-ord1:
     build:
       context: ./orderer-cluster
@@ -85,19 +45,16 @@ services:
     ports:
       - "7050:7050"
     environment:
-      - ORDERER_NODE_ID=ord1
+      - PBFT_NODE_ID=ord1
       - ORDERER_PORT=7050
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
+      - PBFT_F=1
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
     volumes:
-      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
+      - ./secrets/ord1:/secrets
     depends_on:
-      - kafka
       - mongo-shared
     networks:
       - orderer-network
-      - kafka-network
       - public-network
 
   orderer-ord2:
@@ -107,18 +64,17 @@ services:
     ports:
       - "7060:7060"
     environment:
-      - ORDERER_NODE_ID=ord2
+      - PBFT_NODE_ID=ord2
       - ORDERER_PORT=7060
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
+      - PBFT_F=1
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
     volumes:
-      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
+      - ./secrets/ord2:/secrets
     depends_on:
-      - kafka
+      - mongo-shared
     networks:
       - orderer-network
-      - kafka-network
+      - public-network
 
   orderer-ord3:
     build:
@@ -127,20 +83,19 @@ services:
     ports:
       - "7070:7070"
     environment:
-      - ORDERER_NODE_ID=ord3
+      - PBFT_NODE_ID=ord3
       - ORDERER_PORT=7070
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
+      - PBFT_F=1
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
     volumes:
-      - ./orderer-cluster/genesis:/etc/hyperledger/fabric/config/genesis
+      - ./secrets/ord3:/secrets
     depends_on:
-      - kafka
+      - mongo-shared
     networks:
       - orderer-network
-      - kafka-network
+      - public-network
 
-  # Peer Nodes - now publish to Kafka instead of calling Orderer directly
+  # Peer Nodes - now submit tx to Orderer via gRPC
   peer-main-bank:
     build: ./peer-main-bank
     ports:
@@ -151,18 +106,14 @@ services:
       - PEER_NODE_ID=main-bank-peer-1
       - PEER_PORT=8082
       - PEER_GRPC_PORT=9092
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - kafka
       - orderer-ord1
     networks:
       - peer-network
-      - kafka-network
+      - public-network
 
   peer-supplier:
     build: ./peer-supplier
@@ -174,18 +125,14 @@ services:
       - PEER_NODE_ID=supplier-peer-1
       - PEER_PORT=8083
       - PEER_GRPC_PORT=9093
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - kafka
       - orderer-ord1
     networks:
       - peer-network
-      - kafka-network
+      - public-network
 
   peer-anchor:
     build: ./peer-anchor
@@ -197,18 +144,14 @@ services:
       - PEER_NODE_ID=anchor-peer-1
       - PEER_PORT=8084
       - PEER_GRPC_PORT=9094
-      - KAFKA_BROKERS=kafka:29092
-      - SCF_CHANNEL_TOPIC=scf-channel-tx
-      - AUDIT_CHANNEL_TOPIC=audit-channel-tx
       - ORDERER_ADDR=orderer-ord1:7050
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - kafka
       - orderer-ord1
     networks:
       - peer-network
-      - kafka-network
+      - public-network
 
   # Single MongoDB instance with dual databases (private + public)
   mongo-shared:
@@ -233,16 +176,12 @@ networks:
   public-network:
     driver: bridge
 
-  # Private network for peer-to-peer communication and Kafka
+  # Private network for peer-to-peer communication
   peer-network:
     driver: bridge
     internal: true
 
-  # Kafka messaging network - connects peers and orderers
-  kafka-network:
-    driver: bridge
-
-  # Isolated network for orderer consensus
+  # Isolated network for orderer PBFT consensus
   orderer-network:
     driver: bridge
     internal: true

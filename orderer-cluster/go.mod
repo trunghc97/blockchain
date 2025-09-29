@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/Shopify/sarama v1.38.1
 	go.mongodb.org/mongo-driver v1.12.1
+	google.golang.org/grpc v1.58.3
 )
 
 require (

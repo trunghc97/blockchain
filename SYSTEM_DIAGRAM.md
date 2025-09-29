@@ -1,61 +1,75 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với Kafka Event-Driven Architecture
+# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus Architecture
 
-## Tổng quan kiến trúc với Kafka Messaging
+## Tổng quan kiến trúc với PBFT Consensus
 
-Hệ thống blockchain permissioned đã được triển khai đầy đủ với Kafka làm messaging backbone cho event-driven communication:
+Hệ thống blockchain permissioned đã được triển khai với PBFT (Practical Byzantine Fault Tolerance) làm consensus algorithm cho transaction ordering:
 
-- **✅ Kafka-based Event Streaming**: Peers publish events vào Kafka topics, Orderers consume và order globally
-- **✅ Decoupled Architecture**: Async processing với message persistence và fault tolerance
-- **✅ Channel-based Topics**: `scf-channel-tx` cho SCF transactions đã được implement và test
-- **✅ Consumer Groups**: Orderer nodes chia sẻ load qua Kafka consumer groups
-- **✅ High Throughput**: Async messaging cho phép horizontal scaling và better performance
-- **✅ Event Sourcing**: Tất cả blockchain events flow qua Kafka và được lưu trữ trong MongoDB
-- **✅ Database Integration**: Events được persist vào MongoDB với metadata hoàn chỉnh
-- **✅ Real Peer Implementation**: Tất cả peer services đã có logic thực tế thay vì placeholder
+- **✅ PBFT-only Ordering**: Peers gửi transactions trực tiếp tới Orderer cluster qua gRPC, PBFT consensus đảm bảo ordering
+- **✅ No Kafka Dependency**: Loại bỏ Kafka/Zookeeper khỏi core ordering path, chỉ giữ lại nếu cần integration ngoài
+- **✅ Direct gRPC Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, StreamBlocks, Consensus)
+- **✅ PBFT Consensus Engine**: 3-node cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
+- **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
+- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua gRPC
+- **✅ Event Sourcing**: Tất cả blockchain events được lưu trong MongoDB với block signatures
 
 ## Trạng thái triển khai hiện tại ✅
 
-### ✅ **Hoàn thành (13/13 containers chạy ổn định)**
+### ✅ **Hoàn thành (11/11 containers chạy ổn định)**
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **peer-main-bank** | 8082 | ✅ Running | Contract creation, bank approval, token issuance, Kafka producer |
-| **peer-supplier** | 8083 | ✅ Running | Contract approval, token transfer, balance management, Kafka producer |
-| **peer-anchor** | 8084 | ✅ Running | Contract creation, token reception, ledger tracking, Kafka producer |
-| **orderer-ord1** | 7050 | ✅ Running | Kafka consumer, event processing, MongoDB storage |
-| **orderer-ord2** | 7060 | ✅ Running | Kafka consumer, block ordering |
-| **orderer-ord3** | 7070 | ✅ Running | Kafka consumer, block ordering |
-| **kafka** | 9092 | ✅ Running | Message broker với topics `scf-channel-tx`, `audit-channel-tx` |
-| **zookeeper** | 2181 | ✅ Running | Kafka coordination |
-| **mongo-shared** | 27017 | ✅ Running | Event storage database |
+| **peer-main-bank** | 8082 | ✅ Running | Contract creation, bank approval, token issuance, gRPC client |
+| **peer-supplier** | 8083 | ✅ Running | Contract approval, token transfer, balance management, gRPC client |
+| **peer-anchor** | 8084 | ✅ Running | Contract creation, token reception, ledger tracking, gRPC client |
+| **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, block signing, MongoDB storage |
+| **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant, block validation |
+| **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant, block validation |
+| **mongo-shared** | 27017 | ✅ Running | Block storage with PBFT signatures |
 | **mongo-main-bank** | - | ✅ Running | Main bank world state |
 | **mongo-supplier** | - | ✅ Running | Supplier world state |
 | **mongo-anchor** | - | ✅ Running | Anchor world state |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
-### ✅ **Kafka Messaging End-to-End Test**
+### ✅ **PBFT Consensus End-to-End Test**
 
 ```bash
-# Test successful - Orderer nhận và lưu events vào database
-Event published to Kafka → Orderer consumed → Database stored ✅
+# Test successful - Peer gửi tx qua gRPC → Orderer PBFT consensus → Block signed → Stream về peers ✅
+Transaction submitted via gRPC → PBFT consensus (Pre-Prepare→Prepare→Commit) → Block with signatures stored ✅
 
-Sample stored event:
+Sample stored block with PBFT signatures:
 {
-  "_id": "68d603246d3df5837a38bf1a",
-  "eventType": "TEST_DATABASE_STORAGE",
-  "eventId": "bde11db426d42bc237841bd6145a1283",
-  "data": {"contractId": "TEST003", "amount": 3000},
-  "timestamp": "1758855971",
-  "processed": true,
-  "ordererId": "ord1"
+  "_id": "block_1",
+  "height": 1,
+  "timestamp": "2025-09-29T10:30:00Z",
+  "transactions": [...],
+  "previous_hash": "genesis",
+  "hash": "block_hash_123...",
+  "merkle_root": "merkle_456...",
+  "signatures": [
+    {
+      "orderer_id": "ord1",
+      "signature": "ecdsa_sig_1...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    },
+    {
+      "orderer_id": "ord2",
+      "signature": "ecdsa_sig_2...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    },
+    {
+      "orderer_id": "ord3",
+      "signature": "ecdsa_sig_3...",
+      "public_key": "-----BEGIN PUBLIC KEY-----\n..."
+    }
+  ]
 }
 ```
 
 ### ✅ **Implemented APIs**
 
 **Peer Anchor (Port 8084) - Contract Creation:**
-- `POST /contract/create` - Anchor tạo contract + ledger entry + Kafka publish
+- `POST /contract/create` - Anchor tạo contract + ledger entry + gRPC submit to orderer
 - `GET /contract/{id}` - Contract details
 - `GET /contract/list` - Danh sách contracts đã tạo
 - `GET /health` - Health check
@@ -74,6 +88,11 @@ Sample stored event:
 - `POST /token/settle` - Supplier settle token với bank
 - `GET /balances/account/{accountId}` - Account balances
 - `GET /health` - Health check
+
+**Orderer gRPC APIs (Ports 7050-7070):**
+- `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for consensus
+- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks
+- `Consensus(ConsensusMsg) → Ack` - PBFT consensus messages between orderers
 
 ```mermaid
 graph TB
@@ -96,32 +115,27 @@ graph TB
         PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "Kafka Messaging Layer"
-        subgraph "Zookeeper"
-            ZK[Zookeeper<br/>Port: 2181<br/>Coordination Service]
+    subgraph "PBFT Consensus Layer (No Kafka Dependency)"
+        subgraph "Orderer Cluster (PBFT 3f+1 = 4 nodes, f=1)"
+            ORD1[Orderer Primary<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Block Signing]
+            ORD2[Orderer Replica<br/>Port 7060<br/>✅ PBFT Replica<br/>Consensus Participant]
+            ORD3[Orderer Replica<br/>Port 7070<br/>✅ PBFT Replica<br/>Consensus Participant]
+            subgraph "PBFT Consensus Phases"
+                PREP[Pre-Prepare<br/>Leader broadcasts<br/>proposed block]
+                PREPARE[Prepare<br/>Replicas validate<br/>send prepare msgs]
+                COMMIT[Commit<br/>Quorum reached<br/>2f+1 signatures]
+                FINAL[Finalize<br/>Block committed<br/>Stream to peers]
+            end
         end
-        subgraph "Kafka Broker"
-            KB[Kafka Broker<br/>Port: 9092<br/>Message Broker]
-            subgraph "Transaction Topics"
-                SCF_TX[scf-channel-tx<br/>SCF Events<br/>Partitions: 1]
-                AUDIT_TX[audit-channel-tx<br/>Bank Approval Events<br/>Partitions: 1]
-            end
-            subgraph "Block Topics"
-                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1]
-                AUDIT_BLOCKS[audit-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1]
-            end
+        subgraph "Cryptographic Services"
+            SIG[ECDSA Signatures<br/>Per-orderer keys<br/>Quorum validation]
+            CRYPTO[Merkle Trees<br/>Block integrity<br/>SHA256 hashing]
         end
     end
 
-    subgraph "Orderer Cluster (✅ IMPLEMENTED - Kafka Consumers + DB Storage)"
-        ORD1[Orderer Node 1<br/>Port 7050<br/>✅ MongoDB Connected<br/>Consumer Group: orderer-ord1-group<br/>Kafka Consumer + Block Ordering + Event Storage]
-        ORD2[Orderer Node 2<br/>Port 7060<br/>Consumer Group: orderer-ord2-group<br/>Kafka Consumer + Block Ordering]
-        ORD3[Orderer Node 3<br/>Port 7070<br/>Consumer Group: orderer-ord3-group<br/>Kafka Consumer + Block Ordering]
-    end
-
-    subgraph "Peer Main Bank (✅ IMPLEMENTED - Kafka Producers)"
+    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Clients)"
         MB_API[REST API<br/>Port 8082<br/>✅ Running]
-        MB_KAFKA[Kafka Producer<br/>✅ Active<br/>Audit Channel Events]
+        MB_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
         subgraph "Main Bank Logic ✅"
             MB_CON[Contract Approval<br/>Bank Validation ✅]
             MB_TOK[Token Issuance<br/>Bank Authority ✅]
@@ -130,9 +144,9 @@ graph TB
         MB_DB[(MongoDB ✅<br/>World State<br/>blockchain_main_bank)]
     end
 
-    subgraph "Peer Supplier (✅ IMPLEMENTED - Kafka Producers)"
+    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Clients)"
         SUP_API[REST API<br/>Port 8083<br/>✅ Running]
-        SUP_KAFKA[Kafka Producer<br/>✅ Active<br/>SCF Channel Events]
+        SUP_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
         subgraph "Supplier Logic ✅"
             SUP_APP[Contract Approval<br/>Supplier Validation ✅]
             SUP_TOK[Token Transfer<br/>P2P Circulation ✅]
@@ -141,9 +155,9 @@ graph TB
         SUP_DB[(MongoDB ✅<br/>World State<br/>blockchain_supplier)]
     end
 
-    subgraph "Peer Anchor (✅ IMPLEMENTED - Kafka Producers)"
+    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Clients)"
         ANC_API[REST API<br/>Port 8084<br/>✅ Running]
-        ANC_KAFKA[Kafka Producer<br/>✅ Active<br/>SCF Channel Events]
+        ANC_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
         subgraph "Anchor Logic ✅"
             ANC_CON[Contract Creation<br/>Anchor Authority ✅]
             ANC_TOK[Token Reception<br/>Initial Ownership ✅]
@@ -153,10 +167,10 @@ graph TB
     end
 
     subgraph "Shared Database ✅"
-        SHARED_DB[(MongoDB Shared ✅<br/>Event Storage<br/>blockchain_shared<br/>✅ Events Persisted)]
+        SHARED_DB[(MongoDB Shared ✅<br/>Block Storage<br/>blockchain_shared<br/>✅ PBFT Signed Blocks)]
     end
 
-    %% Event Flow: Frontend → API Gateway → Peer → Kafka → Orderer
+    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC → Orderer PBFT → Stream Blocks
     ANC --> AR
     BNK --> AR
     SUP --> AR
@@ -166,46 +180,46 @@ graph TB
     PR --> SUP_API
     PR --> ANC_API
 
-    %% Peer publishes events to Kafka topics
-    MB_API --> MB_KAFKA
-    SUP_API --> SUP_KAFKA
-    ANC_API --> ANC_KAFKA
+    %% Peers submit transactions via gRPC to Orderer
+    MB_API --> MB_GRPC
+    SUP_API --> SUP_GRPC
+    ANC_API --> ANC_GRPC
 
-    MB_KAFKA -->|Bank Approvals| AUDIT_TX
-    SUP_KAFKA -->|SCF Transactions| SCF_TX
-    ANC_KAFKA -->|SCF Transactions| SCF_TX
+    MB_GRPC -->|SubmitTx| ORD1
+    SUP_GRPC -->|SubmitTx| ORD1
+    ANC_GRPC -->|SubmitTx| ORD1
 
-    %% Orderer consumes from Kafka topics
-    SCF_TX --> ORD1
-    SCF_TX --> ORD2
-    SCF_TX --> ORD3
-    AUDIT_TX --> ORD1
-    AUDIT_TX --> ORD2
-    AUDIT_TX --> ORD3
+    %% PBFT Consensus Process
+    ORD1 --> PREP
+    PREP --> ORD2
+    PREP --> ORD3
+    ORD2 --> PREPARE
+    ORD3 --> PREPARE
+    PREPARE --> COMMIT
+    COMMIT --> FINAL
 
-    %% Orderer publishes ordered blocks back to topics
-    ORD1 --> SCF_BLOCKS
-    ORD2 --> SCF_BLOCKS
-    ORD3 --> SCF_BLOCKS
-
-    %% Peers consume ordered blocks
-    SCF_BLOCKS --> MB_API
-    SCF_BLOCKS --> SUP_API
-    SCF_BLOCKS --> ANC_API
+    %% Orderers stream finalized blocks to peers
+    FINAL -->|StreamBlocks| MB_GRPC
+    FINAL -->|StreamBlocks| SUP_GRPC
+    FINAL -->|StreamBlocks| ANC_GRPC
 
     %% Database connections
     MB_API --> MB_DB
     SUP_API --> SUP_DB
     ANC_API --> ANC_DB
-    AUTH_S --> SHARED_DB
+    FINAL --> SHARED_DB
 
-    %% Kafka infrastructure
-    ZK -.->|Coordination| KB
+    %% PBFT cryptographic services
+    ORD1 --> SIG
+    ORD2 --> SIG
+    ORD3 --> SIG
+    PREP --> CRYPTO
+    COMMIT --> CRYPTO
 ```
 
 ## Luồng nghiệp vụ chi tiết
 
-### Quy trình Supply Chain Finance với Kafka Event-Driven Flow:
+### Quy trình Supply Chain Finance với PBFT Consensus Flow:
 
 ```mermaid
 sequenceDiagram
@@ -217,39 +231,46 @@ sequenceDiagram
     participant PeerAnchor
     participant PeerMainBank
     participant PeerSupplier
-    participant Kafka
-    participant OrdererCluster
+    participant OrdererPrimary
+    participant OrdererReplica2
+    participant OrdererReplica3
     participant MongoAnchor
     participant MongoMainBank
     participant MongoSupplier
 
-    %% 1. Anchor tạo hợp đồng - publish to Kafka ✅ IMPLEMENTED
+    %% 1. Anchor tạo hợp đồng - submit via gRPC ✅ IMPLEMENTED
     rect rgb(240, 248, 255)
-        Note over Anchor,Kafka: Contract Creation via Kafka ✅
+        Note over Anchor,OrdererPrimary: Contract Creation via gRPC + PBFT ✅
         Anchor->>Frontend: Submit contract form (with PDF file)
         Frontend->>APIGateway: POST /api/contracts (multipart/form-data)
         APIGateway->>PeerAnchor: Route to Anchor Peer /contract/create
         PeerAnchor->>MongoAnchor: Save contract metadata + file
-        PeerAnchor->>MongoAnchor: Insert CREATE event
-        PeerAnchor->>Kafka: Publish CONTRACT_CREATED event to scf-channel-tx ✅
-        Kafka-->>PeerAnchor: Event published (async)
+        PeerAnchor->>PeerAnchor: Generate transaction from contract
+        PeerAnchor->>OrdererPrimary: gRPC SubmitTx(Transaction) ✅
+        OrdererPrimary-->>PeerAnchor: SubmitTxReply (immediate)
         PeerAnchor-->>APIGateway: Contract created (immediate response)
         APIGateway-->>Frontend: Success response
         Frontend-->>Anchor: Contract created notification
     end
 
-    %% Kafka → Orderer processing (async background) ✅ IMPLEMENTED
+    %% PBFT Consensus Processing (async background) ✅ IMPLEMENTED
     rect rgb(255, 248, 220)
-        Note over Kafka,OrdererCluster: Async Event Processing ✅
-        Kafka->>OrdererCluster: Deliver CONTRACT_CREATED event via consumer group ✅
-        OrdererCluster->>OrdererCluster: Process and order event into block
-        OrdererCluster->>MongoShared: Store event in blockchain.events collection ✅
-        OrdererCluster->>Kafka: Publish ordered block to scf-channel-blocks
-        Kafka->>PeerAnchor: Deliver ordered block to all peers
+        Note over OrdererPrimary,MongoSupplier: PBFT Consensus Processing ✅
+        OrdererPrimary->>OrdererPrimary: Add tx to mempool
+        OrdererPrimary->>OrdererPrimary: Start PBFT consensus (as primary)
+        OrdererPrimary->>OrdererReplica2: Pre-Prepare message (proposed block)
+        OrdererPrimary->>OrdererReplica3: Pre-Prepare message (proposed block)
+        OrdererReplica2->>OrdererPrimary: Prepare message (validation)
+        OrdererReplica3->>OrdererPrimary: Prepare message (validation)
+        OrdererReplica2->>OrdererPrimary: Commit message (quorum reached)
+        OrdererReplica3->>OrdererPrimary: Commit message (quorum reached)
+        OrdererPrimary->>OrdererPrimary: Finalize block (2f+1 signatures)
+        OrdererPrimary->>MongoShared: Store signed block ✅
+        OrdererPrimary->>PeerAnchor: StreamBlocks (finalized block)
         PeerAnchor->>MongoAnchor: Save globally ordered block
-        Kafka->>PeerMainBank: Deliver ordered block to all peers
+        OrdererPrimary->>PeerMainBank: StreamBlocks (finalized block)
         PeerMainBank->>MongoMainBank: Save globally ordered block
-        Kafka->>PeerSupplier: Deliver ordered block to all peers
+        OrdererPrimary->>PeerSupplier: StreamBlocks (finalized block)
         PeerSupplier->>MongoSupplier: Save globally ordered block
     end
 
@@ -264,8 +285,8 @@ sequenceDiagram
         PeerMainBank->>MongoMainBank: Create token (issuer=SYSTEM, owner=Anchor)
         PeerMainBank->>MongoMainBank: Create initial balance (Anchor=totalAmount)
         PeerMainBank->>MongoMainBank: Insert BANK_APPROVED_TOKEN_GENERATED event
-        PeerMainBank->>Kafka: Publish BANK_APPROVED_TOKEN_GENERATED to audit-channel-tx
-        Kafka-->>PeerMainBank: Event published (async)
+        PeerMainBank->>OrdererPrimary: gRPC SubmitTx (bank approval transaction)
+        OrdererPrimary-->>PeerMainBank: SubmitTxReply (immediate)
         PeerMainBank-->>APIGateway: Token created + contract approved (immediate)
         APIGateway-->>Frontend: Success response
         Frontend-->>Bank: Token created notification
@@ -273,7 +294,7 @@ sequenceDiagram
 
     %% 3. Suppliers phê duyệt - publish to SCF channel
     rect rgb(248, 255, 240)
-        Note over Supplier,Kafka: Supplier Approval via SCF Channel
+        Note over Supplier,OrdererPrimary: Supplier Approval via gRPC + PBFT
         Supplier->>Frontend: Click supplier approve button
         Frontend->>APIGateway: POST /api/contracts/{id}/approve
         APIGateway->>PeerSupplier: Route to Supplier Peer /contract/approve
@@ -284,20 +305,20 @@ sequenceDiagram
             PeerSupplier->>MongoSupplier: Transfer token ownership (Anchor → Suppliers)
             PeerSupplier->>MongoSupplier: Update balances proportionally
             PeerSupplier->>MongoSupplier: Insert CONTRACT_FULLY_APPROVED event
-            PeerSupplier->>Kafka: Publish CONTRACT_FULLY_APPROVED to scf-channel-tx
+            PeerSupplier->>OrdererPrimary: gRPC SubmitTx (contract fully approved)
         else
             PeerSupplier->>MongoSupplier: Insert SUPPLIER_APPROVED event
-            PeerSupplier->>Kafka: Publish SUPPLIER_APPROVED to scf-channel-tx
+            PeerSupplier->>OrdererPrimary: gRPC SubmitTx (supplier approved)
         end
-        Kafka-->>PeerSupplier: Events published (async)
+        OrdererPrimary-->>PeerSupplier: SubmitTxReply (immediate)
         PeerSupplier-->>APIGateway: Approval successful (immediate)
         APIGateway-->>Frontend: Contract updated
         Frontend-->>Supplier: Approval confirmed
     end
 
-    %% 4. Token transfer - publish to SCF channel
+    %% 4. Token transfer - submit via gRPC
     rect rgb(248, 255, 240)
-        Note over Supplier,Kafka: P2P Token Transfer via SCF Channel
+        Note over Supplier,OrdererPrimary: P2P Token Transfer via gRPC + PBFT
         Supplier->>Frontend: Initiate token transfer to another supplier
         Frontend->>APIGateway: POST /api/tokens/transfer
         APIGateway->>PeerSupplier: Route to Supplier Peer /token/transfer
@@ -305,26 +326,31 @@ sequenceDiagram
         PeerSupplier->>MongoSupplier: Debit sender balance
         PeerSupplier->>MongoSupplier: Credit receiver balance
         PeerSupplier->>MongoSupplier: Insert TRANSFER event
-        PeerSupplier->>Kafka: Publish TOKEN_TRANSFERRED to scf-channel-tx
-        Kafka-->>PeerSupplier: Event published (async)
+        PeerSupplier->>OrdererPrimary: gRPC SubmitTx (token transfer transaction)
+        OrdererPrimary-->>PeerSupplier: SubmitTxReply (immediate)
         PeerSupplier-->>APIGateway: Transfer successful (immediate)
         APIGateway-->>Frontend: Success response
         Frontend-->>Supplier: Transfer confirmed
     end
 
-    %% 5. Orderer Cluster Kafka-based consensus
+    %% 5. Orderer Cluster PBFT consensus
     rect rgb(255, 240, 248)
-        Note over Kafka,PeerAnchor: Kafka-based Global Ordering
-        loop Continuous event processing
-            Kafka->>OrdererCluster: Deliver events via consumer groups (load balanced)
-            OrdererCluster->>OrdererCluster: Process and globally order events
-            OrdererCluster->>Kafka: Publish ordered blocks to block topics
-            Kafka->>PeerAnchor: Broadcast ordered blocks to all peers
-            Kafka->>PeerMainBank: Broadcast ordered blocks to all peers
-            Kafka->>PeerSupplier: Broadcast ordered blocks to all peers
-            PeerAnchor->>MongoAnchor: Save globally ordered blocks
-            PeerMainBank->>MongoMainBank: Save globally ordered blocks
-            PeerSupplier->>MongoSupplier: Save globally ordered blocks
+        Note over OrdererPrimary,PeerAnchor: PBFT Consensus Ordering
+        loop Continuous transaction processing
+            OrdererPrimary->>OrdererPrimary: Collect transactions from mempool
+            OrdererPrimary->>OrdererReplica2: PBFT Pre-Prepare (proposed block)
+            OrdererPrimary->>OrdererReplica3: PBFT Pre-Prepare (proposed block)
+            OrdererReplica2->>OrdererPrimary: PBFT Prepare (validation)
+            OrdererReplica3->>OrdererPrimary: PBFT Prepare (validation)
+            OrdererReplica2->>OrdererPrimary: PBFT Commit (quorum reached)
+            OrdererReplica3->>OrdererPrimary: PBFT Commit (quorum reached)
+            OrdererPrimary->>OrdererPrimary: Finalize block with ECDSA signatures
+            OrdererPrimary->>PeerAnchor: StreamBlocks (signed block)
+            OrdererPrimary->>PeerMainBank: StreamBlocks (signed block)
+            OrdererPrimary->>PeerSupplier: StreamBlocks (signed block)
+            PeerAnchor->>MongoAnchor: Save PBFT-signed blocks
+            PeerMainBank->>MongoMainBank: Save PBFT-signed blocks
+            PeerSupplier->>MongoSupplier: Save PBFT-signed blocks
         end
     end
 
@@ -1236,26 +1262,28 @@ flowchart LR
 ## 🎯 **Tóm tắt trạng thái hiện tại**
 
 ### ✅ **Đã hoàn thành:**
-- **13/13 containers** chạy ổn định
-- **Kafka messaging** end-to-end hoạt động
-- **MongoDB persistence** cho events
-- **Peer services** với logic thực tế
-- **Orderer** xử lý và lưu trữ events
+- **11/11 containers** chạy ổn định (đã loại bỏ Kafka/Zookeeper)
+- **PBFT consensus** end-to-end hoạt động với 3 orderer nodes
+- **gRPC communication** giữa Peers ↔ Orderer cluster
+- **ECDSA signatures** cho block validation (2f+1 quorum)
+- **Real-time block streaming** từ Orderer → Peers
+- **Peer services** với gRPC clients thay vì Kafka producers
 - **REST APIs** hoàn chỉnh cho SCF workflow
 
 ### 🔄 **Đang hoạt động:**
-- **Event streaming**: Peers → Kafka → Orderer → Database
-- **Database persistence**: Events được lưu với metadata đầy đủ
+- **PBFT consensus flow**: Pre-Prepare → Prepare → Commit → Finalized blocks
+- **Transaction ordering**: Peers submit tx trực tiếp → Orderer mempool → Consensus
+- **Block streaming**: Orderers stream finalized blocks với ECDSA signatures
 - **Health checks**: Tất cả services có health endpoints
-- **Network connectivity**: Internal Docker networks hoạt động
+- **Network isolation**: 3-layer network architecture (public/orderer/peer)
 
 ### 📋 **Next Steps có thể mở rộng:**
 1. **Frontend Integration**: Kết nối Angular UI với peer APIs
 2. **Authentication**: Implement JWT cho API security
 3. **File Upload**: Contract PDF upload functionality
-4. **Block Building**: Auto block creation logic
-5. **Consensus**: Multi-orderer consensus algorithm
-6. **Monitoring**: Metrics và logging nâng cao
+4. **View Changes**: PBFT view change protocol cho fault tolerance
+5. **Monitoring**: Metrics và logging nâng cao cho PBFT
+6. **Performance**: Optimize consensus latency và throughput
 
 ### 🚀 **Test Commands để verify:**
 
@@ -1265,13 +1293,14 @@ curl -s http://localhost:8082/health
 curl -s http://localhost:8083/health
 curl -s http://localhost:8084/health
 
-# Kafka messaging test
-echo '{"eventType": "TEST", "timestamp": "'$(date +%s)'", "data": {"message": "test"}}' | \
-docker-compose exec -T kafka kafka-console-producer --bootstrap-server localhost:9092 --topic scf-channel-tx
+# Check orderer gRPC endpoints
+grpcurl -plaintext localhost:7050 list
+grpcurl -plaintext localhost:7060 list
+grpcurl -plaintext localhost:7070 list
 
-# Database verification
+# Database verification - check PBFT signed blocks
 docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
-blockchain --eval "db.events.find().toArray()"
+blockchain --eval "db.blocks.find().sort({height: -1}).limit(3).toArray()"
 ```
 
-**🎉 Hệ thống blockchain Supply Chain Finance đã sẵn sàng với đầy đủ functionality!**
+**🎉 Hệ thống blockchain Supply Chain Finance đã chuyển đổi thành công sang kiến trúc PBFT-only với consensus ordering!**

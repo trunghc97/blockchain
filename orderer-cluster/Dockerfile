@@ -7,12 +7,12 @@ ENV GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
-
 # Copy source code
 COPY . .
+
+# Download and tidy dependencies
+RUN go mod download
+RUN go mod tidy
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o orderer main.go
@@ -27,6 +27,9 @@ COPY --from=builder /app/orderer .
 
 # Copy genesis config
 COPY --from=builder /app/genesis ./genesis
+
+# Copy secrets
+COPY --from=builder /app/secrets ./secrets
 
 # Expose port
 EXPOSE 7050 7060 7070
