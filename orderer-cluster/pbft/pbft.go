@@ -149,8 +149,10 @@ func (p *PBFTNode) startConsensus() {
 	}
 
 	consensusMsg := &proto.ConsensusMessage{
-		Type:       PRE_PREPARE,
-		PrePrepare: prePrepareMsg,
+		Type: PRE_PREPARE,
+		Message: &proto.ConsensusMessage_PrePrepare{
+			PrePrepare: prePrepareMsg,
+		},
 	}
 
 	// Broadcast to all orderers
@@ -208,8 +210,10 @@ func (p *PBFTNode) handlePrePrepare(msg *proto.PrePrepareMessage) {
 	}
 
 	consensusMsg := &proto.ConsensusMessage{
-		Type:    PREPARE,
-		Prepare: prepareMsg,
+		Type: PREPARE,
+		Message: &proto.ConsensusMessage_Prepare{
+			Prepare: prepareMsg,
+		},
 	}
 
 	p.broadcastConsensusMessage(consensusMsg)
@@ -240,8 +244,10 @@ func (p *PBFTNode) handlePrepare(msg *proto.PrepareMessage) {
 		}
 
 		consensusMsg := &proto.ConsensusMessage{
-			Type:   COMMIT,
-			Commit: commitMsg,
+			Type: COMMIT,
+			Message: &proto.ConsensusMessage_Commit{
+				Commit: commitMsg,
+			},
 		}
 
 		p.broadcastConsensusMessage(consensusMsg)

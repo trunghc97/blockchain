@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -50,10 +51,22 @@ func main() {
 		log.Fatal("Failed to ping MongoDB:", err)
 	}
 
-	// Get database
-	databaseName := "blockchain_main_bank"
-	if dbName := os.Getenv("DB_NAME"); dbName != "" {
-		databaseName = dbName
+	// Get database name from MONGO_URI
+	databaseName := "blockchain_main_bank" // default fallback
+	if mongoURI != "" {
+		// Parse database name from connection string
+		// Format: mongodb://user:pass@host:port/database?options
+		uriParts := strings.Split(mongoURI, "/")
+		if len(uriParts) >= 4 {
+			dbPart := uriParts[3]
+			// Remove query parameters if any
+			if queryIndex := strings.Index(dbPart, "?"); queryIndex != -1 {
+				dbPart = dbPart[:queryIndex]
+			}
+			if dbPart != "" {
+				databaseName = dbPart
+			}
+		}
 	}
 	db := client.Database(databaseName)
 

@@ -40,8 +40,8 @@ services:
   # Orderer Cluster (3 nodes) - PBFT consensus
   orderer-ord1:
     build:
-      context: ./orderer-cluster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./orderer-cluster/Dockerfile
     ports:
       - "7050:7050"
     environment:
@@ -59,8 +59,8 @@ services:
 
   orderer-ord2:
     build:
-      context: ./orderer-cluster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./orderer-cluster/Dockerfile
     ports:
       - "7060:7060"
     environment:
@@ -78,8 +78,8 @@ services:
 
   orderer-ord3:
     build:
-      context: ./orderer-cluster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./orderer-cluster/Dockerfile
     ports:
       - "7070:7070"
     environment:

@@ -260,8 +260,18 @@ export class SupplierComponent implements OnInit {
   }
 
   setupAutocomplete(): void {
-    // Set up autocomplete filtering
+    console.log('DEBUG: Setting up autocomplete, suppliers loaded:', this.suppliers.length);
+
+    // Set up autocomplete filtering for modal transfer form
     this.transferForm.get('to')?.valueChanges.pipe(
+      startWith(''),
+      map(value => this._filterSuppliers(value || ''))
+    ).subscribe(filtered => {
+      this.filteredSuppliers = filtered;
+    });
+
+    // Set up autocomplete filtering for quick transfer form
+    this.quickTransferForm.get('to')?.valueChanges.pipe(
       startWith(''),
       map(value => this._filterSuppliers(value || ''))
     ).subscribe(filtered => {
@@ -271,10 +281,13 @@ export class SupplierComponent implements OnInit {
 
   private _filterSuppliers(value: string): any[] {
     const filterValue = value.toLowerCase();
-    return this.suppliers.filter(supplier =>
+    console.log('DEBUG: Filtering suppliers with value:', value, 'total suppliers:', this.suppliers.length);
+    const filtered = this.suppliers.filter(supplier =>
       supplier.id.toLowerCase().includes(filterValue) ||
       (supplier.username && supplier.username.toLowerCase().includes(filterValue))
     );
+    console.log('DEBUG: Filtered result:', filtered.length, 'suppliers');
+    return filtered;
   }
 
   displaySupplier(supplier: any): string {

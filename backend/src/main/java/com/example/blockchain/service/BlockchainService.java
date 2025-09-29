@@ -94,7 +94,7 @@ public class BlockchainService {
     }
 
     public Map<String, Object> approveContractByBank(String contractId, String bankId) {
-        // Route to peer-main-bank for bank approval
+        // Route to peer-anchor for bank approval (contracts are created in peer-anchor)
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
@@ -105,7 +105,7 @@ public class BlockchainService {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(approvalData, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(
-                peerMainBankUrl + "/contract/" + contractId + "/approve-bank",
+                peerAnchorUrl + "/contract/" + contractId + "/approve-bank",
                 HttpMethod.POST,
                 request,
                 Map.class

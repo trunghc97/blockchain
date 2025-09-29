@@ -8,7 +8,11 @@ ENV GOPROXY=https://proxy.golang.org,direct
 WORKDIR /app
 
 # Copy source code
-COPY . .
+COPY ./orderer-cluster .
+
+# Copy secrets and genesis
+COPY ./secrets ./secrets
+COPY ./orderer-cluster/genesis ./genesis
 
 # Download and tidy dependencies
 RUN go mod download
@@ -25,10 +29,8 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/orderer .
 
-# Copy genesis config
+# Copy genesis config and secrets from builder stage
 COPY --from=builder /app/genesis ./genesis
-
-# Copy secrets
 COPY --from=builder /app/secrets ./secrets
 
 # Expose port
