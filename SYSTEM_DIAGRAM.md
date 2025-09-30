@@ -1,16 +1,17 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus Architecture
+# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus & Events Sync
 
-## Tổng quan kiến trúc với PBFT Consensus
+## Tổng quan kiến trúc với PBFT Consensus & Events Sync
 
-Hệ thống blockchain permissioned đã được triển khai với PBFT (Practical Byzantine Fault Tolerance) làm consensus algorithm cho transaction ordering:
+Hệ thống blockchain permissioned đã được triển khai với PBFT (Practical Byzantine Fault Tolerance) làm consensus algorithm và Events Sync architecture:
 
 - **✅ PBFT-only Ordering**: Peers gửi transactions trực tiếp tới Orderer cluster qua gRPC, PBFT consensus đảm bảo ordering
+- **✅ Events Sync**: Sự kiện được đồng bộ real-time từ private sang public blockchain
 - **✅ No Kafka Dependency**: Loại bỏ Kafka/Zookeeper khỏi core ordering path, chỉ giữ lại nếu cần integration ngoài
-- **✅ Direct gRPC Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, StreamBlocks, Consensus)
+- **✅ Direct gRPC Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, SubmitEvent, StreamBlocks, Consensus)
 - **✅ PBFT Consensus Engine**: 3-node cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
 - **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
 - **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua gRPC
-- **✅ Event Sourcing**: Tất cả blockchain events được lưu trong MongoDB với block signatures
+- **✅ Dual Blockchain**: Private operations + Public transparency với Events Sync
 
 ## Trạng thái triển khai hiện tại ✅
 
@@ -18,24 +19,46 @@ Hệ thống blockchain permissioned đã được triển khai với PBFT (Prac
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **peer-main-bank** | 8082 | ✅ Running | Contract creation, bank approval, token issuance, gRPC client |
-| **peer-supplier** | 8083 | ✅ Running | Contract approval, token transfer, balance management, gRPC client |
-| **peer-anchor** | 8084 | ✅ Running | Contract creation, token reception, ledger tracking, gRPC client |
-| **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, block signing, MongoDB storage |
-| **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant, block validation |
-| **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant, block validation |
-| **mongo-shared** | 27017 | ✅ Running | Block storage with PBFT signatures |
-| **mongo-main-bank** | - | ✅ Running | Main bank world state |
-| **mongo-supplier** | - | ✅ Running | Supplier world state |
-| **mongo-anchor** | - | ✅ Running | Anchor world state |
+| **peer-main-bank** | 8082 | ✅ Running | Contract operations, gRPC client, Events Sync |
+| **peer-supplier** | 8083 | ✅ Running | Token operations, gRPC client, Events Sync |
+| **peer-anchor** | 8084 | ✅ Running | Contract creation, gRPC client, Events Sync |
+| **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, Events Sync handler |
+| **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant |
+| **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant |
+| **mongo-shared** | 27017 | ✅ Running | Dual databases: blockchain_private + blockchain_public |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
-### ✅ **PBFT Consensus End-to-End Test**
+### ✅ **PBFT Consensus & Events Sync End-to-End Test**
 
 ```bash
-# Test successful - Peer gửi tx qua gRPC → Orderer PBFT consensus → Block signed → Stream về peers ✅
-Transaction submitted via gRPC → PBFT consensus (Pre-Prepare→Prepare→Commit) → Block with signatures stored ✅
+# Test successful - Events Sync từ private → public blockchain ✅
+Private Event → gRPC SubmitEvent → Orderer Events Sync → Public Blockchain ✅
+
+# Complete test flow:
+✅ CONTRACT_CREATED synced to public
+✅ CONTRACT_BANK_APPROVED_TOKEN_GENERATED synced to public
+✅ CONTRACT_FULLY_APPROVED synced to public
+✅ TOKEN_TRANSFERRED synced to public
+✅ TOKEN_SETTLED synced to public
+
+Sample synchronized events in blockchain_public:
+[
+  {
+    "eventId": "0845917c79d28d6da74de438031b97a4",
+    "eventType": "CONTRACT_CREATED",
+    "contractId": "0845917c79d28d6da74de438031b97a4",
+    "timestamp": "2025-09-30T17:04:28Z"
+  },
+  {
+    "eventId": "97c62bed6b37aafe867c455f86e10518",
+    "eventType": "CONTRACT_FULLY_APPROVED",
+    "contractId": "0845917c79d28d6da74de438031b97a4",
+    "tokenId": "token_0845917c79d28d6da74de438031b97a4",
+    "supplierId": "SUPPLIER001",
+    "timestamp": "2025-09-30T17:09:17Z"
+  }
+]
 
 Sample stored block with PBFT signatures:
 {
@@ -69,13 +92,13 @@ Sample stored block with PBFT signatures:
 ### ✅ **Implemented APIs**
 
 **Peer Anchor (Port 8084) - Contract Creation:**
-- `POST /contract/create` - Anchor tạo contract + ledger entry + gRPC submit to orderer
+- `POST /contract/create` - Anchor tạo contract + ledger entry + gRPC SubmitTx + Events Sync
 - `GET /contract/{id}` - Contract details
 - `GET /contract/list` - Danh sách contracts đã tạo
 - `GET /health` - Health check
 
 **Peer Main Bank (Port 8082) - Bank Operations:**
-- `POST /contract/{id}/approve-bank` - Bank phê duyệt + token issuance
+- `POST /contract/{id}/approve-bank` - Bank phê duyệt + token issuance + Events Sync
 - `GET /contract/list` - List tất cả contracts
 - `GET /contract/{id}` - Contract details
 - `GET /contract/{id}/ledger` - Contract audit trail
@@ -83,14 +106,15 @@ Sample stored block with PBFT signatures:
 - `GET /tokens` - All tokens issued by bank
 
 **Peer Supplier (Port 8083) - Token Operations:**
-- `POST /contract/{id}/approve` - Supplier phê duyệt contract
-- `POST /token/transfer` - Token transfer giữa suppliers
-- `POST /token/settle` - Supplier settle token với bank
-- `GET /balances/account/{accountId}` - Account balances
+- `POST /contract/{id}/approve` - Supplier phê duyệt contract + Events Sync
+- `POST /token/transfer` - Token transfer giữa suppliers + Events Sync
+- `POST /token/settle` - Supplier settle token với bank + Events Sync
+- `GET /balances/account/{accountId}` - Account balances của supplier
 - `GET /health` - Health check
 
 **Orderer gRPC APIs (Ports 7050-7070):**
 - `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for consensus
+- `SubmitEvent(SubmitEventRequest) → SubmitEventReply` - Events Sync to public blockchain
 - `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks
 - `Consensus(ConsensusMsg) → Ack` - PBFT consensus messages between orderers
 
@@ -115,62 +139,64 @@ graph TB
         PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "PBFT Consensus Layer (No Kafka Dependency)"
+    subgraph "PBFT Consensus & Events Sync Layer"
         subgraph "Orderer Cluster (PBFT 3f+1 = 4 nodes, f=1)"
-            ORD1[Orderer Primary<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Block Signing]
+            ORD1[Orderer Primary<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Events Sync]
             ORD2[Orderer Replica<br/>Port 7060<br/>✅ PBFT Replica<br/>Consensus Participant]
             ORD3[Orderer Replica<br/>Port 7070<br/>✅ PBFT Replica<br/>Consensus Participant]
             subgraph "PBFT Consensus Phases"
                 PREP[Pre-Prepare<br/>Leader broadcasts<br/>proposed block]
                 PREPARE[Prepare<br/>Replicas validate<br/>send prepare msgs]
                 COMMIT[Commit<br/>Quorum reached<br/>2f+1 signatures]
-                FINAL[Finalize<br/>Block committed<br/>Stream to peers]
+                FINAL[Finalize<br/>Block committed<br/>Events Sync]
             end
         end
-        subgraph "Cryptographic Services"
+        subgraph "Events Sync Services"
+            EVSYNC[Events Sync Handler<br/>gRPC SubmitEvent<br/>Public Blockchain]
             SIG[ECDSA Signatures<br/>Per-orderer keys<br/>Quorum validation]
             CRYPTO[Merkle Trees<br/>Block integrity<br/>SHA256 hashing]
         end
     end
 
-    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Clients)"
+    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Events Sync)"
         MB_API[REST API<br/>Port 8082<br/>✅ Running]
-        MB_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
+        MB_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
         subgraph "Main Bank Logic ✅"
             MB_CON[Contract Approval<br/>Bank Validation ✅]
             MB_TOK[Token Issuance<br/>Bank Authority ✅]
             MB_LED[Ledger Management<br/>Bank Oversight ✅]
         end
-        MB_DB[(MongoDB ✅<br/>World State<br/>blockchain_main_bank)]
+        MB_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
     end
 
-    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Clients)"
+    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Events Sync)"
         SUP_API[REST API<br/>Port 8083<br/>✅ Running]
-        SUP_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
+        SUP_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
         subgraph "Supplier Logic ✅"
             SUP_APP[Contract Approval<br/>Supplier Validation ✅]
             SUP_TOK[Token Transfer<br/>P2P Circulation ✅]
             SUP_BAL[Balance Management<br/>Token Holdings ✅]
         end
-        SUP_DB[(MongoDB ✅<br/>World State<br/>blockchain_supplier)]
+        SUP_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
     end
 
-    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Clients)"
+    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Events Sync)"
         ANC_API[REST API<br/>Port 8084<br/>✅ Running]
-        ANC_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx to Orderer]
+        ANC_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
         subgraph "Anchor Logic ✅"
             ANC_CON[Contract Creation<br/>Anchor Authority ✅]
             ANC_TOK[Token Reception<br/>Initial Ownership ✅]
             ANC_LED[Contract Ledger<br/>Anchor Tracking ✅]
         end
-        ANC_DB[(MongoDB ✅<br/>World State<br/>blockchain_anchor)]
+        ANC_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
     end
 
-    subgraph "Shared Database ✅"
-        SHARED_DB[(MongoDB Shared ✅<br/>Block Storage<br/>blockchain_shared<br/>✅ PBFT Signed Blocks)]
+    subgraph "Dual Database Architecture ✅"
+        PRIVATE_DB[(MongoDB Private ✅<br/>Operations & State<br/>blockchain_private)]
+        PUBLIC_DB[(MongoDB Public ✅<br/>Events Transparency<br/>blockchain_public)]
     end
 
-    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC → Orderer PBFT → Stream Blocks
+    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC → Orderer PBFT → Events Sync
     ANC --> AR
     BNK --> AR
     SUP --> AR
@@ -180,14 +206,14 @@ graph TB
     PR --> SUP_API
     PR --> ANC_API
 
-    %% Peers submit transactions via gRPC to Orderer
+    %% Peers submit transactions & events via gRPC to Orderer
     MB_API --> MB_GRPC
     SUP_API --> SUP_GRPC
     ANC_API --> ANC_GRPC
 
-    MB_GRPC -->|SubmitTx| ORD1
-    SUP_GRPC -->|SubmitTx| ORD1
-    ANC_GRPC -->|SubmitTx| ORD1
+    MB_GRPC -->|SubmitTx + SubmitEvent| ORD1
+    SUP_GRPC -->|SubmitTx + SubmitEvent| ORD1
+    ANC_GRPC -->|SubmitTx + SubmitEvent| ORD1
 
     %% PBFT Consensus Process
     ORD1 --> PREP
@@ -197,6 +223,10 @@ graph TB
     ORD3 --> PREPARE
     PREPARE --> COMMIT
     COMMIT --> FINAL
+    FINAL --> EVSYNC
+
+    %% Events Sync to Public Blockchain
+    EVSYNC --> PUBLIC_DB
 
     %% Orderers stream finalized blocks to peers
     FINAL -->|StreamBlocks| MB_GRPC
@@ -204,10 +234,10 @@ graph TB
     FINAL -->|StreamBlocks| ANC_GRPC
 
     %% Database connections
-    MB_API --> MB_DB
-    SUP_API --> SUP_DB
-    ANC_API --> ANC_DB
-    FINAL --> SHARED_DB
+    MB_API --> PRIVATE_DB
+    SUP_API --> PRIVATE_DB
+    ANC_API --> PRIVATE_DB
+    FINAL --> PRIVATE_DB
 
     %% PBFT cryptographic services
     ORD1 --> SIG
@@ -1298,9 +1328,17 @@ grpcurl -plaintext localhost:7050 list
 grpcurl -plaintext localhost:7060 list
 grpcurl -plaintext localhost:7070 list
 
+# Events Sync verification - check synchronized events
+docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
+blockchain_public --eval "db.events.find({}, {eventType: 1, contractId: 1, tokenId: 1, amount: 1, supplierId: 1, bankId: 1, from: 1, to: 1}).sort({_id: 1})"
+
+# Private blockchain verification
+docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
+blockchain_private --eval "db.events.find({}, {eventType: 1, contractId: 1}).sort({_id: 1})"
+
 # Database verification - check PBFT signed blocks
 docker-compose exec mongo-shared mongosh --username root --password example --authenticationDatabase admin \
-blockchain --eval "db.blocks.find().sort({height: -1}).limit(3).toArray()"
+blockchain_public --eval "db.blocks.find().sort({height: -1}).limit(3).toArray()"
 ```
 
-**🎉 Hệ thống blockchain Supply Chain Finance đã chuyển đổi thành công sang kiến trúc PBFT-only với consensus ordering!**
+**🎉 Hệ thống blockchain Supply Chain Finance đã hoàn thành với PBFT Consensus & Events Sync Architecture!**

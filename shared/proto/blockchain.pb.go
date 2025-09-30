@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.32.1
-// source: blockchain.proto
+// source: proto/blockchain.proto
 
 package proto
 
@@ -39,7 +39,7 @@ type Block struct {
 
 func (x *Block) Reset() {
 	*x = Block{}
-	mi := &file_blockchain_proto_msgTypes[0]
+	mi := &file_proto_blockchain_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51,7 +51,7 @@ func (x *Block) String() string {
 func (*Block) ProtoMessage() {}
 
 func (x *Block) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[0]
+	mi := &file_proto_blockchain_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64,7 +64,7 @@ func (x *Block) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Block.ProtoReflect.Descriptor instead.
 func (*Block) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{0}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Block) GetHeight() int64 {
@@ -128,7 +128,7 @@ type BlockSignature struct {
 
 func (x *BlockSignature) Reset() {
 	*x = BlockSignature{}
-	mi := &file_blockchain_proto_msgTypes[1]
+	mi := &file_proto_blockchain_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -140,7 +140,7 @@ func (x *BlockSignature) String() string {
 func (*BlockSignature) ProtoMessage() {}
 
 func (x *BlockSignature) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[1]
+	mi := &file_proto_blockchain_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -153,7 +153,7 @@ func (x *BlockSignature) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockSignature.ProtoReflect.Descriptor instead.
 func (*BlockSignature) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{1}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *BlockSignature) GetOrdererId() string {
@@ -195,7 +195,7 @@ type Transaction struct {
 
 func (x *Transaction) Reset() {
 	*x = Transaction{}
-	mi := &file_blockchain_proto_msgTypes[2]
+	mi := &file_proto_blockchain_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -207,7 +207,7 @@ func (x *Transaction) String() string {
 func (*Transaction) ProtoMessage() {}
 
 func (x *Transaction) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[2]
+	mi := &file_proto_blockchain_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -220,7 +220,7 @@ func (x *Transaction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transaction.ProtoReflect.Descriptor instead.
 func (*Transaction) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{2}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Transaction) GetTransactionId() string {
@@ -286,6 +286,131 @@ func (x *Transaction) GetTimestamp() *timestamppb.Timestamp {
 	return nil
 }
 
+// Event represents a blockchain event for transparency
+type Event struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventId       string                 `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	ContractId    string                 `protobuf:"bytes,3,opt,name=contract_id,json=contractId,proto3" json:"contract_id,omitempty"`
+	TokenId       string                 `protobuf:"bytes,4,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	SupplierId    string                 `protobuf:"bytes,5,opt,name=supplier_id,json=supplierId,proto3" json:"supplier_id,omitempty"`
+	BankId        string                 `protobuf:"bytes,6,opt,name=bank_id,json=bankId,proto3" json:"bank_id,omitempty"`
+	From          string                 `protobuf:"bytes,7,opt,name=from,proto3" json:"from,omitempty"`
+	To            string                 `protobuf:"bytes,8,opt,name=to,proto3" json:"to,omitempty"`
+	Amount        float64                `protobuf:"fixed64,9,opt,name=amount,proto3" json:"amount,omitempty"`
+	Description   string                 `protobuf:"bytes,10,opt,name=description,proto3" json:"description,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_proto_blockchain_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_blockchain_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Event) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *Event) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *Event) GetContractId() string {
+	if x != nil {
+		return x.ContractId
+	}
+	return ""
+}
+
+func (x *Event) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+func (x *Event) GetSupplierId() string {
+	if x != nil {
+		return x.SupplierId
+	}
+	return ""
+}
+
+func (x *Event) GetBankId() string {
+	if x != nil {
+		return x.BankId
+	}
+	return ""
+}
+
+func (x *Event) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *Event) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+func (x *Event) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
+func (x *Event) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *Event) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
 // Consensus message types for PBFT
 type PrePrepareMessage struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -299,7 +424,7 @@ type PrePrepareMessage struct {
 
 func (x *PrePrepareMessage) Reset() {
 	*x = PrePrepareMessage{}
-	mi := &file_blockchain_proto_msgTypes[3]
+	mi := &file_proto_blockchain_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -311,7 +436,7 @@ func (x *PrePrepareMessage) String() string {
 func (*PrePrepareMessage) ProtoMessage() {}
 
 func (x *PrePrepareMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[3]
+	mi := &file_proto_blockchain_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -324,7 +449,7 @@ func (x *PrePrepareMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrePrepareMessage.ProtoReflect.Descriptor instead.
 func (*PrePrepareMessage) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{3}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *PrePrepareMessage) GetView() string {
@@ -367,7 +492,7 @@ type PrepareMessage struct {
 
 func (x *PrepareMessage) Reset() {
 	*x = PrepareMessage{}
-	mi := &file_blockchain_proto_msgTypes[4]
+	mi := &file_proto_blockchain_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -379,7 +504,7 @@ func (x *PrepareMessage) String() string {
 func (*PrepareMessage) ProtoMessage() {}
 
 func (x *PrepareMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[4]
+	mi := &file_proto_blockchain_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -392,7 +517,7 @@ func (x *PrepareMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareMessage.ProtoReflect.Descriptor instead.
 func (*PrepareMessage) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{4}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PrepareMessage) GetView() string {
@@ -435,7 +560,7 @@ type CommitMessage struct {
 
 func (x *CommitMessage) Reset() {
 	*x = CommitMessage{}
-	mi := &file_blockchain_proto_msgTypes[5]
+	mi := &file_proto_blockchain_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -447,7 +572,7 @@ func (x *CommitMessage) String() string {
 func (*CommitMessage) ProtoMessage() {}
 
 func (x *CommitMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[5]
+	mi := &file_proto_blockchain_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -460,7 +585,7 @@ func (x *CommitMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitMessage.ProtoReflect.Descriptor instead.
 func (*CommitMessage) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{5}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CommitMessage) GetView() string {
@@ -506,7 +631,7 @@ type ConsensusMessage struct {
 
 func (x *ConsensusMessage) Reset() {
 	*x = ConsensusMessage{}
-	mi := &file_blockchain_proto_msgTypes[6]
+	mi := &file_proto_blockchain_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +643,7 @@ func (x *ConsensusMessage) String() string {
 func (*ConsensusMessage) ProtoMessage() {}
 
 func (x *ConsensusMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[6]
+	mi := &file_proto_blockchain_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +656,7 @@ func (x *ConsensusMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsensusMessage.ProtoReflect.Descriptor instead.
 func (*ConsensusMessage) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{6}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ConsensusMessage) GetType() string {
@@ -608,7 +733,7 @@ type SubmitTxRequest struct {
 
 func (x *SubmitTxRequest) Reset() {
 	*x = SubmitTxRequest{}
-	mi := &file_blockchain_proto_msgTypes[7]
+	mi := &file_proto_blockchain_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +745,7 @@ func (x *SubmitTxRequest) String() string {
 func (*SubmitTxRequest) ProtoMessage() {}
 
 func (x *SubmitTxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[7]
+	mi := &file_proto_blockchain_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +758,7 @@ func (x *SubmitTxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitTxRequest.ProtoReflect.Descriptor instead.
 func (*SubmitTxRequest) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{7}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SubmitTxRequest) GetPeerId() string {
@@ -661,7 +786,7 @@ type SubmitTxReply struct {
 
 func (x *SubmitTxReply) Reset() {
 	*x = SubmitTxReply{}
-	mi := &file_blockchain_proto_msgTypes[8]
+	mi := &file_proto_blockchain_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -673,7 +798,7 @@ func (x *SubmitTxReply) String() string {
 func (*SubmitTxReply) ProtoMessage() {}
 
 func (x *SubmitTxReply) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[8]
+	mi := &file_proto_blockchain_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -686,7 +811,7 @@ func (x *SubmitTxReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitTxReply.ProtoReflect.Descriptor instead.
 func (*SubmitTxReply) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{8}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SubmitTxReply) GetSuccess() bool {
@@ -710,6 +835,118 @@ func (x *SubmitTxReply) GetMessage() string {
 	return ""
 }
 
+type SubmitEventRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
+	Event         *Event                 `protobuf:"bytes,2,opt,name=event,proto3" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitEventRequest) Reset() {
+	*x = SubmitEventRequest{}
+	mi := &file_proto_blockchain_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitEventRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitEventRequest) ProtoMessage() {}
+
+func (x *SubmitEventRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_blockchain_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitEventRequest.ProtoReflect.Descriptor instead.
+func (*SubmitEventRequest) Descriptor() ([]byte, []int) {
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *SubmitEventRequest) GetPeerId() string {
+	if x != nil {
+		return x.PeerId
+	}
+	return ""
+}
+
+func (x *SubmitEventRequest) GetEvent() *Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+type SubmitEventReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	EventId       string                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitEventReply) Reset() {
+	*x = SubmitEventReply{}
+	mi := &file_proto_blockchain_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitEventReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitEventReply) ProtoMessage() {}
+
+func (x *SubmitEventReply) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_blockchain_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitEventReply.ProtoReflect.Descriptor instead.
+func (*SubmitEventReply) Descriptor() ([]byte, []int) {
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SubmitEventReply) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *SubmitEventReply) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *SubmitEventReply) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
 type StreamBlocksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PeerId        string                 `protobuf:"bytes,1,opt,name=peer_id,json=peerId,proto3" json:"peer_id,omitempty"`
@@ -720,7 +957,7 @@ type StreamBlocksRequest struct {
 
 func (x *StreamBlocksRequest) Reset() {
 	*x = StreamBlocksRequest{}
-	mi := &file_blockchain_proto_msgTypes[9]
+	mi := &file_proto_blockchain_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -732,7 +969,7 @@ func (x *StreamBlocksRequest) String() string {
 func (*StreamBlocksRequest) ProtoMessage() {}
 
 func (x *StreamBlocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[9]
+	mi := &file_proto_blockchain_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -745,7 +982,7 @@ func (x *StreamBlocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamBlocksRequest.ProtoReflect.Descriptor instead.
 func (*StreamBlocksRequest) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{9}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StreamBlocksRequest) GetPeerId() string {
@@ -772,7 +1009,7 @@ type AckReply struct {
 
 func (x *AckReply) Reset() {
 	*x = AckReply{}
-	mi := &file_blockchain_proto_msgTypes[10]
+	mi := &file_proto_blockchain_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -784,7 +1021,7 @@ func (x *AckReply) String() string {
 func (*AckReply) ProtoMessage() {}
 
 func (x *AckReply) ProtoReflect() protoreflect.Message {
-	mi := &file_blockchain_proto_msgTypes[10]
+	mi := &file_proto_blockchain_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -797,7 +1034,7 @@ func (x *AckReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckReply.ProtoReflect.Descriptor instead.
 func (*AckReply) Descriptor() ([]byte, []int) {
-	return file_blockchain_proto_rawDescGZIP(), []int{10}
+	return file_proto_blockchain_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *AckReply) GetSuccess() bool {
@@ -814,11 +1051,11 @@ func (x *AckReply) GetMessage() string {
 	return ""
 }
 
-var File_blockchain_proto protoreflect.FileDescriptor
+var File_proto_blockchain_proto protoreflect.FileDescriptor
 
-const file_blockchain_proto_rawDesc = "" +
+const file_proto_blockchain_proto_rawDesc = "" +
 	"\n" +
-	"\x10blockchain.proto\x12\n" +
+	"\x16proto/blockchain.proto\x12\n" +
 	"blockchain\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bgoogle/protobuf/empty.proto\"\xac\x02\n" +
 	"\x05Block\x12\x16\n" +
 	"\x06height\x18\x01 \x01(\x03R\x06height\x128\n" +
@@ -848,7 +1085,23 @@ const file_blockchain_proto_rawDesc = "" +
 	"receiverId\x12\x16\n" +
 	"\x06amount\x18\a \x01(\x01R\x06amount\x12\x18\n" +
 	"\apayload\x18\b \x01(\tR\apayload\x128\n" +
-	"\ttimestamp\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x91\x01\n" +
+	"\ttimestamp\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xcf\x02\n" +
+	"\x05Event\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x02 \x01(\tR\teventType\x12\x1f\n" +
+	"\vcontract_id\x18\x03 \x01(\tR\n" +
+	"contractId\x12\x19\n" +
+	"\btoken_id\x18\x04 \x01(\tR\atokenId\x12\x1f\n" +
+	"\vsupplier_id\x18\x05 \x01(\tR\n" +
+	"supplierId\x12\x17\n" +
+	"\abank_id\x18\x06 \x01(\tR\x06bankId\x12\x12\n" +
+	"\x04from\x18\a \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\b \x01(\tR\x02to\x12\x16\n" +
+	"\x06amount\x18\t \x01(\x01R\x06amount\x12 \n" +
+	"\vdescription\x18\n" +
+	" \x01(\tR\vdescription\x128\n" +
+	"\ttimestamp\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x91\x01\n" +
 	"\x11PrePrepareMessage\x12\x12\n" +
 	"\x04view\x18\x01 \x01(\tR\x04view\x12'\n" +
 	"\x0fsequence_number\x18\x02 \x01(\tR\x0esequenceNumber\x12'\n" +
@@ -879,74 +1132,89 @@ const file_blockchain_proto_rawDesc = "" +
 	"\rSubmitTxReply\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12%\n" +
 	"\x0etransaction_id\x18\x02 \x01(\tR\rtransactionId\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"V\n" +
+	"\x12SubmitEventRequest\x12\x17\n" +
+	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12'\n" +
+	"\x05event\x18\x02 \x01(\v2\x11.blockchain.EventR\x05event\"a\n" +
+	"\x10SubmitEventReply\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\"Q\n" +
 	"\x13StreamBlocksRequest\x12\x17\n" +
 	"\apeer_id\x18\x01 \x01(\tR\x06peerId\x12!\n" +
 	"\fstart_height\x18\x02 \x01(\x03R\vstartHeight\">\n" +
 	"\bAckReply\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xdb\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\xa8\x02\n" +
 	"\x0eOrdererService\x12B\n" +
-	"\bSubmitTx\x12\x1b.blockchain.SubmitTxRequest\x1a\x19.blockchain.SubmitTxReply\x12D\n" +
+	"\bSubmitTx\x12\x1b.blockchain.SubmitTxRequest\x1a\x19.blockchain.SubmitTxReply\x12K\n" +
+	"\vSubmitEvent\x12\x1e.blockchain.SubmitEventRequest\x1a\x1c.blockchain.SubmitEventReply\x12D\n" +
 	"\fStreamBlocks\x12\x1f.blockchain.StreamBlocksRequest\x1a\x11.blockchain.Block0\x01\x12?\n" +
 	"\tConsensus\x12\x1c.blockchain.ConsensusMessage\x1a\x14.blockchain.AckReplyB\x0eZ\fshared/protob\x06proto3"
 
 var (
-	file_blockchain_proto_rawDescOnce sync.Once
-	file_blockchain_proto_rawDescData []byte
+	file_proto_blockchain_proto_rawDescOnce sync.Once
+	file_proto_blockchain_proto_rawDescData []byte
 )
 
-func file_blockchain_proto_rawDescGZIP() []byte {
-	file_blockchain_proto_rawDescOnce.Do(func() {
-		file_blockchain_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_blockchain_proto_rawDesc), len(file_blockchain_proto_rawDesc)))
+func file_proto_blockchain_proto_rawDescGZIP() []byte {
+	file_proto_blockchain_proto_rawDescOnce.Do(func() {
+		file_proto_blockchain_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_blockchain_proto_rawDesc), len(file_proto_blockchain_proto_rawDesc)))
 	})
-	return file_blockchain_proto_rawDescData
+	return file_proto_blockchain_proto_rawDescData
 }
 
-var file_blockchain_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
-var file_blockchain_proto_goTypes = []any{
+var file_proto_blockchain_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_proto_blockchain_proto_goTypes = []any{
 	(*Block)(nil),                 // 0: blockchain.Block
 	(*BlockSignature)(nil),        // 1: blockchain.BlockSignature
 	(*Transaction)(nil),           // 2: blockchain.Transaction
-	(*PrePrepareMessage)(nil),     // 3: blockchain.PrePrepareMessage
-	(*PrepareMessage)(nil),        // 4: blockchain.PrepareMessage
-	(*CommitMessage)(nil),         // 5: blockchain.CommitMessage
-	(*ConsensusMessage)(nil),      // 6: blockchain.ConsensusMessage
-	(*SubmitTxRequest)(nil),       // 7: blockchain.SubmitTxRequest
-	(*SubmitTxReply)(nil),         // 8: blockchain.SubmitTxReply
-	(*StreamBlocksRequest)(nil),   // 9: blockchain.StreamBlocksRequest
-	(*AckReply)(nil),              // 10: blockchain.AckReply
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(*Event)(nil),                 // 3: blockchain.Event
+	(*PrePrepareMessage)(nil),     // 4: blockchain.PrePrepareMessage
+	(*PrepareMessage)(nil),        // 5: blockchain.PrepareMessage
+	(*CommitMessage)(nil),         // 6: blockchain.CommitMessage
+	(*ConsensusMessage)(nil),      // 7: blockchain.ConsensusMessage
+	(*SubmitTxRequest)(nil),       // 8: blockchain.SubmitTxRequest
+	(*SubmitTxReply)(nil),         // 9: blockchain.SubmitTxReply
+	(*SubmitEventRequest)(nil),    // 10: blockchain.SubmitEventRequest
+	(*SubmitEventReply)(nil),      // 11: blockchain.SubmitEventReply
+	(*StreamBlocksRequest)(nil),   // 12: blockchain.StreamBlocksRequest
+	(*AckReply)(nil),              // 13: blockchain.AckReply
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
-var file_blockchain_proto_depIdxs = []int32{
-	11, // 0: blockchain.Block.timestamp:type_name -> google.protobuf.Timestamp
+var file_proto_blockchain_proto_depIdxs = []int32{
+	14, // 0: blockchain.Block.timestamp:type_name -> google.protobuf.Timestamp
 	2,  // 1: blockchain.Block.transactions:type_name -> blockchain.Transaction
 	1,  // 2: blockchain.Block.signatures:type_name -> blockchain.BlockSignature
-	11, // 3: blockchain.Transaction.timestamp:type_name -> google.protobuf.Timestamp
-	0,  // 4: blockchain.PrePrepareMessage.block:type_name -> blockchain.Block
-	3,  // 5: blockchain.ConsensusMessage.pre_prepare:type_name -> blockchain.PrePrepareMessage
-	4,  // 6: blockchain.ConsensusMessage.prepare:type_name -> blockchain.PrepareMessage
-	5,  // 7: blockchain.ConsensusMessage.commit:type_name -> blockchain.CommitMessage
-	2,  // 8: blockchain.SubmitTxRequest.transaction:type_name -> blockchain.Transaction
-	7,  // 9: blockchain.OrdererService.SubmitTx:input_type -> blockchain.SubmitTxRequest
-	9,  // 10: blockchain.OrdererService.StreamBlocks:input_type -> blockchain.StreamBlocksRequest
-	6,  // 11: blockchain.OrdererService.Consensus:input_type -> blockchain.ConsensusMessage
-	8,  // 12: blockchain.OrdererService.SubmitTx:output_type -> blockchain.SubmitTxReply
-	0,  // 13: blockchain.OrdererService.StreamBlocks:output_type -> blockchain.Block
-	10, // 14: blockchain.OrdererService.Consensus:output_type -> blockchain.AckReply
-	12, // [12:15] is the sub-list for method output_type
-	9,  // [9:12] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	14, // 3: blockchain.Transaction.timestamp:type_name -> google.protobuf.Timestamp
+	14, // 4: blockchain.Event.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 5: blockchain.PrePrepareMessage.block:type_name -> blockchain.Block
+	4,  // 6: blockchain.ConsensusMessage.pre_prepare:type_name -> blockchain.PrePrepareMessage
+	5,  // 7: blockchain.ConsensusMessage.prepare:type_name -> blockchain.PrepareMessage
+	6,  // 8: blockchain.ConsensusMessage.commit:type_name -> blockchain.CommitMessage
+	2,  // 9: blockchain.SubmitTxRequest.transaction:type_name -> blockchain.Transaction
+	3,  // 10: blockchain.SubmitEventRequest.event:type_name -> blockchain.Event
+	8,  // 11: blockchain.OrdererService.SubmitTx:input_type -> blockchain.SubmitTxRequest
+	10, // 12: blockchain.OrdererService.SubmitEvent:input_type -> blockchain.SubmitEventRequest
+	12, // 13: blockchain.OrdererService.StreamBlocks:input_type -> blockchain.StreamBlocksRequest
+	7,  // 14: blockchain.OrdererService.Consensus:input_type -> blockchain.ConsensusMessage
+	9,  // 15: blockchain.OrdererService.SubmitTx:output_type -> blockchain.SubmitTxReply
+	11, // 16: blockchain.OrdererService.SubmitEvent:output_type -> blockchain.SubmitEventReply
+	0,  // 17: blockchain.OrdererService.StreamBlocks:output_type -> blockchain.Block
+	13, // 18: blockchain.OrdererService.Consensus:output_type -> blockchain.AckReply
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
-func init() { file_blockchain_proto_init() }
-func file_blockchain_proto_init() {
-	if File_blockchain_proto != nil {
+func init() { file_proto_blockchain_proto_init() }
+func file_proto_blockchain_proto_init() {
+	if File_proto_blockchain_proto != nil {
 		return
 	}
-	file_blockchain_proto_msgTypes[6].OneofWrappers = []any{
+	file_proto_blockchain_proto_msgTypes[7].OneofWrappers = []any{
 		(*ConsensusMessage_PrePrepare)(nil),
 		(*ConsensusMessage_Prepare)(nil),
 		(*ConsensusMessage_Commit)(nil),
@@ -955,17 +1223,17 @@ func file_blockchain_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_blockchain_proto_rawDesc), len(file_blockchain_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_blockchain_proto_rawDesc), len(file_proto_blockchain_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_blockchain_proto_goTypes,
-		DependencyIndexes: file_blockchain_proto_depIdxs,
-		MessageInfos:      file_blockchain_proto_msgTypes,
+		GoTypes:           file_proto_blockchain_proto_goTypes,
+		DependencyIndexes: file_proto_blockchain_proto_depIdxs,
+		MessageInfos:      file_proto_blockchain_proto_msgTypes,
 	}.Build()
-	File_blockchain_proto = out.File
-	file_blockchain_proto_goTypes = nil
-	file_blockchain_proto_depIdxs = nil
+	File_proto_blockchain_proto = out.File
+	file_proto_blockchain_proto_goTypes = nil
+	file_proto_blockchain_proto_depIdxs = nil
 }

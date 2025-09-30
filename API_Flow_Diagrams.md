@@ -1,17 +1,17 @@
-# 🔗 Blockchain SCF API Flow Diagrams
+# 🔗 Blockchain SCF API Flow Diagrams với Events Sync
 
-This document contains Mermaid flow diagrams for all API endpoints across the **Multi-Peer Blockchain SCF System** with **Kafka Event-Driven Architecture**.
+This document contains Mermaid flow diagrams for all API endpoints across the **Multi-Peer Blockchain SCF System** with **gRPC Events Sync Architecture**.
 
 ## 📋 System Overview
 
 ### Architecture Components
 - **Peer Services**: Independent microservices for each business role
-  - `peer-anchor` (Port 8084): Contract creation
-  - `peer-main-bank` (Port 8082): Bank approvals, token issuance
-  - `peer-supplier` (Port 8083): Supplier approvals, token transfers & settlements
-- **Orderer Cluster**: Event ordering and block creation
-- **Kafka**: Async messaging between peers and orderer
-- **MongoDB**: Multi-database architecture (private per peer + shared public ledger)
+  - `peer-anchor` (Port 8084): Contract creation + Events Sync
+  - `peer-main-bank` (Port 8082): Bank approvals, token issuance + Events Sync
+  - `peer-supplier` (Port 8083): Supplier approvals, token transfers & settlements + Events Sync
+- **Orderer Cluster**: PBFT consensus + Events Sync handler
+- **gRPC**: Direct communication between peers and orderer (SubmitTx + SubmitEvent)
+- **MongoDB**: Dual-database architecture (blockchain_private + blockchain_public)
 
 ### Flow Patterns
 - 🟢 **Start/End**: Process start or end
@@ -20,8 +20,9 @@ This document contains Mermaid flow diagrams for all API endpoints across the **
 - 🟠 **Database**: Database operation (private peer DB)
 - 🟣 **Response**: API response
 - 🔴 **Error**: Error handling
-- 📨 **Kafka**: Message publishing/consuming
-- 🏛️ **Orderer**: Block ordering & public ledger persistence
+- 🟡 **gRPC**: Direct communication (SubmitTx/SubmitEvent)
+- 🏛️ **Orderer**: PBFT consensus & Events Sync
+- 🔵 **Events Sync**: Synchronization to public blockchain
 
 ---
 
@@ -36,16 +37,16 @@ flowchart TD
     B --> C[🟡 Check Contract ID]
     C -->|No ID provided| D[🔵 Generate UUID Contract ID]
     C -->|ID provided| E[🔵 Use Provided ID]
-    D --> F[🟠 Save Contract to anchor DB]
+    D --> F[🟠 Save Contract to blockchain_private]
     E --> F
-    F --> G[🔵 Log CONTRACT_CREATED Event to anchor DB]
-    G --> H[🟠 Create Block Entry in anchor DB]
-    H --> I[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    F --> G[🔵 Log CONTRACT_CREATED Event to blockchain_private]
+    G --> H[🟡 SubmitTx to Orderer via gRPC]
+    H --> I[🟡 SubmitEvent to Orderer via gRPC]
     I --> J[🟣 Return Success Response]
 
-    J --> K[🏛️ Orderer Consumes Kafka Message]
-    K --> L[🏛️ Order Block & Save to Public Ledger]
-    L --> M[🏛️ Broadcast Ordered Block to All Peers]
+    J --> K[🏛️ Orderer PBFT Consensus]
+    K --> L[🏛️ Events Sync to blockchain_public]
+    L --> M[🏛️ Stream Blocks to All Peers]
 ```
 
 ### **Peer Main Bank (Port 8082)**
@@ -54,23 +55,23 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[🟢 Receive Bank Approval Request] --> B[🔵 Validate Bank Authorization]
-    B --> C[🟠 Get Contract from main-bank DB]
+    B --> C[🟠 Get Contract from blockchain_private]
     C --> D[🟡 Contract Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
     D -->|Yes| F[🟡 Bank Has Permission?]
     F -->|No| G[🔴 Return 403 Forbidden]
-    F -->|Yes| H[🟠 Update bankApproved = true in main-bank DB]
+    F -->|Yes| H[🟠 Update bankApproved = true in blockchain_private]
     H --> I[🔵 Calculate Total Amount from Suppliers]
-    I --> J[🟠 Create Token with Issuer = Bank in main-bank DB]
-    J --> K[🟠 Create Initial Balance for Anchor in main-bank DB]
-    K --> L[🔵 Log CONTRACT_BANK_APPROVED_TOKEN_GENERATED in main-bank DB]
-    L --> M[🟠 Create Block Entry in main-bank DB]
-    M --> N[📨 Publish BLOCK_CREATED to Kafka audit-channel-tx]
+    I --> J[🟠 Create Token with Issuer = Bank in blockchain_private]
+    J --> K[🟠 Create Initial Balance for Anchor in blockchain_private]
+    K --> L[🔵 Log CONTRACT_BANK_APPROVED_TOKEN_GENERATED in blockchain_private]
+    L --> M[🟡 SubmitTx to Orderer via gRPC]
+    M --> N[🟡 SubmitEvent to Orderer via gRPC]
     N --> O[🟣 Return Success Response with Token ID]
 
-    O --> P[🏛️ Orderer Consumes Kafka Message]
-    P --> Q[🏛️ Order Block & Save to Public Ledger]
-    Q --> R[🏛️ Broadcast Ordered Block to All Peers]
+    O --> P[🏛️ Orderer PBFT Consensus]
+    P --> Q[🏛️ Events Sync to blockchain_public]
+    Q --> R[🏛️ Stream Blocks to All Peers]
 ```
 
 ### **Peer Supplier (Port 8083)**
@@ -79,29 +80,29 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[🟢 Receive Supplier Approval Request] --> B[🔵 Validate Supplier Authorization]
-    B --> C[🟠 Get Contract from supplier DB]
+    B --> C[🟠 Get Contract from blockchain_private]
     C --> D[🟡 Contract Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
     D -->|Yes| F[🟡 Bank Approved Contract?]
     F -->|No| G[🔴 Return 403 Forbidden]
     F -->|Yes| H[🟡 Supplier Authorized for Contract?]
     H -->|No| I[🔴 Return 403 Forbidden]
-    H -->|Yes| J[🟠 Update Supplier Status to APPROVED in supplier DB]
+    H -->|Yes| J[🟠 Update Supplier Status to APPROVED in blockchain_private]
     J --> K[🟠 Refresh Contract Data]
     K --> L[🔵 Check All Suppliers Approved?]
-    L -->|No| M[🔵 Log SUPPLIER_APPROVED Event in supplier DB]
-    L -->|Yes| N[🟠 Update Contract Status to approved in supplier DB]
-    N --> O[🟠 Distribute Token Balances to All Suppliers in supplier DB]
-    O --> P[🟠 Remove Anchor's Balance in supplier DB]
-    P --> Q[🔵 Log CONTRACT_FULLY_APPROVED Event in supplier DB]
-    M --> R[🟠 Create Block Entry in supplier DB]
+    L -->|No| M[🔵 Log SUPPLIER_APPROVED Event in blockchain_private]
+    L -->|Yes| N[🟠 Update Contract Status to approved in blockchain_private]
+    N --> O[🟠 Distribute Token Balances to All Suppliers in blockchain_private]
+    O --> P[🟠 Remove Anchor's Balance in blockchain_private]
+    P --> Q[🔵 Log CONTRACT_FULLY_APPROVED Event in blockchain_private]
+    M --> R[🟡 SubmitTx to Orderer via gRPC]
     Q --> R
-    R --> S[📨 Publish BLOCK_CREATED to Kafka scf-channel-tx]
+    R --> S[🟡 SubmitEvent to Orderer via gRPC]
     S --> T[🟣 Return Success Response]
 
-    T --> U[🏛️ Orderer Consumes Kafka Message]
-    U --> V[🏛️ Order Block & Save to Public Ledger]
-    V --> W[🏛️ Broadcast Ordered Block to All Peers]
+    T --> U[🏛️ Orderer PBFT Consensus]
+    U --> V[🏛️ Events Sync to blockchain_public]
+    V --> W[🏛️ Stream Blocks to All Peers]
 ```
 
 ---
@@ -112,10 +113,10 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[🟢 Receive Transfer Request] --> B[🔵 Validate Supplier Authorization]
-    B --> C[🟠 Get Token Info from supplier DB]
+    B --> C[🟠 Get Token Info from blockchain_private]
     C --> D[🟡 Token Exists?]
     D -->|No| E[🔴 Return 404 Not Found]
-    D -->|Yes| F[🟠 Get Sender Balance from supplier DB]
+    D -->|Yes| F[🟠 Get Sender Balance from blockchain_private]
     F --> G[🟡 Sender Has Balance?]
     G -->|No| H[🔴 Return 400 Insufficient Balance]
     G -->|Yes| I[🟡 Balance Sufficient?]
@@ -451,4 +452,4 @@ flowchart TD
 
 ## 🔄 **Complete API Flow Reference**
 
-**This document provides comprehensive flow diagrams for all APIs in the Multi-Peer Blockchain SCF System, showing the complete journey from user action through peer processing, Kafka messaging, orderer consensus, to public ledger persistence.**
+**This document provides comprehensive flow diagrams for all APIs in the Multi-Peer Blockchain SCF System with Events Sync, showing the complete journey from user action through peer processing, gRPC communication, PBFT consensus, to public blockchain synchronization.**

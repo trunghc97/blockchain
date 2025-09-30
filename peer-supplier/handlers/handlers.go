@@ -127,6 +127,16 @@ func (h *Handler) submitToOrderer(tx *proto.Transaction) error {
 	return h.ordererClient.SubmitTransaction(h.peerID, tx)
 }
 
+// submitEventToOrderer submits an event to the orderer cluster via gRPC
+func (h *Handler) submitEventToOrderer(event *proto.Event) error {
+	if h.ordererClient == nil {
+		fmt.Printf("Orderer client not initialized, skipping event submission\n")
+		return nil // Don't fail if orderer is not available
+	}
+
+	return h.ordererClient.SubmitEvent(h.peerID, event)
+}
+
 // sendToKafka sends a message to the specified Kafka topic
 func (h *Handler) sendToKafka(topic string, event map[string]interface{}) error {
 	if h.kafkaProducer == nil {
@@ -638,6 +648,23 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Failed to submit supplier approval to orderer: %v\n", err)
 			// Continue, don't fail the approval
 		}
+
+		// Submit event to orderer for public blockchain sync
+		protoEvent := &proto.Event{
+			EventId:     generateEventID(),
+			EventType:   eventType,
+			ContractId:  contractId,
+			TokenId:     tokenId,
+			SupplierId:  req.SupplierId,
+			Amount:      0,
+			Description: fmt.Sprintf("Contract %s approved by supplier %s", contractId, req.SupplierId),
+			Timestamp:   protoTimestamp,
+		}
+
+		if err := h.submitEventToOrderer(protoEvent); err != nil {
+			fmt.Printf("Failed to submit supplier approval event to orderer: %v\n", err)
+			// Continue, don't fail the approval
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1064,6 +1091,23 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Failed to submit token transfer to orderer: %v\n", err)
 			// Continue, don't fail the transfer
 		}
+
+		// Submit event to orderer for public blockchain sync
+		protoEvent := &proto.Event{
+			EventId:     generateEventID(),
+			EventType:   "TOKEN_TRANSFERRED",
+			TokenId:     req.TokenId,
+			From:        req.From,
+			To:          req.To,
+			Amount:      req.Amount,
+			Description: fmt.Sprintf("Token transfer: %s -> %s, amount: %.2f", req.From, req.To, req.Amount),
+			Timestamp:   protoTimestamp,
+		}
+
+		if err := h.submitEventToOrderer(protoEvent); err != nil {
+			fmt.Printf("Failed to submit token transfer event to orderer: %v\n", err)
+			// Continue, don't fail the transfer
+		}
 	}
 
 	// Check if anchor has no more balance for this token
@@ -1467,6 +1511,24 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 
 		if err := h.submitToOrderer(tx); err != nil {
 			fmt.Printf("Failed to submit token settlement to orderer: %v\n", err)
+			// Continue, don't fail the settlement
+		}
+
+		// Submit event to orderer for public blockchain sync
+		protoEvent := &proto.Event{
+			EventId:     generateEventID(),
+			EventType:   "TOKEN_SETTLED",
+			ContractId:  token.ContractId,
+			TokenId:     req.TokenId,
+			SupplierId:  req.SupplierId,
+			BankId:      bankId,
+			Amount:      balance.Balance,
+			Description: fmt.Sprintf("Supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+			Timestamp:   protoTimestamp,
+		}
+
+		if err := h.submitEventToOrderer(protoEvent); err != nil {
+			fmt.Printf("Failed to submit token settlement event to orderer: %v\n", err)
 			// Continue, don't fail the settlement
 		}
 	}

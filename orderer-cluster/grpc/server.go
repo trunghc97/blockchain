@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"time"
 
 	"orderer-cluster/pbft"
 	"orderer-cluster/proto"
@@ -51,9 +52,39 @@ func (s *OrdererServer) SubmitTx(ctx context.Context, req *proto.SubmitTxRequest
 }
 
 // SubmitEvent handles event submission
-func (s *OrdererServer) SubmitEvent(ctx context.Context, req interface{}) (interface{}, error) {
-	log.Printf("SubmitEvent called - temporarily disabled")
-	return nil, nil
+func (s *OrdererServer) SubmitEvent(ctx context.Context, req *proto.SubmitEventRequest) (*proto.SubmitEventReply, error) {
+	log.Printf("Received event %s from peer %s", req.Event.EventId, req.PeerId)
+
+	// Save event to public blockchain database
+	eventDoc := map[string]interface{}{
+		"eventId":     req.Event.EventId,
+		"eventType":   req.Event.EventType,
+		"contractId":  req.Event.ContractId,
+		"tokenId":     req.Event.TokenId,
+		"supplierId":  req.Event.SupplierId,
+		"bankId":      req.Event.BankId,
+		"from":        req.Event.From,
+		"to":          req.Event.To,
+		"amount":      req.Event.Amount,
+		"description": req.Event.Description,
+		"timestamp":   req.Event.Timestamp.AsTime().Format(time.RFC3339),
+	}
+
+	_, err := s.db.Collection("events").InsertOne(ctx, eventDoc)
+	if err != nil {
+		log.Printf("Failed to save event to database: %v", err)
+		return &proto.SubmitEventReply{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	log.Printf("Event %s saved to public blockchain", req.Event.EventId)
+	return &proto.SubmitEventReply{
+		Success: true,
+		EventId: req.Event.EventId,
+		Message: "Event submitted successfully",
+	}, nil
 }
 
 // StreamBlocks streams finalized blocks to peers

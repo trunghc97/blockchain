@@ -58,8 +58,8 @@ initializeDatabase('blockchain_private', [
     'contracts',    // Contract data (anchor, mainbank, supplier)
     'tokens',       // Token data (supplier, anchor for monitoring)
     'balances',     // Token balances (all peers)
-    'ledger',       // Distributed ledger (all peers)
-    'messages'      // Peer-to-peer messaging (supplier)
+    'events',       // Private blockchain events (all peers)
+    'blocks'        // Private blockchain blocks (all peers)
 ]); // Private blockchain database for all peers
 
 initializeDatabase('blockchain_public', [
@@ -319,27 +319,6 @@ function createIndexesForDatabase(dbName) {
         }
     }
 
-    // Messages collection indexes (only if collection exists)
-    if (collections.includes('messages')) {
-        const messageIndexes = targetDb.messages.getIndexes();
-        if (!messageIndexes.some(index => index.name === 'timestamp_1')) {
-            targetDb.messages.createIndex({ "timestamp": 1 });
-            print('Created index on ' + dbName + '.messages.timestamp');
-        } else {
-            print('Index already exists: ' + dbName + '.messages.timestamp');
-        }
-    }
-
-    // Ledger collection indexes (only if collection exists)
-    if (collections.includes('ledger')) {
-        const ledgerIndexes = targetDb.ledger.getIndexes();
-        if (!ledgerIndexes.some(index => index.name === 'blockNumber_1')) {
-            targetDb.ledger.createIndex({ "blockNumber": 1 });
-            print('Created index on ' + dbName + '.ledger.blockNumber');
-        } else {
-            print('Index already exists: ' + dbName + '.ledger.blockNumber');
-        }
-    }
 
     print('Indexes created successfully for ' + dbName);
 }
@@ -355,7 +334,7 @@ print('\n=== BLOCKCHAIN CONTRACT-TOKEN SYSTEM INITIALIZATION COMPLETE ===');
 print('Dual-database architecture: Private + Public Blockchain');
 
 print('\n🔒 blockchain_private (PRIVATE BLOCKCHAIN):');
-print('   Collections: contracts, tokens, balances, ledger, messages');
+print('   Collections: contracts, tokens, balances, events, blocks');
 print('   Purpose: Internal peer operations (supplier, anchor, mainbank)');
 print('   Access: Restricted to blockchain peers only');
 
@@ -370,9 +349,10 @@ print('ANCHOR:     anchor / 123456 (ID: ANCHOR001)');
 print('SUPPLIERS:  supplier1-supplier5 / 123456 (IDs: SUPPLIER001-SUPPLIER005)');
 
 print('\n🔄 Peer Configuration:');
-print('ANCHOR:     Connects to blockchain_private for contracts & token monitoring');
-print('MAINBANK:   Connects to blockchain_private for approvals & balances');
-print('SUPPLIER:   Connects to blockchain_private for token operations');
+print('ANCHOR:     Connects to blockchain_private for contracts, events & blocks');
+print('MAINBANK:   Connects to blockchain_private for contracts, tokens, balances');
+print('SUPPLIER:   Connects to blockchain_private for contracts, tokens, balances');
+print('ORDERER:    Connects to blockchain_public for events sync & blocks');
 print('BACKEND:    Connects to both databases for full system integration');
 
 print('\n✅ System is ready for testing!');

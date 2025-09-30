@@ -61,10 +61,28 @@ func (oc *OrdererClient) SubmitTransaction(peerID string, tx *proto.Transaction)
 	return nil
 }
 
-// SubmitEvent submits an event to the orderer cluster - temporarily disabled
-func (oc *OrdererClient) SubmitEvent(peerID string, event interface{}) error {
-	log.Printf("SubmitEvent temporarily disabled for testing")
-	return nil // Temporarily disabled
+// SubmitEvent submits an event to the orderer cluster
+func (oc *OrdererClient) SubmitEvent(peerID string, event *proto.Event) error {
+	req := &proto.SubmitEventRequest{
+		PeerId: peerID,
+		Event:  event,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := oc.client.SubmitEvent(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		log.Printf("Event submission failed: %s", resp.Message)
+		return nil // Don't fail, just log
+	}
+
+	log.Printf("Event %s submitted successfully: %s", resp.EventId, resp.Message)
+	return nil
 }
 
 // StreamBlocks starts streaming blocks from the orderer

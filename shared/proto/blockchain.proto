@@ -37,6 +37,21 @@ message Transaction {
   google.protobuf.Timestamp timestamp = 9;
 }
 
+// Event represents a blockchain event for transparency
+message Event {
+  string event_id = 1;
+  string event_type = 2;
+  string contract_id = 3;
+  string token_id = 4;
+  string supplier_id = 5;
+  string bank_id = 6;
+  string from = 7;
+  string to = 8;
+  double amount = 9;
+  string description = 10;
+  google.protobuf.Timestamp timestamp = 11;
+}
+
 // Consensus message types for PBFT
 message PrePrepareMessage {
   string view = 1;
@@ -71,6 +86,7 @@ message ConsensusMessage {
 // PBFT Orderer service - replaces Kafka-based ordering
 service OrdererService {
   rpc SubmitTx (SubmitTxRequest) returns (SubmitTxReply);
+  rpc SubmitEvent (SubmitEventRequest) returns (SubmitEventReply);
   rpc StreamBlocks (StreamBlocksRequest) returns (stream Block);
   rpc Consensus (ConsensusMessage) returns (AckReply);
 }
@@ -84,6 +100,17 @@ message SubmitTxRequest {
 message SubmitTxReply {
   bool success = 1;
   string transaction_id = 2;
+  string message = 3;
+}
+
+message SubmitEventRequest {
+  string peer_id = 1;
+  Event event = 2;
+}
+
+message SubmitEventReply {
+  bool success = 1;
+  string event_id = 2;
   string message = 3;
 }
 
