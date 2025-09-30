@@ -18,6 +18,10 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	grpcclient "peer-supplier/grpc-client"
+	"peer-supplier/proto"
 )
 
 type SupplierDTO struct {
@@ -33,6 +37,8 @@ type Handler struct {
 	kafkaProducer sarama.SyncProducer
 	scfTopic      string
 	auditTopic    string
+	ordererClient *grpcclient.OrdererClient
+	peerID        string
 }
 
 func generateEventID() string {
@@ -111,6 +117,16 @@ func (h *Handler) getNextBlockNumber() int64 {
 	return previousBlockNum + 1
 }
 
+// submitToOrderer submits a transaction to the orderer cluster via gRPC
+func (h *Handler) submitToOrderer(tx *proto.Transaction) error {
+	if h.ordererClient == nil {
+		fmt.Printf("Orderer client not initialized, skipping transaction submission\n")
+		return nil // Don't fail if orderer is not available
+	}
+
+	return h.ordererClient.SubmitTransaction(h.peerID, tx)
+}
+
 // sendToKafka sends a message to the specified Kafka topic
 func (h *Handler) sendToKafka(topic string, event map[string]interface{}) error {
 	if h.kafkaProducer == nil {
@@ -166,12 +182,34 @@ func NewHandler(db *mongo.Database, publicDb *mongo.Database) *Handler {
 		auditTopic = "audit-channel-tx"
 	}
 
+	// Initialize gRPC client to orderer
+	ordererAddr := os.Getenv("ORDERER_ADDR")
+	if ordererAddr == "" {
+		ordererAddr = "orderer-ord1:7050"
+	}
+
+	peerID := os.Getenv("PEER_NODE_ID")
+	if peerID == "" {
+		peerID = "supplier-peer-1"
+	}
+
+	var ordererClient *grpcclient.OrdererClient
+	client, err := grpcclient.NewOrdererClient(ordererAddr)
+	if err != nil {
+		fmt.Printf("Failed to create orderer client: %v\n", err)
+		// Continue without client for now
+	} else {
+		ordererClient = client
+	}
+
 	return &Handler{
 		db:            db,
 		publicDb:      publicDb,
 		kafkaProducer: producer,
 		scfTopic:      scfTopic,
 		auditTopic:    auditTopic,
+		ordererClient: ordererClient,
+		peerID:        peerID,
 	}
 }
 
@@ -580,6 +618,26 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("DEBUG: Error creating approval block: %v\n", err)
 		// Don't fail the approval for block creation errors
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: eventType,
+			ContractId:      contractId,
+			TokenId:         tokenId,
+			SenderId:        req.SupplierId,
+			ReceiverId:      "SYSTEM",
+			Amount:          0, // Approval transaction, no amount
+			Payload:         fmt.Sprintf("Contract %s approved by supplier %s", contractId, req.SupplierId),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit supplier approval to orderer: %v\n", err)
+			// Continue, don't fail the approval
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -986,6 +1044,26 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log error but don't fail the transfer
 		fmt.Printf("Failed to create transfer block: %v\n", err)
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "TOKEN_TRANSFERRED",
+			ContractId:      strings.TrimPrefix(req.TokenId, "token_"), // Extract contract ID
+			TokenId:         req.TokenId,
+			SenderId:        req.From,
+			ReceiverId:      req.To,
+			Amount:          req.Amount,
+			Payload:         fmt.Sprintf("Token transfer: %s -> %s, amount: %.2f", req.From, req.To, req.Amount),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit token transfer to orderer: %v\n", err)
+			// Continue, don't fail the transfer
+		}
 	}
 
 	// Check if anchor has no more balance for this token
@@ -1372,27 +1450,23 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("DEBUG: Error creating settlement block: %v\n", err)
 		// Don't fail the settlement for block creation errors
 	} else {
-		// Send settlement event to Kafka for orderer processing
-		settlementEvent := map[string]interface{}{
-			"eventType":   "TOKEN_SETTLED",
-			"eventId":     event["eventId"],
-			"blockNumber": blockNumber,
-			"blockHash":   blockHash,
-			"timestamp":   time.Now().Format(time.RFC3339),
-			"events":      eventIds,
-			"contractId":  token.ContractId,
-			"peerId":      "peer-supplier",
-			"data": map[string]interface{}{
-				"tokenId":       req.TokenId,
-				"supplierId":    req.SupplierId,
-				"bankId":        bankId,
-				"settledAmount": balance.Balance,
-				"description":   fmt.Sprintf("Supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
-			},
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "TOKEN_SETTLED",
+			ContractId:      token.ContractId,
+			TokenId:         req.TokenId,
+			SenderId:        req.SupplierId,
+			ReceiverId:      bankId,
+			Amount:          balance.Balance,
+			Payload:         fmt.Sprintf("Token settlement: supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+			Timestamp:       protoTimestamp,
 		}
 
-		if err := h.sendToKafka(h.scfTopic, settlementEvent); err != nil {
-			fmt.Printf("Failed to send settlement event to Kafka: %v\n", err)
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit token settlement to orderer: %v\n", err)
 			// Continue, don't fail the settlement
 		}
 	}

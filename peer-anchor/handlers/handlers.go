@@ -554,6 +554,26 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("DEBUG: Error creating approval block: %v\n", err)
 		// Don't fail the approval for block creation errors
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: eventType,
+			ContractId:      contractId,
+			TokenId:         tokenId,
+			SenderId:        req.SupplierId,
+			ReceiverId:      "SYSTEM",
+			Amount:          0, // Approval transaction, no amount
+			Payload:         fmt.Sprintf("Contract %s approved by supplier %s", contractId, req.SupplierId),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit supplier approval to orderer: %v\n", err)
+			// Continue, don't fail the approval
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -716,6 +736,26 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		fmt.Printf("DEBUG: Error creating bank approval block: %v\n", err)
 		// Don't fail the approval for block creation errors
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "CONTRACT_BANK_APPROVED_TOKEN_GENERATED",
+			ContractId:      contractId,
+			TokenId:         tokenId,
+			SenderId:        req.BankId,
+			ReceiverId:      "ANCHOR001",
+			Amount:          totalAmount,
+			Payload:         fmt.Sprintf("Contract %s approved by bank %s, token %s generated", contractId, req.BankId, tokenId),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit bank approval to orderer: %v\n", err)
+			// Continue, don't fail the approval
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -904,6 +944,26 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log error but don't fail the transfer
 		fmt.Printf("Failed to create transfer block: %v\n", err)
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "TOKEN_TRANSFERRED",
+			ContractId:      strings.TrimPrefix(req.TokenId, "token_"), // Extract contract ID
+			TokenId:         req.TokenId,
+			SenderId:        req.From,
+			ReceiverId:      req.To,
+			Amount:          req.Amount,
+			Payload:         fmt.Sprintf("Token transfer: %s -> %s, amount: %.2f", req.From, req.To, req.Amount),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit token transfer to orderer: %v\n", err)
+			// Continue, don't fail the transfer
+		}
 	}
 
 	// Check if anchor has no more balance for this token
@@ -1289,6 +1349,26 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Printf("DEBUG: Error creating settlement block: %v\n", err)
 		// Don't fail the settlement for block creation errors
+	} else {
+		// Submit transaction to orderer for public blockchain sync
+		now := time.Now()
+		protoTimestamp := timestamppb.New(now)
+		tx := &proto.Transaction{
+			TransactionId:   generateEventID(),
+			TransactionType: "TOKEN_SETTLED",
+			ContractId:      token.ContractId,
+			TokenId:         req.TokenId,
+			SenderId:        req.SupplierId,
+			ReceiverId:      bankId,
+			Amount:          balance.Balance,
+			Payload:         fmt.Sprintf("Token settlement: supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+			Timestamp:       protoTimestamp,
+		}
+
+		if err := h.submitToOrderer(tx); err != nil {
+			fmt.Printf("Failed to submit token settlement to orderer: %v\n", err)
+			// Continue, don't fail the settlement
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

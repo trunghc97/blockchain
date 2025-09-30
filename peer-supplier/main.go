@@ -26,11 +26,14 @@ func main() {
 	if os.Getenv("PEER_PORT") == "" {
 		os.Setenv("PEER_PORT", "8083")
 	}
+	if os.Getenv("ORDERER_ADDR") == "" {
+		os.Setenv("ORDERER_ADDR", "orderer-ord1:7050")
+	}
 
 	port := os.Getenv("PEER_PORT")
 	mongoURI := os.Getenv("MONGO_URI")
 	if mongoURI == "" {
-		mongoURI = "mongodb://root:example@mongo-supplier:27017/blockchain_supplier?authSource=admin"
+		mongoURI = "mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin"
 	}
 
 	log.Printf("Supplier Peer starting on port %s", port)

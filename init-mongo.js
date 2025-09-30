@@ -311,11 +311,11 @@ function createIndexesForDatabase(dbName) {
     // Blocks collection indexes (only if collection exists)
     if (collections.includes('blocks')) {
         const blockIndexes = targetDb.blocks.getIndexes();
-        if (!blockIndexes.some(index => index.name === 'blockNumber_1')) {
-            targetDb.blocks.createIndex({ "blockNumber": 1 }, { unique: true });
-            print('Created unique index on ' + dbName + '.blocks.blockNumber');
+        if (!blockIndexes.some(index => index.name === 'height_1')) {
+            targetDb.blocks.createIndex({ "height": 1 }, { unique: true });
+            print('Created unique index on ' + dbName + '.blocks.height');
         } else {
-            print('Index already exists: ' + dbName + '.blocks.blockNumber');
+            print('Index already exists: ' + dbName + '.blocks.height');
         }
     }
 
