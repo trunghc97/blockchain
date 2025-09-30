@@ -48,7 +48,7 @@ services:
       - PBFT_NODE_ID=ord1
       - ORDERER_PORT=7050
       - PBFT_F=1
-      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_public?authSource=admin
     volumes:
       - ./secrets/ord1:/secrets
     depends_on:
@@ -67,7 +67,7 @@ services:
       - PBFT_NODE_ID=ord2
       - ORDERER_PORT=7060
       - PBFT_F=1
-      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_public?authSource=admin
     volumes:
       - ./secrets/ord2:/secrets
     depends_on:
@@ -86,7 +86,7 @@ services:
       - PBFT_NODE_ID=ord3
       - ORDERER_PORT=7070
       - PBFT_F=1
-      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain?authSource=admin
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_public?authSource=admin
     volumes:
       - ./secrets/ord3:/secrets
     depends_on:

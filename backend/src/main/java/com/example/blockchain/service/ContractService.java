@@ -7,6 +7,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
 
@@ -26,6 +27,7 @@ public class ContractService {
     private final UserService userService;
 
     public ContractService(MongoTemplate mongoTemplate, BlockchainService blockchainService, UserService userService) {
+        System.out.println("DEBUG: ContractService initialized with database: " + mongoTemplate.getDb().getName());
         this.mongoTemplate = mongoTemplate;
         this.blockchainService = blockchainService;
         this.userService = userService;
@@ -96,22 +98,24 @@ public class ContractService {
             System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
             if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
-                // Save contract to local MongoDB for immediate availability
-                mongoTemplate.save(contract, "contracts");
-
-                // Get the created contract from blockchain service to return complete data
+                // Get the created contract from blockchain service to save complete data
                 String createdContractId = (String) blockchainResponse.get("contractId");
                 if (createdContractId != null) {
                     Map<String, Object> blockchainContract = blockchainService.getContract(createdContractId);
                     if (blockchainContract != null) {
                         Contract localContract = convertBlockchainContractToLocal(blockchainContract);
-                        // Update local MongoDB with blockchain data
-                        mongoTemplate.save(localContract, "contracts");
-                        return localContract;
+                        // Save contract to local MongoDB with blockchain data
+                        System.out.println("DEBUG: Saving contract to database: " + mongoTemplate.getDb().getName() + " with blockchain ID: " + localContract.getId());
+                        Contract savedContract = mongoTemplate.save(localContract, "contracts");
+                        System.out.println("DEBUG: Contract saved to database: " + mongoTemplate.getDb().getName() + " with ID: " + savedContract.getId());
+                        return savedContract;
                     }
                 }
-                // Return the local contract if blockchain data is not available
-                return contract;
+                // Fallback: Save original contract if blockchain data is not available
+                System.out.println("DEBUG: Fallback - Saving original contract to database: " + mongoTemplate.getDb().getName() + " with ID: " + contract.getId());
+                Contract savedContract = mongoTemplate.save(contract, "contracts");
+                System.out.println("DEBUG: Contract saved to database: " + mongoTemplate.getDb().getName() + " with new ID: " + savedContract.getId());
+                return savedContract;
             } else {
                 throw new RuntimeException("Failed to create contract on blockchain");
             }

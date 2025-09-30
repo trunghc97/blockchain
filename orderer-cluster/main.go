@@ -53,8 +53,8 @@ func main() {
 		log.Fatalf("Failed to ping MongoDB: %v", err)
 	}
 
-	db := client.Database("blockchain")
-	log.Printf("Connected to MongoDB database: blockchain")
+	db := client.Database("blockchain_public")
+	log.Printf("Connected to MongoDB database: blockchain_public")
 
 	// Initialize components
 	mempool := mempool.NewMempool()

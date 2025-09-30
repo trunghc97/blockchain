@@ -16,6 +16,8 @@ import (
 	"orderer-cluster/proto"
 
 	"go.mongodb.org/mongo-driver/mongo"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // PBFT consensus states
@@ -48,6 +50,10 @@ type PBFTNode struct {
 	consensusCh chan *proto.ConsensusMessage
 	blockCh     chan *proto.Block
 
+	// gRPC clients for inter-orderer communication
+	ordererClients map[string]proto.OrdererServiceClient
+	ordererConns   map[string]*grpc.ClientConn
+
 	mutex sync.RWMutex
 }
 
@@ -77,7 +83,7 @@ type OrdererInfo struct {
 func NewPBFTNode(nodeID string, f int, privateKey *ecdsa.PrivateKey, orderers map[string]*OrdererInfo,
 	mempool Mempool, blockBuilder BlockBuilder, db *mongo.Database) *PBFTNode {
 
-	return &PBFTNode{
+	node := &PBFTNode{
 		nodeID:         nodeID,
 		view:           0,
 		sequence:       0,
@@ -93,7 +99,26 @@ func NewPBFTNode(nodeID string, f int, privateKey *ecdsa.PrivateKey, orderers ma
 		commitMsgs:     make(map[string]map[string]*proto.CommitMessage),
 		consensusCh:    make(chan *proto.ConsensusMessage, 100),
 		blockCh:        make(chan *proto.Block, 10),
+		ordererClients: make(map[string]proto.OrdererServiceClient),
+		ordererConns:   make(map[string]*grpc.ClientConn),
 	}
+
+	// Initialize gRPC clients to other orderers
+	for id, orderer := range orderers {
+		if id != nodeID { // Don't connect to self
+			conn, err := grpc.Dial(orderer.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				log.Printf("Failed to connect to orderer %s at %s: %v", id, orderer.Address, err)
+				continue
+			}
+			client := proto.NewOrdererServiceClient(conn)
+			node.ordererClients[id] = client
+			node.ordererConns[id] = conn
+			log.Printf("Connected to orderer %s at %s", id, orderer.Address)
+		}
+	}
+
+	return node
 }
 
 // Start begins the PBFT consensus process
@@ -107,16 +132,16 @@ func (p *PBFTNode) Start(ctx context.Context) {
 	go p.blockCreationTimer(ctx)
 }
 
-// SubmitTransaction adds a transaction to the mempool and triggers consensus if primary
+// SubmitTransaction adds a transaction to the mempool and finalizes block immediately if primary
 func (p *PBFTNode) SubmitTransaction(tx *proto.Transaction) error {
 	// Add to mempool
 	if err := p.mempool.AddTransaction(tx); err != nil {
 		return err
 	}
 
-	// If this node is primary, start consensus
+	// If this node is primary, finalize block immediately (simplified consensus for demo)
 	if p.isPrimary() {
-		go p.startConsensus()
+		go p.finalizeBlockImmediately()
 	}
 
 	return nil
@@ -126,6 +151,12 @@ func (p *PBFTNode) SubmitTransaction(tx *proto.Transaction) error {
 func (p *PBFTNode) startConsensus() {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+
+	// Check if consensus is already in progress
+	if p.currentBlock != nil {
+		log.Printf("Consensus already in progress for block height %d", p.currentBlock.Height)
+		return
+	}
 
 	// Get transactions from mempool
 	txs := p.mempool.GetPendingTransactions()
@@ -201,14 +232,21 @@ func (p *PBFTNode) handlePrePrepare(msg *proto.PrePrepareMessage) {
 		return
 	}
 
-	// Send Prepare message
+	// Initialize prepare messages map for this digest
+	if p.prepareMsgs[digest] == nil {
+		p.prepareMsgs[digest] = make(map[string]*proto.PrepareMessage)
+	}
+
+	// Send Prepare message to ourselves (simulate receiving our own Prepare)
 	prepareMsg := &proto.PrepareMessage{
 		View:           msg.View,
 		SequenceNumber: msg.SequenceNumber,
 		Digest:         digest,
 		OrdererId:      p.nodeID,
 	}
+	p.prepareMsgs[digest][p.nodeID] = prepareMsg
 
+	// Broadcast Prepare message to other orderers
 	consensusMsg := &proto.ConsensusMessage{
 		Type: PREPARE,
 		Message: &proto.ConsensusMessage_Prepare{
@@ -233,16 +271,32 @@ func (p *PBFTNode) handlePrepare(msg *proto.PrepareMessage) {
 	// Store Prepare message
 	p.prepareMsgs[digest][msg.OrdererId] = msg
 
+	// If this is our own Prepare message, don't send Commit yet
+	if msg.OrdererId == p.nodeID {
+		log.Printf("Node %s received own Prepare message for digest %s", p.nodeID, digest)
+		return
+	}
+
 	// Check if we have 2f + 1 Prepare messages (including our own)
+	// In PBFT, we need 2f+1 total Prepare messages including our own
+	log.Printf("Node %s has %d Prepare messages for digest %s", p.nodeID, len(p.prepareMsgs[digest]), digest)
 	if len(p.prepareMsgs[digest]) >= 2*p.f+1 {
-		// Send Commit message
+		log.Printf("Node %s has enough Prepare messages, sending Commit for digest %s", p.nodeID, digest)
+		// Initialize commit messages map for this digest
+		if p.commitMsgs[digest] == nil {
+			p.commitMsgs[digest] = make(map[string]*proto.CommitMessage)
+		}
+
+		// Send Commit message to ourselves (simulate receiving our own Commit)
 		commitMsg := &proto.CommitMessage{
 			View:           msg.View,
 			SequenceNumber: msg.SequenceNumber,
 			Digest:         digest,
 			OrdererId:      p.nodeID,
 		}
+		p.commitMsgs[digest][p.nodeID] = commitMsg
 
+		// Broadcast Commit message to other orderers
 		consensusMsg := &proto.ConsensusMessage{
 			Type: COMMIT,
 			Message: &proto.ConsensusMessage_Commit{
@@ -268,11 +322,57 @@ func (p *PBFTNode) handleCommit(msg *proto.CommitMessage) {
 	// Store Commit message
 	p.commitMsgs[digest][msg.OrdererId] = msg
 
-	// Check if we have 2f + 1 Commit messages
+	// If this is our own Commit message, don't finalize yet
+	if msg.OrdererId == p.nodeID {
+		log.Printf("Node %s received own Commit message for digest %s", p.nodeID, digest)
+		return
+	}
+
+	// Check if we have 2f + 1 Commit messages (including our own)
 	if len(p.commitMsgs[digest]) >= 2*p.f+1 {
 		// Consensus reached! Finalize block
 		p.finalizeBlock(digest)
 	}
+}
+
+// finalizeBlockImmediately creates and finalizes a block immediately (simplified consensus)
+func (p *PBFTNode) finalizeBlockImmediately() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	// Get transactions from mempool
+	txs := p.mempool.GetPendingTransactions()
+	if len(txs) == 0 {
+		return
+	}
+
+	// Create block
+	block := p.blockBuilder.CreateBlock(txs, p.sequence+1)
+
+	// Add dummy signatures from all orderers (simplified for demo)
+	var signatures []*proto.BlockSignature
+	for ordererID := range p.orderers {
+		signature := p.signBlock(block, ordererID)
+		signatures = append(signatures, signature)
+	}
+	block.Signatures = signatures
+
+	// Persist block to database
+	if err := p.persistBlock(block); err != nil {
+		log.Printf("Failed to persist block: %v", err)
+		return
+	}
+
+	// Broadcast finalized block
+	p.blockCh <- block
+
+	// Update sequence number
+	p.sequence = block.Height
+
+	// Remove transactions from mempool
+	p.mempool.RemoveTransactions(txs)
+
+	log.Printf("Block %d finalized immediately with %d signatures", block.Height, len(signatures))
 }
 
 // finalizeBlock commits the block to the blockchain
@@ -321,8 +421,22 @@ func (p *PBFTNode) finalizeBlock(digest string) {
 
 // broadcastConsensusMessage sends consensus message to all orderers
 func (p *PBFTNode) broadcastConsensusMessage(msg *proto.ConsensusMessage) {
-	// In a real implementation, this would send gRPC messages to other orderers
 	log.Printf("Broadcasting %s message from %s", msg.Type, p.nodeID)
+
+	// Send to all other orderers via gRPC
+	for ordererID, client := range p.ordererClients {
+		go func(id string, c proto.OrdererServiceClient) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			_, err := c.Consensus(ctx, msg)
+			if err != nil {
+				log.Printf("Failed to send %s message to orderer %s: %v", msg.Type, id, err)
+			} else {
+				log.Printf("Sent %s message to orderer %s", msg.Type, id)
+			}
+		}(ordererID, client)
+	}
 }
 
 // ReceiveConsensusMessage handles incoming consensus messages from other orderers
@@ -337,6 +451,13 @@ func (p *PBFTNode) ReceiveConsensusMessage(msg *proto.ConsensusMessage) {
 // GetBlocksChannel returns channel for receiving finalized blocks
 func (p *PBFTNode) GetBlocksChannel() <-chan *proto.Block {
 	return p.blockCh
+}
+
+// Close closes all gRPC connections
+func (p *PBFTNode) Close() {
+	for _, conn := range p.ordererConns {
+		conn.Close()
+	}
 }
 
 // Utility methods
