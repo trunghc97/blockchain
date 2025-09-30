@@ -8,6 +8,7 @@ import (
 	"orderer-cluster/pbft"
 	"orderer-cluster/proto"
 
+	"go.mongodb.org/mongo-driver/mongo"
 	"google.golang.org/grpc"
 )
 
@@ -16,13 +17,15 @@ type OrdererServer struct {
 	proto.UnimplementedOrdererServiceServer
 	pbftNode     *pbft.PBFTNode
 	blockBuilder pbft.BlockBuilder
+	db           *mongo.Database
 }
 
 // NewOrdererServer creates a new gRPC server
-func NewOrdererServer(pbftNode *pbft.PBFTNode, blockBuilder pbft.BlockBuilder) *OrdererServer {
+func NewOrdererServer(pbftNode *pbft.PBFTNode, blockBuilder pbft.BlockBuilder, db *mongo.Database) *OrdererServer {
 	return &OrdererServer{
 		pbftNode:     pbftNode,
 		blockBuilder: blockBuilder,
+		db:           db,
 	}
 }
 
@@ -45,6 +48,12 @@ func (s *OrdererServer) SubmitTx(ctx context.Context, req *proto.SubmitTxRequest
 		TransactionId: req.Transaction.TransactionId,
 		Message:       "Transaction submitted for consensus",
 	}, nil
+}
+
+// SubmitEvent handles event submission
+func (s *OrdererServer) SubmitEvent(ctx context.Context, req interface{}) (interface{}, error) {
+	log.Printf("SubmitEvent called - temporarily disabled")
+	return nil, nil
 }
 
 // StreamBlocks streams finalized blocks to peers

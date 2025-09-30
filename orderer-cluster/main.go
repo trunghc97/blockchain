@@ -89,7 +89,7 @@ func main() {
 	pbftNode := pbft.NewPBFTNode(nodeID, f, privateKey, orderers, mempool, blockBuilder, db)
 
 	// Create gRPC server
-	ordererServer := grpc.NewOrdererServer(pbftNode, blockBuilder)
+	ordererServer := grpc.NewOrdererServer(pbftNode, blockBuilder, db)
 
 	// Start PBFT consensus
 	go pbftNode.Start(context.Background())

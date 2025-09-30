@@ -123,6 +123,12 @@ func (h *Handler) submitToOrderer(tx *proto.Transaction) error {
 	return h.ordererClient.SubmitTransaction(h.peerID, tx)
 }
 
+// submitEventToOrderer submits an event to the orderer cluster via gRPC - temporarily disabled
+func (h *Handler) submitEventToOrderer(event interface{}) error {
+	fmt.Printf("submitEventToOrderer temporarily disabled\n")
+	return nil // Temporarily disabled
+}
+
 func NewHandler(db *mongo.Database) *Handler {
 	// Initialize gRPC client to orderer
 	ordererAddr := os.Getenv("ORDERER_ADDR")
@@ -205,8 +211,9 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 	// Note: Token will be created only after bank approval
 
 	// Log event
+	eventId := generateEventID()
 	event := map[string]interface{}{
-		"eventId":     generateEventID(),
+		"eventId":     eventId,
 		"eventType":   "CONTRACT_CREATED",
 		"contractId":  req.ID,
 		"anchorId":    req.AnchorId,
@@ -219,14 +226,32 @@ func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
 
 	_, err = h.db.Collection("events").InsertOne(context.Background(), event)
 	if err != nil {
-		// Log error but don't fail the contract creation
 		fmt.Printf("Failed to log event: %v\n", err)
+		// Don't fail the contract creation for logging errors
 	}
+
+	// Submit event to public blockchain - temporarily disabled
+	// now := time.Now()
+	// protoTimestamp := timestamppb.New(now)
+	// protoEvent := &proto.Event{
+	// 	EventId:     eventId,
+	// 	EventType:   "CONTRACT_CREATED",
+	// 	ContractId:  req.ID,
+	// 	BankId:      req.BankId,
+	// 	Amount:      req.Amount,
+	// 	Description: req.Description,
+	// 	Timestamp:   protoTimestamp,
+	// }
+
+	// if err := h.submitEventToOrderer(protoEvent); err != nil {
+	// 	fmt.Printf("Failed to submit event to orderer: %v\n", err)
+	// 	// Continue, don't fail the contract creation
+	// }
 
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
-	eventIds := []string{event["eventId"].(string)}
+	eventIds := []string{eventId}
 	previousHash := h.getPreviousBlockHash()
 	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
 
@@ -520,8 +545,9 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 		eventType = "CONTRACT_FULLY_APPROVED"
 	}
 
+	eventId := generateEventID()
 	event := map[string]interface{}{
-		"eventId":    generateEventID(),
+		"eventId":    eventId,
 		"eventType":  eventType,
 		"contractId": contractId,
 		"tokenId":    tokenId,
@@ -535,10 +561,29 @@ func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the approval for logging errors
 	}
 
+	// Submit event to public blockchain - temporarily disabled
+	// now := time.Now()
+	// protoTimestamp := timestamppb.New(now)
+	// protoEvent := &proto.Event{
+	// 	EventId:     eventId,
+	// 	EventType:   eventType,
+	// 	ContractId:  contractId,
+	// 	TokenId:     tokenId,
+	// 	SupplierId:  req.SupplierId,
+	// 	Amount:      0,
+	// 	Description: fmt.Sprintf("Contract %s approved by supplier %s", contractId, req.SupplierId),
+	// 	Timestamp:   protoTimestamp,
+	// }
+
+	// if err := h.submitEventToOrderer(protoEvent); err != nil {
+	// 	fmt.Printf("Failed to submit event to orderer: %v\n", err)
+	// 	// Continue, don't fail the approval
+	// }
+
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
-	eventIds := []string{event["eventId"].(string)}
+	eventIds := []string{eventId}
 	previousHash := h.getPreviousBlockHash()
 	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
 
@@ -699,8 +744,9 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Log bank approval and token generation event
+	eventId := generateEventID()
 	event := map[string]interface{}{
-		"eventId":     generateEventID(),
+		"eventId":     eventId,
 		"eventType":   "CONTRACT_BANK_APPROVED_TOKEN_GENERATED",
 		"contractId":  contractId,
 		"tokenId":     tokenId,
@@ -717,10 +763,29 @@ func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) 
 		// Don't fail the approval for logging errors
 	}
 
+	// Submit event to public blockchain - temporarily disabled
+	// now := time.Now()
+	// protoTimestamp := timestamppb.New(now)
+	// protoEvent := &proto.Event{
+	// 	EventId:     eventId,
+	// 	EventType:   "CONTRACT_BANK_APPROVED_TOKEN_GENERATED",
+	// 	ContractId:  contractId,
+	// 	TokenId:     tokenId,
+	// 	BankId:      req.BankId,
+	// 	Amount:      totalAmount,
+	// 	Description: "Bank approved contract and system auto-generated token for anchor",
+	// 	Timestamp:   protoTimestamp,
+	// }
+
+	// if err := h.submitEventToOrderer(protoEvent); err != nil {
+	// 	fmt.Printf("Failed to submit event to orderer: %v\n", err)
+	// 	// Continue, don't fail the approval
+	// }
+
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
-	eventIds := []string{event["eventId"].(string)}
+	eventIds := []string{eventId}
 	previousHash := h.getPreviousBlockHash()
 	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
 
@@ -909,8 +974,9 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log transfer event
+	eventId := generateEventID()
 	event := map[string]interface{}{
-		"eventId":   generateEventID(),
+		"eventId":   eventId,
 		"eventType": "TOKEN_TRANSFERRED",
 		"tokenId":   req.TokenId,
 		"from":      req.From,
@@ -925,10 +991,29 @@ func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Failed to log transfer event: %v\n", err)
 	}
 
+	// Submit event to public blockchain - temporarily disabled
+	// now := time.Now()
+	// protoTimestamp := timestamppb.New(now)
+	// protoEvent := &proto.Event{
+	// 	EventId:     eventId,
+	// 	EventType:   "TOKEN_TRANSFERRED",
+	// 	TokenId:     req.TokenId,
+	// 	From:        req.From,
+	// 	To:          req.To,
+	// 	Amount:      req.Amount,
+	// 	Description: fmt.Sprintf("Token transfer: %s -> %s, amount: %.2f", req.From, req.To, req.Amount),
+	// 	Timestamp:   protoTimestamp,
+	// }
+
+	// if err := h.submitEventToOrderer(protoEvent); err != nil {
+	// 	fmt.Printf("Failed to submit event to orderer: %v\n", err)
+	// 	// Continue, don't fail the transfer
+	// }
+
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
-	eventIds := []string{event["eventId"].(string)}
+	eventIds := []string{eventId}
 	previousHash := h.getPreviousBlockHash()
 	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
 
@@ -1312,8 +1397,9 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log settlement event
+	eventId := generateEventID()
 	event := map[string]interface{}{
-		"eventId":       generateEventID(),
+		"eventId":       eventId,
 		"eventType":     "TOKEN_SETTLED",
 		"tokenId":       req.TokenId,
 		"contractId":    token.ContractId,
@@ -1330,10 +1416,30 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the settlement for logging errors
 	}
 
+	// Submit event to public blockchain - temporarily disabled
+	// now := time.Now()
+	// protoTimestamp := timestamppb.New(now)
+	// protoEvent := &proto.Event{
+	// 	EventId:     eventId,
+	// 	EventType:   "TOKEN_SETTLED",
+	// 	ContractId:  token.ContractId,
+	// 	TokenId:     req.TokenId,
+	// 	SupplierId:  req.SupplierId,
+	// 	BankId:      bankId,
+	// 	Amount:      balance.Balance,
+	// 	Description: fmt.Sprintf("Supplier %s settled %.2f tokens with bank %s", req.SupplierId, balance.Balance, bankId),
+	// 	Timestamp:   protoTimestamp,
+	// }
+
+	// if err := h.submitEventToOrderer(protoEvent); err != nil {
+	// 	fmt.Printf("Failed to submit event to orderer: %v\n", err)
+	// 	// Continue, don't fail the settlement
+	// }
+
 	// Create block entry
 	blockNumber := h.getNextBlockNumber()
 	timestamp := time.Now().Format(time.RFC3339)
-	eventIds := []string{event["eventId"].(string)}
+	eventIds := []string{eventId}
 	previousHash := h.getPreviousBlockHash()
 	blockHash := calculateBlockHash(blockNumber, timestamp, previousHash, eventIds)
 
