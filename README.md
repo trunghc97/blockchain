@@ -33,6 +33,7 @@ docker-compose up -d --build
 docker-compose ps
 
 # Health endpoints
+curl http://localhost:9090/health  # SCF Chaincode (Smart Contract Engine)
 curl http://localhost:8082/health  # Main Bank
 curl http://localhost:8083/health  # Supplier
 curl http://localhost:8084/health  # Anchor
@@ -351,6 +352,34 @@ kubectl rollout restart deployment frontend
 kubectl get pods -n blockchain-production
 kubectl get deployments -n blockchain-production
 ```
+
+## 🏗️ Kiến trúc hệ thống với Chaincode Service
+
+### SCF Chaincode Service (Smart Contract Engine)
+Hệ thống đã được cập nhật để tách biệt business logic vào **SCF Chaincode Service** - một microservice riêng biệt chạy trên port 9090.
+
+#### Các thay đổi kiến trúc:
+- **SCF Chaincode Service**: Chứa toàn bộ business logic cho contracts và tokens
+- **Peer Services**: Chỉ còn là REST API gateways, gọi gRPC đến chaincode service
+- **Decoupled Architecture**: Business logic được tách riêng, dễ maintain và scale
+
+#### Smart Contracts:
+- **Contract Management**: Create, Approve, Finalize contracts
+- **Token Management**: Issue, Transfer, Settle tokens
+- **State Persistence**: Lưu trữ state trong MongoDB blockchain_private
+
+#### gRPC Communication:
+- Peer services sử dụng gRPC client để gọi chaincode methods
+- Protocol buffer definitions trong `share/` directory
+- High-performance internal communication
+
+### Service Ports:
+- **SCF Chaincode**: `:9090` (gRPC)
+- **Peer Main Bank**: `:8082` (REST)
+- **Peer Supplier**: `:8083` (REST)
+- **Peer Anchor**: `:8084` (REST)
+- **Backend API**: `:8080` (REST)
+- **Frontend**: `:4200` (HTTP)
 
 ## 📚 Tài liệu chi tiết
 

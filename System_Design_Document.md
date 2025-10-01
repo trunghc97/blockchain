@@ -1,4 +1,4 @@
-# Tài liệu Thiết kế Hệ thống Blockchain Token Trading
+# Tài liệu Thiết kế Hệ thống Blockchain SCF deep tier
 
 ## Mục lục
 1. [Tổng quan hệ thống](#tổng-quan-hệ-thống)
@@ -30,7 +30,35 @@ Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho
 
 ## Kiến trúc hệ thống
 
-### Mô hình kết nối với gRPC Direct Communication
+### 🆕 **Chaincode Service Integration**
+
+#### Tổng quan kiến trúc mới
+Hệ thống đã được nâng cấp với **SCF Chaincode Service** - microservice riêng biệt chứa toàn bộ business logic smart contracts:
+
+- **SCF Chaincode Service**: Smart Contract Engine chạy trên port 9090
+- **Peer Services**: REST API gateways sử dụng gRPC clients để invoke chaincode methods
+- **Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
+- **State Management**: Chaincode service quản lý tất cả contract và token state
+
+#### Smart Contract Methods
+```go
+// Contract Management
+CreateContract(anchorID, suppliers[], totalAmount, fileHash)
+ApproveContract(contractID, supplierID)
+FinalizeContract(contractID)
+
+// Token Management
+IssueToken(contractID, issuer, totalSupply)
+TransferToken(tokenID, from, to, amount)
+SettleToken(tokenID, supplierID, bankID)
+```
+
+#### gRPC Communication Protocol
+- **Protocol Buffers**: Định nghĩa RPC interfaces trong `share/smartcontract.proto`
+- **Generated Code**: Auto-generated gRPC clients/servers từ protobuf
+- **High Performance**: Binary serialization, bidirectional streaming
+
+### Mô hình kết nối với gRPC Direct Communication & Chaincode Service
 
 ```mermaid
 graph TB
@@ -611,30 +639,34 @@ sequenceDiagram
     participant A as Anchor
     participant FE as Frontend
     participant BE as Backend (Java)
-    participant BC as Blockchain (Go)
+    participant PEER as Peer Service (Go)
+    participant CHAIN as SCF Chaincode (Go)
     participant DB as MongoDB
 
     %% Tạo hợp đồng
     A->>FE: Nhập thông tin hợp đồng
     FE->>BE: POST /api/contracts (contract data)
-    BE->>BC: POST /contract/create
-    BC->>DB: Insert contract
-    BC->>DB: Insert event CONTRACT_CREATED
-    BC->>DB: Insert block
-    BC-->>BE: Success response
+    BE->>PEER: POST /contract/create
+    PEER->>CHAIN: gRPC CreateContract()
+    CHAIN->>DB: Insert contract
+    CHAIN->>DB: Insert event CONTRACT_CREATED
+    CHAIN->>DB: Insert block
+    CHAIN-->>PEER: ContractResponse
+    PEER-->>BE: Success response
     BE-->>FE: Success response
     FE-->>A: Hiển thị hợp đồng đã tạo
 
     %% Bank phê duyệt
     A->>FE: Yêu cầu bank phê duyệt
     FE->>BE: POST /api/contracts/{id}/approve-bank
-    BE->>BC: POST /contract/{id}/approve-bank
-    BC->>DB: Update contract bankApproved=true
-    BC->>DB: Insert token (issuer=SYSTEM)
-    BC->>DB: Insert balance (anchor)
-    BC->>DB: Insert event BANK_APPROVED
-    BC->>DB: Insert block
-    BC-->>BE: Success + tokenId
+    BE->>PEER: POST /contract/{id}/approve-bank
+    PEER->>CHAIN: gRPC IssueToken()
+    CHAIN->>DB: Insert token (issuer=SYSTEM)
+    CHAIN->>DB: Insert balance (anchor)
+    CHAIN->>DB: Insert event BANK_APPROVED
+    CHAIN->>DB: Insert block
+    CHAIN-->>PEER: TokenResponse
+    PEER-->>BE: Success + tokenId
     BE-->>FE: Success + tokenId
     FE-->>A: Hiển thị token đã tạo
 
@@ -642,19 +674,22 @@ sequenceDiagram
     A->>FE: Thông báo suppliers phê duyệt
     loop Mỗi supplier
         FE->>BE: POST /api/contracts/{id}/approve (supplierId)
-        BE->>BC: POST /contract/{id}/approve
-        BC->>DB: Update supplier status
-        BC->>DB: Check all suppliers approved
+        BE->>PEER: POST /contract/{id}/approve
+        PEER->>CHAIN: gRPC ApproveContract()
+        CHAIN->>DB: Update supplier status
+        CHAIN->>DB: Check all suppliers approved
         alt Tất cả đã approve
-            BC->>DB: Update contract approved=true
-            BC->>DB: Insert balances cho tất cả suppliers
-            BC->>DB: Delete anchor balance
-            BC->>DB: Insert event CONTRACT_FULLY_APPROVED
+            CHAIN->>CHAIN: gRPC FinalizeContract()
+            CHAIN->>DB: Update contract approved=true
+            CHAIN->>DB: Insert balances cho tất cả suppliers
+            CHAIN->>DB: Delete anchor balance
+            CHAIN->>DB: Insert event CONTRACT_FULLY_APPROVED
         else
-            BC->>DB: Insert event SUPPLIER_APPROVED
+            CHAIN->>DB: Insert event SUPPLIER_APPROVED
         end
-        BC->>DB: Insert block
-        BC-->>BE: Success
+        CHAIN->>DB: Insert block
+        CHAIN-->>PEER: ContractResponse
+        PEER-->>BE: Success
         BE-->>FE: Success
     end
     FE-->>A: Hợp đồng hoàn tất
@@ -667,23 +702,26 @@ sequenceDiagram
     participant S1 as Supplier 1
     participant FE as Frontend
     participant BE as Backend (Java)
-    participant BC as Blockchain (Go)
+    participant PEER as Peer Service (Go)
+    participant CHAIN as SCF Chaincode (Go)
     participant DB as MongoDB
 
     S1->>FE: Chọn token & số lượng, chọn người nhận
     FE->>BE: POST /api/v1/tokens/transfer
-    BE->>BC: POST /token/transfer
-    BC->>DB: Get sender balance
-    BC->>DB: Validate balance >= amount
-    BC->>DB: Update sender balance (-amount)
-    BC->>DB: Get/Update receiver balance (+amount)
-    BC->>DB: Insert event TOKEN_TRANSFERRED
-    BC->>DB: Insert block
-    BC->>DB: Check if anchor balance == 0
+    BE->>PEER: POST /token/transfer
+    PEER->>CHAIN: gRPC TransferToken()
+    CHAIN->>DB: Get sender balance
+    CHAIN->>DB: Validate balance >= amount
+    CHAIN->>DB: Update sender balance (-amount)
+    CHAIN->>DB: Get/Update receiver balance (+amount)
+    CHAIN->>DB: Insert event TOKEN_TRANSFERRED
+    CHAIN->>DB: Insert block
+    CHAIN->>DB: Check if anchor balance == 0
     alt Anchor hết token
-        BC->>DB: Update contract status APPROVED
+        CHAIN->>DB: Update contract status APPROVED
     end
-    BC-->>BE: Success
+    CHAIN-->>PEER: TokenResponse
+    PEER-->>BE: Success
     BE-->>FE: Success
     FE-->>S1: Transfer thành công
 ```
@@ -695,18 +733,21 @@ sequenceDiagram
     participant S as Supplier
     participant FE as Frontend
     participant BE as Backend (Java)
-    participant BC as Blockchain (Go)
+    participant PEER as Peer Service (Go)
+    participant CHAIN as SCF Chaincode (Go)
     participant DB as MongoDB
 
     S->>FE: Click "Settle with Bank" cho token
     FE->>BE: POST /api/v1/tokens/settle
-    BE->>BC: POST /token/settle
-    BC->>DB: Get supplier balance
-    BC->>DB: Validate balance exists
-    BC->>DB: Delete supplier balance
-    BC->>DB: Insert event TOKEN_SETTLED
-    BC->>DB: Insert block
-    BC-->>BE: Success
+    BE->>PEER: POST /token/settle
+    PEER->>CHAIN: gRPC SettleToken()
+    CHAIN->>DB: Get supplier balance
+    CHAIN->>DB: Validate balance exists
+    CHAIN->>DB: Delete supplier balance
+    CHAIN->>DB: Insert event TOKEN_SETTLED
+    CHAIN->>DB: Insert block
+    CHAIN-->>PEER: TokenResponse
+    PEER-->>BE: Success
     BE-->>FE: Success
     FE-->>S: Settlement thành công
 ```

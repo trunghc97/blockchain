@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package smartcontract;
+option go_package = "peer-anchor/proto";
+
+// Contract Management
+message CreateContractRequest {
+  string anchorId = 1;
+  repeated string suppliers = 2;
+  double totalAmount = 3;
+  string fileHash = 4;
+}
+
+message ApproveContractRequest {
+  string contractId = 1;
+  string supplierId = 2;
+}
+
+message FinalizeContractRequest {
+  string contractId = 1;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+
+// Token Management
+message IssueTokenRequest {
+  string contractId = 1;
+  string issuer = 2;
+  double totalSupply = 3;
+}
+
+message TransferTokenRequest {
+  string tokenId = 1;
+  string from = 2;
+  string to = 3;
+  double amount = 4;
+}
+
+message SettleTokenRequest {
+  string tokenId = 1;
+  string supplierId = 2;
+  string bankId = 3;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+
+service SmartContractService {
+  rpc CreateContract(CreateContractRequest) returns (ContractResponse);
+  rpc ApproveContract(ApproveContractRequest) returns (ContractResponse);
+  rpc FinalizeContract(FinalizeContractRequest) returns (ContractResponse);
+  rpc IssueToken(IssueTokenRequest) returns (TokenResponse);
+  rpc TransferToken(TransferTokenRequest) returns (TokenResponse);
+  rpc SettleToken(SettleTokenRequest) returns (TokenResponse);
+}

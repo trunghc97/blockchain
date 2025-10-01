@@ -61,12 +61,12 @@ func main() {
 	db := client.Database(databaseName)
 
 	// Get public database for user operations
-	publicDb := client.Database("blockchain_public")
+	// publicDb := client.Database("blockchain_public")
 
 	log.Printf("Connected to MongoDB databases: private=%s, public=blockchain_public", databaseName)
 
 	// Initialize handlers
-	h := handlers.NewHandler(db, publicDb)
+	h := handlers.NewHandler(db)
 
 	// Setup routes
 	router := mux.NewRouter()

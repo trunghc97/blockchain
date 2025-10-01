@@ -9,6 +9,18 @@ services:
     networks:
       - public-network
 
+  # SCF Chaincode Service - Smart Contract Engine
+  scf-chaincode:
+    build: ./scf-chaincode
+    ports:
+      - "9090:9090"
+    depends_on:
+      - mongo-shared
+    networks:
+      - peer-network
+    environment:
+      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
+
   # API Gateway (updated with peer routing)
   backend:
     build: ./backend
@@ -29,6 +41,7 @@ services:
       - BLOCKCHAIN_URL=http://peer-anchor:8084
     depends_on:
       - mongo-shared
+      - scf-chaincode
       - peer-main-bank
       - peer-supplier
       - peer-anchor

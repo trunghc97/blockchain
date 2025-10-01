@@ -73,8 +73,7 @@ func main() {
 	log.Printf("Connected to MongoDB database: %s", databaseName)
 
 	// Initialize handlers
-	mockPeer := &handlers.MockPeer{}
-	h := handlers.NewHandler(db, mockPeer)
+	h := handlers.NewHandler(db)
 
 	// Setup routes
 	router := mux.NewRouter()

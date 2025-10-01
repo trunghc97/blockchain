@@ -1,4 +1,14 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus & Events Sync
+# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus & Events Sync & Chaincode Service
+
+## Tổng quan kiến trúc với PBFT Consensus, Events Sync & Chaincode Service
+
+### 🆕 **Cập nhật kiến trúc: Chaincode Service Integration**
+Hệ thống đã được nâng cấp với **SCF Chaincode Service** - microservice riêng biệt chứa toàn bộ business logic smart contracts:
+
+- **🔗 SCF Chaincode Service**: Smart Contract Engine trên port 9090, chứa business logic cho contracts & tokens
+- **📡 gRPC Communication**: Peer services sử dụng gRPC clients để invoke chaincode methods
+- **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
+- **💾 State Persistence**: Chaincode service quản lý state trong MongoDB blockchain_private
 
 ## Tổng quan kiến trúc với PBFT Consensus & Events Sync
 
@@ -19,9 +29,10 @@ Hệ thống blockchain permissioned đã được triển khai với PBFT (Prac
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **peer-main-bank** | 8082 | ✅ Running | Contract operations, gRPC client, Events Sync |
-| **peer-supplier** | 8083 | ✅ Running | Token operations, gRPC client, Events Sync |
-| **peer-anchor** | 8084 | ✅ Running | Contract creation, gRPC client, Events Sync |
+| **scf-chaincode** | 9090 | ✅ Running | Smart Contract Engine - business logic cho contracts & tokens |
+| **peer-main-bank** | 8082 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
+| **peer-supplier** | 8083 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
+| **peer-anchor** | 8084 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
 | **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, Events Sync handler |
 | **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant |
 | **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant |
