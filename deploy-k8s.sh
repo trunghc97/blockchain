@@ -102,7 +102,10 @@ main() {
 
     # Deploy MongoDB
     log_info "🗄️  Phase 2: Deploying MongoDB..."
-    deploy_component "MongoDB manifests" "$SCRIPT_DIR/mongodb/k8s/"
+    deploy_component "MongoDB StatefulSet" "$SCRIPT_DIR/mongodb/statefulset.yaml"
+    deploy_component "MongoDB Service" "$SCRIPT_DIR/mongodb/service.yaml"
+    deploy_component "MongoDB PVC" "$SCRIPT_DIR/mongodb/pvc.yaml"
+    deploy_component "MongoDB Init Script" "$SCRIPT_DIR/mongodb/init-script-configmap.yaml"
 
     # Wait for MongoDB
     wait_for_pods "app.kubernetes.io/name=mongodb"
@@ -110,26 +113,26 @@ main() {
 
     # Deploy microservices
     log_info "🏛️  Phase 3: Deploying Orderer cluster..."
-    deploy_component "Orderer cluster" "$SCRIPT_DIR/orderer/k8s/"
+    deploy_component "Orderer cluster" "$SCRIPT_DIR/orderer-cluster/deployment.yaml"
     wait_for_pods "app.kubernetes.io/name=orderer"
 
     log_info "👥 Phase 4: Deploying Peer nodes..."
-    deploy_component "Peer Main Bank" "$SCRIPT_DIR/peer-main-bank/k8s/"
-    deploy_component "Peer Supplier" "$SCRIPT_DIR/peer-supplier/k8s/"
-    deploy_component "Peer Anchor" "$SCRIPT_DIR/peer-anchor/k8s/"
+    deploy_component "Peer Main Bank" "$SCRIPT_DIR/peer-main-bank/deployment.yaml"
+    deploy_component "Peer Supplier" "$SCRIPT_DIR/peer-supplier/deployment.yaml"
+    deploy_component "Peer Anchor" "$SCRIPT_DIR/peer-anchor/deployment.yaml"
     wait_for_pods "app.kubernetes.io/name=blockchain-peer"
 
     log_info "🔧 Phase 5: Deploying Backend API..."
-    deploy_component "Backend API" "$SCRIPT_DIR/backend/k8s/"
+    deploy_component "Backend API" "$SCRIPT_DIR/backend/deployment.yaml"
     wait_for_pods "app.kubernetes.io/name=backend"
 
     log_info "🌐 Phase 6: Deploying Frontend..."
-    deploy_component "Frontend" "$SCRIPT_DIR/frontend/k8s/"
+    deploy_component "Frontend" "$SCRIPT_DIR/frontend/deployment.yaml"
     wait_for_pods "app.kubernetes.io/name=frontend"
 
     # Deploy monitoring (optional)
     log_info "📊 Phase 7: Deploying Monitoring (optional)..."
-    if kubectl apply -f "$SCRIPT_DIR/monitoring/k8s/" -n "$NAMESPACE" 2>/dev/null; then
+    if kubectl apply -f "$SCRIPT_DIR/monitoring/service-monitors.yaml" -f "$SCRIPT_DIR/monitoring/alert-rules.yaml" -n "$NAMESPACE" 2>/dev/null; then
         log_success "Monitoring components deployed"
     else
         log_warning "Monitoring deployment skipped (components may not be installed)"
@@ -151,7 +154,7 @@ main() {
     echo "  Health Check: https://your-domain.com/api/actuator/health"
 
     log_warning "⚠️  Remember to:"
-    echo "  1. Update domain name in frontend/k8s/deployment.yaml"
+    echo "  1. Update domain name in frontend/deployment.yaml and frontend/ingress.yaml"
     echo "  2. Configure SSL certificates"
     echo "  3. Update container image references"
     echo "  4. Review and update secrets in k8s-base/"

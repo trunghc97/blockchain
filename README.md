@@ -313,7 +313,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 kubectl apply -f k8s-base/
 
 # 2. Deploy MongoDB
-kubectl apply -f mongodb/k8s/
+kubectl apply -f mongodb/
 
 # 3. Deploy từng microservice độc lập
 kubectl apply -f orderer/deployment.yaml           # Orderer cluster
