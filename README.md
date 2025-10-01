@@ -246,9 +246,117 @@ docker-compose pull
 docker-compose up -d --build
 ```
 
+## ☸️ Production Deployment với Kubernetes
+
+### Microservice Architecture
+
+Hệ thống được tổ chức theo kiến trúc microservice, mỗi service có thể deploy độc lập:
+
+```
+k8s-base/                   # Base manifests (namespace, config, secrets, RBAC)
+├── namespace.yaml
+├── configmap.yaml
+├── secret.yaml
+└── rbac.yaml
+
+mongodb/k8s/               # MongoDB StatefulSet với replica set
+├── statefulset.yaml
+├── service.yaml
+├── pvc.yaml
+└── init-script-configmap.yaml
+
+# Từng microservice có deployment.yaml riêng
+orderer/                   # Orderer cluster (Raft consensus)
+└── deployment.yaml        # Service + Deployment + HPA (gộp)
+
+peer-main-bank/            # Peer Main Bank microservice
+└── deployment.yaml        # Service + Deployment + HPA (gộp)
+
+peer-supplier/             # Peer Supplier microservice
+└── deployment.yaml        # Service + Deployment + HPA (gộp)
+
+peer-anchor/               # Peer Anchor microservice
+└── deployment.yaml        # Service + Deployment + HPA (gộp)
+
+backend/                   # Backend API Gateway (Spring Boot)
+└── deployment.yaml        # Service + Deployment + HPA (gộp)
+
+frontend/                  # Frontend Angular SPA
+└── deployment.yaml        # Service + Deployment + Ingress (gộp)
+
+# Monitoring files (service-monitors.yaml, alert-rules.yaml) có thể được deploy riêng
+```
+
+### Prerequisites
+
+- **Kubernetes Cluster**: v1.24+ (EKS, GKE, AKS, hoặc self-hosted)
+- **kubectl**: v1.24+ configured cho cluster
+- **Helm**: v3.8+ (optional, cho templating)
+- **Storage**: Persistent volumes cho MongoDB
+- **Ingress Controller**: NGINX hoặc Traefik
+- **Cert-Manager**: Cho SSL certificates (optional)
+
+```bash
+# Verify cluster access
+kubectl cluster-info
+kubectl get nodes
+
+# Install prerequisites
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml
+```
+
+### Quick Deploy từng Microservice
+
+```bash
+# 1. Deploy base infrastructure
+kubectl apply -f k8s-base/
+
+# 2. Deploy MongoDB
+kubectl apply -f mongodb/k8s/
+
+# 3. Deploy từng microservice độc lập
+kubectl apply -f orderer/deployment.yaml           # Orderer cluster
+kubectl apply -f peer-main-bank/deployment.yaml   # Main Bank peer
+kubectl apply -f peer-supplier/deployment.yaml    # Supplier peer
+kubectl apply -f peer-anchor/deployment.yaml      # Anchor peer
+kubectl apply -f backend/deployment.yaml          # API Gateway
+kubectl apply -f frontend/deployment.yaml         # Web UI
+
+# 4. Deploy monitoring (optional)
+kubectl apply -f monitoring/service-monitors.yaml
+kubectl apply -f monitoring/alert-rules.yaml
+```
+
+### Independent Microservice Deployment
+
+Mỗi microservice có thể deploy/update độc lập:
+
+```bash
+# Deploy chỉ một service
+kubectl apply -f backend/deployment.yaml          # Chỉ deploy backend
+kubectl apply -f peer-supplier/deployment.yaml    # Chỉ deploy supplier peer
+
+# Update image cho một service
+kubectl set image deployment/backend backend=my-registry/backend:v1.1.0
+
+# Scale chỉ một service
+kubectl scale deployment peer-main-bank --replicas=3
+
+# Restart chỉ một service
+kubectl rollout restart deployment frontend
+```
+
+# Check deployment status
+kubectl get pods -n blockchain-production
+kubectl get deployments -n blockchain-production
+```
+
 ## 📚 Tài liệu chi tiết
 
 - [SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md) - Kiến trúc hệ thống
 - [API_Flow_Diagrams.md](API_Flow_Diagrams.md) - API flows
 - [System_Design_Document.md](System_Design_Document.md) - Tài liệu thiết kế hệ thống chi tiết
-- [k8s/README.md](k8s/README.md) - Hướng dẫn triển khai Kubernetes production
+- [deploy-k8s.sh](deploy-k8s.sh) - Script triển khai Kubernetes tự động
+- [k8s-base/](k8s-base/) - Base manifests cho Kubernetes
+- [mongodb/](mongodb/) - MongoDB manifests

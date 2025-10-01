@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Kubernetes Deployment Script for Blockchain System
-# Usage: ./deploy.sh [namespace]
+# Usage: ./deploy-k8s.sh [namespace]
 
 set -e
 
@@ -95,66 +95,41 @@ main() {
 
     # Deploy base resources
     log_info "📦 Phase 1: Deploying base resources..."
-    deploy_component "namespace" "$SCRIPT_DIR/base/namespace.yaml"
-    deploy_component "configmap" "$SCRIPT_DIR/base/configmap.yaml"
-    deploy_component "secrets" "$SCRIPT_DIR/base/secret.yaml"
-    deploy_component "RBAC" "$SCRIPT_DIR/base/rbac.yaml"
+    deploy_component "namespace" "$SCRIPT_DIR/k8s-base/namespace.yaml"
+    deploy_component "configmap" "$SCRIPT_DIR/k8s-base/configmap.yaml"
+    deploy_component "secrets" "$SCRIPT_DIR/k8s-base/secret.yaml"
+    deploy_component "RBAC" "$SCRIPT_DIR/k8s-base/rbac.yaml"
 
     # Deploy MongoDB
     log_info "🗄️  Phase 2: Deploying MongoDB..."
-    deploy_component "MongoDB init script" "$SCRIPT_DIR/mongodb/init-script-configmap.yaml"
-    deploy_component "MongoDB service" "$SCRIPT_DIR/mongodb/service.yaml"
-    deploy_component "MongoDB PVC" "$SCRIPT_DIR/mongodb/pvc.yaml"
-    deploy_component "MongoDB StatefulSet" "$SCRIPT_DIR/mongodb/statefulset.yaml"
+    deploy_component "MongoDB manifests" "$SCRIPT_DIR/mongodb/k8s/"
 
     # Wait for MongoDB
     wait_for_pods "app.kubernetes.io/name=mongodb"
-    log_info "Initializing MongoDB replica set..."
-    kubectl exec -it statefulset/mongodb-shared -n "$NAMESPACE" -- mongosh --eval "rs.status()" || true
+    log_info "MongoDB cluster is ready"
 
-    # Deploy orderer cluster
+    # Deploy microservices
     log_info "🏛️  Phase 3: Deploying Orderer cluster..."
-    deploy_component "Orderer config" "$SCRIPT_DIR/orderer/configmap.yaml"
-    deploy_component "Orderer service" "$SCRIPT_DIR/orderer/service.yaml"
-    deploy_component "Orderer deployment" "$SCRIPT_DIR/orderer/deployment.yaml"
-    deploy_component "Orderer HPA" "$SCRIPT_DIR/orderer/hpa.yaml"
-
-    # Wait for orderer
+    deploy_component "Orderer cluster" "$SCRIPT_DIR/orderer/k8s/"
     wait_for_pods "app.kubernetes.io/name=orderer"
 
-    # Deploy peer nodes
     log_info "👥 Phase 4: Deploying Peer nodes..."
-    for peer in peer-main-bank peer-supplier peer-anchor; do
-        log_info "Deploying $peer..."
-        deploy_component "$peer deployment" "$SCRIPT_DIR/peers/$peer/deployment.yaml"
-        deploy_component "$peer service" "$SCRIPT_DIR/peers/$peer/service.yaml"
-        deploy_component "$peer HPA" "$SCRIPT_DIR/peers/$peer/hpa.yaml"
-    done
-
-    # Wait for peers
+    deploy_component "Peer Main Bank" "$SCRIPT_DIR/peer-main-bank/k8s/"
+    deploy_component "Peer Supplier" "$SCRIPT_DIR/peer-supplier/k8s/"
+    deploy_component "Peer Anchor" "$SCRIPT_DIR/peer-anchor/k8s/"
     wait_for_pods "app.kubernetes.io/name=blockchain-peer"
 
-    # Deploy backend
     log_info "🔧 Phase 5: Deploying Backend API..."
-    deploy_component "Backend deployment" "$SCRIPT_DIR/backend/deployment.yaml"
-    deploy_component "Backend service" "$SCRIPT_DIR/backend/service.yaml"
-    deploy_component "Backend HPA" "$SCRIPT_DIR/backend/hpa.yaml"
-
-    # Wait for backend
+    deploy_component "Backend API" "$SCRIPT_DIR/backend/k8s/"
     wait_for_pods "app.kubernetes.io/name=backend"
 
-    # Deploy frontend
     log_info "🌐 Phase 6: Deploying Frontend..."
-    deploy_component "Frontend deployment" "$SCRIPT_DIR/frontend/deployment.yaml"
-    deploy_component "Frontend service" "$SCRIPT_DIR/frontend/service.yaml"
-    deploy_component "Frontend ingress" "$SCRIPT_DIR/frontend/ingress.yaml"
-
-    # Wait for frontend
+    deploy_component "Frontend" "$SCRIPT_DIR/frontend/k8s/"
     wait_for_pods "app.kubernetes.io/name=frontend"
 
     # Deploy monitoring (optional)
     log_info "📊 Phase 7: Deploying Monitoring (optional)..."
-    if kubectl apply -f "$SCRIPT_DIR/monitoring/" -n "$NAMESPACE" 2>/dev/null; then
+    if kubectl apply -f "$SCRIPT_DIR/monitoring/k8s/" -n "$NAMESPACE" 2>/dev/null; then
         log_success "Monitoring components deployed"
     else
         log_warning "Monitoring deployment skipped (components may not be installed)"
@@ -176,10 +151,10 @@ main() {
     echo "  Health Check: https://your-domain.com/api/actuator/health"
 
     log_warning "⚠️  Remember to:"
-    echo "  1. Update domain name in ingress.yaml"
+    echo "  1. Update domain name in frontend/k8s/deployment.yaml"
     echo "  2. Configure SSL certificates"
     echo "  3. Update container image references"
-    echo "  4. Review and update secrets"
+    echo "  4. Review and update secrets in k8s-base/"
 }
 
 # Run main function

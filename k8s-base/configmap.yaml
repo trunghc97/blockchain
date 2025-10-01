@@ -4,26 +4,12 @@ metadata:
   name: blockchain-config
   namespace: blockchain-production
 data:
-  # Orderer configuration
-  ORDERER_PORT: "7050"
-  ORDERER_PEER_PORT: "7051"
-
-  # Peer configuration
-  PEER_PORT: "7052"
-  PEER_CHAINCODE_PORT: "7053"
-  PEER_GOSSIP_PORT: "7054"
-
-  # MongoDB configuration
-  MONGO_INITDB_ROOT_USERNAME: "root"
-  MONGO_INITDB_DATABASE: "blockchain_shared"
-
   # Application configuration
   SPRING_PROFILES_ACTIVE: "k8s"
   JAVA_OPTS: "-Xmx2g -Xms512m -XX:+UseG1GC -XX:+UseContainerSupport"
   NODE_ENV: "production"
 
-  # Network configuration
-  BLOCKCHAIN_NETWORK: "scf-network"
+  # Blockchain configuration
   SCF_CHANNEL: "scf-channel"
   AUDIT_CHANNEL: "audit-channel"
 

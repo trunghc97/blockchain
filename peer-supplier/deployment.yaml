@@ -1,43 +1,72 @@
-apiVersion: apps/v1
-kind: Deployment
+---
+apiVersion: v1
+kind: Service
 metadata:
-  name: peer-main-bank
+  name: peer-supplier
   namespace: blockchain-production
   labels:
     app.kubernetes.io/name: blockchain-peer
     app.kubernetes.io/component: peer
     app.kubernetes.io/part-of: blockchain
-    peer-type: main-bank
+    peer-type: supplier
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8083
+    targetPort: 8083
+    name: http
+  - port: 9093
+    targetPort: 9093
+    name: grpc
+  - port: 9095
+    targetPort: 9095
+    name: metrics
+  selector:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    peer-type: supplier
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-supplier
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    app.kubernetes.io/part-of: blockchain
+    peer-type: supplier
 spec:
   replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: blockchain-peer
       app.kubernetes.io/component: peer
-      peer-type: main-bank
+      peer-type: supplier
   template:
     metadata:
       labels:
         app.kubernetes.io/name: blockchain-peer
         app.kubernetes.io/component: peer
         app.kubernetes.io/part-of: blockchain
-        peer-type: main-bank
+        peer-type: supplier
     spec:
       serviceAccountName: blockchain-service-account
       containers:
-      - name: peer-main-bank
-        image: blockchain/peer-main-bank:latest  # Replace with your registry
+      - name: peer-supplier
+        image: blockchain/peer-supplier:latest  # Replace with your registry
         ports:
-        - containerPort: 8082
+        - containerPort: 8083
           name: http
-        - containerPort: 9092
+        - containerPort: 9093
           name: grpc
-        - containerPort: 9094
+        - containerPort: 9095
           name: metrics
         env:
         # Application configuration
         - name: SERVER_PORT
-          value: "8082"
+          value: "8083"
         - name: SPRING_PROFILES_ACTIVE
           valueFrom:
             configMapKeyRef:
@@ -50,15 +79,15 @@ spec:
               key: JAVA_OPTS
         # Peer identification
         - name: PEER_ID
-          value: "peer-main-bank"
+          value: "peer-supplier"
         - name: PEER_TYPE
-          value: "MAIN_BANK"
+          value: "SUPPLIER"
         # MongoDB configuration
         - name: MONGODB_URI
           valueFrom:
             secretKeyRef:
               name: blockchain-secrets
-              key: mongodb-main-bank-uri
+              key: mongodb-supplier-uri
         # Orderer connection
         - name: ORDERER_ENDPOINTS
           value: "orderer-service.blockchain-production.svc.cluster.local:7050"
@@ -67,11 +96,6 @@ spec:
             configMapKeyRef:
               name: blockchain-config
               key: SCF_CHANNEL
-        - name: AUDIT_CHANNEL
-          valueFrom:
-            configMapKeyRef:
-              name: blockchain-config
-              key: AUDIT_CHANNEL
         # JWT configuration
         - name: JWT_SECRET
           valueFrom:
@@ -102,7 +126,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8082
+            port: 8083
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 5
@@ -110,7 +134,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 8082
+            port: 8083
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 3
@@ -118,3 +142,34 @@ spec:
       volumes:
       - name: peer-data
         emptyDir: {}  # Use PVC in production
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: peer-supplier-hpa
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: autoscaling
+    peer-type: supplier
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: peer-supplier
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

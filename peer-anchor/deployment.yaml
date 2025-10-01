@@ -1,43 +1,72 @@
-apiVersion: apps/v1
-kind: Deployment
+---
+apiVersion: v1
+kind: Service
 metadata:
-  name: peer-supplier
+  name: peer-anchor
   namespace: blockchain-production
   labels:
     app.kubernetes.io/name: blockchain-peer
     app.kubernetes.io/component: peer
     app.kubernetes.io/part-of: blockchain
-    peer-type: supplier
+    peer-type: anchor
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8084
+    targetPort: 8084
+    name: http
+  - port: 9094
+    targetPort: 9094
+    name: grpc
+  - port: 9096
+    targetPort: 9096
+    name: metrics
+  selector:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    peer-type: anchor
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-anchor
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    app.kubernetes.io/part-of: blockchain
+    peer-type: anchor
 spec:
   replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: blockchain-peer
       app.kubernetes.io/component: peer
-      peer-type: supplier
+      peer-type: anchor
   template:
     metadata:
       labels:
         app.kubernetes.io/name: blockchain-peer
         app.kubernetes.io/component: peer
         app.kubernetes.io/part-of: blockchain
-        peer-type: supplier
+        peer-type: anchor
     spec:
       serviceAccountName: blockchain-service-account
       containers:
-      - name: peer-supplier
-        image: blockchain/peer-supplier:latest  # Replace with your registry
+      - name: peer-anchor
+        image: blockchain/peer-anchor:latest  # Replace with your registry
         ports:
-        - containerPort: 8083
+        - containerPort: 8084
           name: http
-        - containerPort: 9093
+        - containerPort: 9094
           name: grpc
-        - containerPort: 9095
+        - containerPort: 9096
           name: metrics
         env:
         # Application configuration
         - name: SERVER_PORT
-          value: "8083"
+          value: "8084"
         - name: SPRING_PROFILES_ACTIVE
           valueFrom:
             configMapKeyRef:
@@ -50,15 +79,15 @@ spec:
               key: JAVA_OPTS
         # Peer identification
         - name: PEER_ID
-          value: "peer-supplier"
+          value: "peer-anchor"
         - name: PEER_TYPE
-          value: "SUPPLIER"
+          value: "ANCHOR"
         # MongoDB configuration
         - name: MONGODB_URI
           valueFrom:
             secretKeyRef:
               name: blockchain-secrets
-              key: mongodb-supplier-uri
+              key: mongodb-anchor-uri
         # Orderer connection
         - name: ORDERER_ENDPOINTS
           value: "orderer-service.blockchain-production.svc.cluster.local:7050"
@@ -97,7 +126,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 8083
+            port: 8084
           initialDelaySeconds: 60
           periodSeconds: 30
           timeoutSeconds: 5
@@ -105,7 +134,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /health
-            port: 8083
+            port: 8084
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 3
@@ -113,3 +142,34 @@ spec:
       volumes:
       - name: peer-data
         emptyDir: {}  # Use PVC in production
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: peer-anchor-hpa
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: autoscaling
+    peer-type: anchor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: peer-anchor
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
