@@ -1679,3 +1679,399 @@ flowchart TD
 **Mô tả**: Real-time streaming of finalized blocks
 
 **Input/Output**: Same as protobuf definition above
+
+## Peer Services Architecture
+
+### Overview
+Peer services are the endorsing peers in the blockchain network that provide REST API endpoints for different business roles (Anchor, Bank, Supplier). Each peer service:
+
+- **Runs as a standalone Go microservice**
+- **Connects to SCF Chaincode Service via gRPC**
+- **Maintains isolated MongoDB database**
+- **Implements role-based business logic**
+- **Handles transaction submission to Orderer**
+
+### Peer Service Components
+
+#### 1. **HTTP Server Layer**
+- **Framework**: Gorilla Mux router
+- **CORS**: Cross-origin resource sharing enabled
+- **Health Check**: `/health` endpoint for monitoring
+- **Middleware**: Request logging, error handling
+
+#### 2. **Handler Layer**
+```go
+type Handler struct {
+    db              *mongo.Database
+    chaincodeClient *chaincodeclient.ChaincodeClient
+    peerID          string
+}
+```
+
+**Key Responsibilities:**
+- Route request validation
+- Business logic orchestration
+- SCF Chaincode invocation
+- Response formatting
+- Event logging and block creation
+
+#### 3. **Chaincode Client Layer**
+- **gRPC Connection**: Direct connection to SCF Chaincode Service
+- **Protocol Buffers**: Type-safe RPC communication
+- **Error Handling**: Comprehensive error propagation
+- **Connection Management**: Graceful reconnection on failures
+
+#### 4. **Database Layer**
+- **MongoDB Integration**: Isolated per-peer databases
+- **Collections**: contracts, tokens, balances, events, blocks
+- **CRUD Operations**: Document-based data storage
+- **Indexing**: Optimized query performance
+
+### Peer Service Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Peer Service (e.g., peer-main-bank)"
+        subgraph "HTTP Layer"
+            HTTP[HTTP Server<br/>Gorilla Mux<br/>Port 8082]
+            CORS[CORS Middleware]
+            HEALTH[Health Check<br/>/health]
+        end
+
+        subgraph "Handler Layer"
+            H_CREATE[CreateContract Handler]
+            H_APPROVE[ApproveContract Handler]
+            H_TRANSFER[TransferToken Handler]
+            H_SETTLE[SettleToken Handler]
+        end
+
+        subgraph "Chaincode Client"
+            GRPC_CLIENT[gRPC Client<br/>Direct to SCF Chaincode]
+            CONTRACT_METHODS[Contract Operations<br/>Create, Approve, Finalize]
+            TOKEN_METHODS[Token Operations<br/>Issue, Transfer, Settle]
+        end
+
+        subgraph "Database Layer"
+            MONGO[MongoDB<br/>Isolated Database]
+            COLLECTIONS[contracts, tokens<br/>balances, events, blocks]
+        end
+
+        subgraph "Local Blockchain"
+            EVENT_LOG[Event Logging<br/>Block Creation<br/>SHA256 Hashing]
+        end
+    end
+
+    %% Flow
+    HTTP --> H_CREATE
+    H_CREATE --> GRPC_CLIENT
+    GRPC_CLIENT --> CONTRACT_METHODS
+    H_CREATE --> MONGO
+    H_CREATE --> EVENT_LOG
+
+    %% External connections
+    GRPC_CLIENT -.->|gRPC| SCF_CHAINCODE[SCF Chaincode Service]
+    MONGO -.->|MongoDB| MONGO_SHARED[MongoDB Shared]
+```
+
+### Peer Service Workflow
+
+#### **Request Processing Flow:**
+```mermaid
+sequenceDiagram
+    participant Client
+    participant HTTP as HTTP Server
+    participant Handler
+    participant Chaincode as SCF Chaincode
+    participant DB as MongoDB
+    participant Orderer
+
+    Client->>HTTP: POST /api/v1/contracts
+    HTTP->>Handler: Route to handler
+    Handler->>Handler: Validate request
+    Handler->>Chaincode: Invoke smart contract
+    Chaincode->>Chaincode: Execute business logic
+    Chaincode->>Handler: Return result
+    Handler->>DB: Log event & create block
+    Handler->>Orderer: Submit transaction
+    Orderer->>Handler: Transaction accepted
+    Handler->>HTTP: Return response
+    HTTP->>Client: 200 OK with data
+```
+
+#### **Error Handling:**
+- **Input Validation**: 400 Bad Request for invalid data
+- **Authentication**: 401 Unauthorized for invalid JWT
+- **Authorization**: 403 Forbidden for insufficient permissions
+- **Not Found**: 404 for missing resources
+- **Conflicts**: 409 for business logic conflicts
+- **Server Errors**: 500 for internal errors
+
+### SCF Chaincode Service Design
+
+#### Overview
+SCF Chaincode Service is the smart contract engine that contains all business logic for Supply Chain Finance operations:
+
+- **gRPC Server**: Runs on port 9090
+- **Protocol Buffers**: Type-safe RPC interfaces
+- **Business Logic**: Contract and token management
+- **State Management**: In-memory state with MongoDB persistence
+
+#### SCF Chaincode Architecture
+
+```mermaid
+graph TB
+    subgraph "SCF Chaincode Service (Port 9090)"
+        subgraph "gRPC Server Layer"
+            GRPC_SERVER[gRPC Server<br/>Protocol Buffers]
+            SERVICE[SmartContractService<br/>Interface Implementation]
+        end
+
+        subgraph "Business Logic Layer"
+            CONTRACT_MGMT[Contract Management<br/>Create, Approve, Finalize]
+            TOKEN_MGMT[Token Management<br/>Issue, Transfer, Settle]
+            VALIDATION[Business Rules<br/>Validation Logic]
+        end
+
+        subgraph "State Management"
+            IN_MEMORY[In-Memory State<br/>Fast Access]
+            PERSISTENCE[MongoDB Persistence<br/>Durability]
+        end
+
+        subgraph "Contract Models"
+            CONTRACT[Contract Struct<br/>ID, Status, Suppliers]
+            APPROVAL[Approval Logic<br/>Supplier Validation]
+            FINALIZE[Finalization Logic<br/>Token Distribution]
+        end
+
+        subgraph "Token Models"
+            TOKEN[Token Struct<br/>ID, Balances, Supply]
+            TRANSFER[Transfer Logic<br/>Balance Updates]
+            SETTLE[Settlement Logic<br/>Bank Clearing]
+        end
+    end
+
+    %% External connections
+    SERVICE -.->|gRPC| PEERS[Peer Services]
+    PERSISTENCE -.->|MongoDB| MONGO_SHARED[MongoDB Shared]
+```
+
+#### Smart Contract Methods
+
+##### **Contract Operations:**
+
+###### CreateContract
+```protobuf
+message CreateContractRequest {
+  string anchorId = 1;
+  repeated string suppliers = 2;
+  double totalAmount = 3;
+  string fileHash = 4;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate anchor permissions
+2. Generate unique contract ID
+3. Initialize contract with PENDING status
+4. Store contract metadata
+5. Return contract ID
+
+###### ApproveContract
+```protobuf
+message ApproveContractRequest {
+  string contractId = 1;
+  string supplierId = 2;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate supplier permissions for contract
+2. Update supplier approval status
+3. Check if all suppliers approved
+4. Update contract status accordingly
+
+###### FinalizeContract
+```protobuf
+message FinalizeContractRequest {
+  string contractId = 1;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate all suppliers approved
+2. Distribute tokens proportionally
+3. Update contract status to EXECUTED
+4. Create token transfer records
+
+##### **Token Operations:**
+
+###### IssueToken
+```protobuf
+message IssueTokenRequest {
+  string contractId = 1;
+  string issuer = 2;
+  double totalSupply = 3;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate contract is approved
+2. Generate unique token ID
+3. Initialize token with total supply
+4. Assign initial ownership to issuer
+5. Create balance records
+
+###### TransferToken
+```protobuf
+message TransferTokenRequest {
+  string tokenId = 1;
+  string from = 2;
+  string to = 3;
+  double amount = 4;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate sender balance sufficient
+2. Update sender balance (-amount)
+3. Update receiver balance (+amount)
+4. Create transfer record
+5. Validate total supply conservation
+
+###### SettleToken
+```protobuf
+message SettleTokenRequest {
+  string tokenId = 1;
+  string supplierId = 2;
+  string bankId = 3;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Business Logic:**
+1. Validate supplier has balance
+2. Remove supplier balance
+3. Create settlement record
+4. Update token circulation
+
+#### SCF Chaincode Data Models
+
+##### Contract Model
+```go
+type Contract struct {
+    ID          string    `bson:"_id"`
+    AnchorID    string    `bson:"anchorId"`
+    Suppliers   []string  `bson:"suppliers"`
+    TotalAmount float64   `bson:"totalAmount"`
+    Status      string    `bson:"status"` // PENDING | APPROVED | EXECUTED
+    FileHash    string    `bson:"fileHash"`
+    CreatedAt   time.Time `bson:"createdAt"`
+    UpdatedAt   time.Time `bson:"updatedAt"`
+}
+```
+
+##### Token Model
+```go
+type Token struct {
+    ID          string             `bson:"_id"`
+    ContractID  string             `bson:"contractId"`
+    Symbol      string             `bson:"symbol"`
+    TotalSupply float64            `bson:"totalSupply"`
+    Issuer      string             `bson:"issuer"`
+    Owner       string             `bson:"owner"`
+    Balances    map[string]float64 `bson:"balances"`
+    CreatedAt   time.Time          `bson:"createdAt"`
+}
+```
+
+#### Business Rules Validation
+
+##### Contract Rules:
+- **Anchor Authorization**: Only anchors can create contracts
+- **Supplier Validation**: Only assigned suppliers can approve
+- **Approval Quorum**: All suppliers must approve before execution
+- **Status Transitions**: PENDING → APPROVED → EXECUTED
+
+##### Token Rules:
+- **Single Issuance**: Each contract gets exactly one token
+- **Supply Conservation**: Total balance always equals total supply
+- **Transfer Validation**: Sufficient balance required
+- **Settlement Authorization**: Only token holders can settle
+
+#### SCF Chaincode Integration Patterns
+
+##### With Peer Services:
+```mermaid
+sequenceDiagram
+    participant Peer as Peer Service
+    participant Chaincode as SCF Chaincode
+    participant DB as MongoDB
+
+    Peer->>Chaincode: CreateContract(anchorId, suppliers, amount)
+    Chaincode->>Chaincode: Validate business rules
+    Chaincode->>DB: Persist contract state
+    Chaincode->>Peer: Return contractId
+    Peer->>Peer: Log local event
+    Peer->>Peer: Submit to Orderer
+```
+
+##### Error Handling:
+- **Validation Errors**: Return descriptive error messages
+- **State Conflicts**: Handle concurrent modifications
+- **Database Errors**: Graceful degradation
+- **Network Failures**: Retry mechanisms
+
+### Deployment and Scaling
+
+#### Peer Services Deployment:
+- **Containerization**: Docker containers for each peer
+- **Orchestration**: Docker Compose for local development
+- **Kubernetes**: Helm charts for production
+- **Load Balancing**: Nginx ingress for API gateway
+
+#### SCF Chaincode Deployment:
+- **Microservice**: Independent scaling
+- **Horizontal Scaling**: Multiple instances behind load balancer
+- **Database Sharding**: MongoDB sharding for high availability
+- **Caching Layer**: Redis for performance optimization
+
+#### Monitoring and Observability:
+- **Health Checks**: All services expose `/health` endpoints
+- **Metrics**: Prometheus metrics collection
+- **Logging**: Structured logging with correlation IDs
+- **Tracing**: Distributed tracing for request flows
