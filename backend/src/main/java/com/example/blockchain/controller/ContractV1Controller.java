@@ -83,17 +83,22 @@ public class ContractV1Controller {
 
     @GetMapping("/{id}")
     public ResponseEntity<?> getContract(@PathVariable("id") String contractId) {
+        logger.info("ContractV1Controller.getContract called with ID: {}", contractId);
         try {
             Contract contract = contractService.getContract(contractId);
             if (contract == null) {
+                logger.info("Contract not found: {}", contractId);
                 return ResponseEntity.notFound().build();
             }
             return ResponseEntity.ok(contract);
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid contract ID: {}", e.getMessage());
             return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (RuntimeException e) {
+            logger.info("Contract {} not found: {}", contractId, e.getMessage());
+            return ResponseEntity.notFound().build();
         } catch (Exception e) {
-            logger.error("Error getting contract", e);
+            logger.error("Error getting contract {}: {}", contractId, e.getMessage());
             return ResponseEntity.internalServerError().body("Error getting contract: " + e.getMessage());
         }
     }

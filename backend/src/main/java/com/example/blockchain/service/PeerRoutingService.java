@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -97,8 +98,8 @@ public class PeerRoutingService {
     public Map<String, Object> getContract(String contractId) {
         try {
             return callPeer(anchorPeerUrl, "/contract/" + contractId, HttpMethod.GET, null);
-        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            // Contract not found, return null instead of throwing exception
+        } catch (RestClientException e) {
+            // Contract not found or other client errors, return null instead of throwing exception
             return null;
         }
     }
@@ -128,8 +129,8 @@ public class PeerRoutingService {
     public Map<String, Object> getToken(String tokenId) {
         try {
             return callPeer(supplierPeerUrl, "/token/" + tokenId, HttpMethod.GET, null);
-        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            // Token not found, return null instead of throwing exception
+        } catch (RestClientException e) {
+            // Token not found or other client errors, return null instead of throwing exception
             return null;
         }
     }

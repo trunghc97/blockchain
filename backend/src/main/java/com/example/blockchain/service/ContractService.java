@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -22,6 +24,8 @@ import java.util.Objects;
 
 @Service
 public class ContractService {
+    private static final Logger logger = LoggerFactory.getLogger(ContractService.class);
+
     private final MongoTemplate mongoTemplate;
     private final BlockchainService blockchainService;
     private final UserService userService;
@@ -341,13 +345,28 @@ public class ContractService {
             return localContract;
         }
 
-        // Fallback to blockchain service if not found locally
-        Map<String, Object> blockchainContract = blockchainService.getContract(contractId);
-        if (blockchainContract == null) {
+        try {
+            // Fallback to blockchain service if not found locally
+            Map<String, Object> blockchainContract = blockchainService.getContract(contractId);
+            if (blockchainContract == null) {
+                return null;
+            }
+
+            try {
+                return convertBlockchainContractToLocal(blockchainContract);
+            } catch (Exception e) {
+                logger.warn("Error converting blockchain contract {} to local format: {}", contractId, e.getMessage());
+                return null; // Return null if conversion fails
+            }
+        } catch (RuntimeException e) {
+            // Blockchain service error (including contract not found), return null
+            logger.info("Contract not found in blockchain: {}", e.getMessage());
+            return null;
+        } catch (Exception e) {
+            // Other blockchain service errors, return null
+            logger.warn("Error getting contract from blockchain: {}", e.getMessage());
             return null;
         }
-
-        return convertBlockchainContractToLocal(blockchainContract);
     }
 
 

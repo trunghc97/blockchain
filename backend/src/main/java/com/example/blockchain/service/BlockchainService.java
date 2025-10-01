@@ -6,6 +6,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -59,18 +60,29 @@ public class BlockchainService {
                 null,
                 Map.class
         );
+
+        if (response.getStatusCode() == HttpStatus.NOT_FOUND) {
+            // Contract not found
+            return null;
+        }
+
         return response.getBody();
     }
 
     public Map<String, Object> getToken(String tokenId) {
-        // Route to peer-anchor for token details
-        ResponseEntity<Map> response = restTemplate.exchange(
-                peerAnchorUrl + "/token/" + tokenId,
-                HttpMethod.GET,
-                null,
-                Map.class
-        );
-        return response.getBody();
+        try {
+            // Route to peer-supplier for token details
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    peerSupplierUrl + "/token/" + tokenId,
+                    HttpMethod.GET,
+                    null,
+                    Map.class
+            );
+            return response.getBody();
+        } catch (org.springframework.web.client.RestClientException e) {
+            // Token not found, return null
+            return null;
+        }
     }
 
     public Map<String, Object> approveContract(String contractId, String supplierId) {
