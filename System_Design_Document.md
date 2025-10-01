@@ -787,6 +787,24 @@ sequenceDiagram
 - 403: Account disabled
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive login request] --> B[Validate input format]
+    B --> C{Valid input?}
+    C -->|No| D[Return 400 Bad Request]
+    C -->|Yes| E[Query user from database]
+    E --> F{User exists?}
+    F -->|No| G[Return 401 Unauthorized]
+    F -->|Yes| H[Verify password hash]
+    H --> I{Password correct?}
+    I -->|No| G
+    I -->|Yes| J{Check account status}
+    J -->|Disabled| K[Return 403 Forbidden]
+    J -->|Active| L[Generate JWT token]
+    L --> M[Return 200 OK with token]
+```
+
 #### 2. Contract APIs
 
 ##### POST /api/v1/contracts - Create Contract
@@ -831,6 +849,29 @@ file: [PDF file upload]
 - 422: Invalid PDF file
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive contract creation request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Check user role]
+    E --> F{Is ANCHOR role?}
+    F -->|No| G[Return 403 Forbidden]
+    F -->|Yes| H[Validate contract data]
+    H --> I{Data valid?}
+    I -->|No| J[Return 400 Bad Request]
+    I -->|Yes| K[Validate file upload]
+    K --> L{File valid?}
+    L -->|No| M[Return 422 Unprocessable Entity]
+    L -->|Yes| N[Generate contract ID]
+    N --> O[Save contract to database]
+    O --> P[Call SCF Chaincode CreateContract]
+    P --> Q[Generate token ID]
+    Q --> R[Return contractId & tokenId]
+    R --> S[Return 200 OK]
+```
+
 ##### GET /api/v1/contracts - List Contracts
 **Mô tả**: Lấy danh sách contracts theo role
 
@@ -870,6 +911,21 @@ Authorization: Bearer <jwt_token>
 - 401: Unauthorized
 - 403: Insufficient permissions
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive contracts list request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Extract user role from token]
+    E --> F[Apply role-based filtering]
+    F --> G[Parse query parameters]
+    G --> H[Build database query]
+    H --> I[Execute query with pagination]
+    I --> J[Format response data]
+    J --> K[Return 200 OK with contracts list]
+```
 
 ##### GET /api/v1/contracts/{id} - Get Contract Details
 **Mô tả**: Lấy chi tiết contract
@@ -911,6 +967,24 @@ Authorization: Bearer <jwt_token>
 - 404: Contract not found
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive contract details request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Extract contract ID from path]
+    E --> F[Query contract from database]
+    F --> G{Contract exists?}
+    G -->|No| H[Return 404 Not Found]
+    G -->|Yes| I[Check user permissions]
+    I --> J{Has access to contract?}
+    J -->|No| K[Return 403 Forbidden]
+    J -->|Yes| L[Format contract data]
+    L --> M[Include file URL if available]
+    M --> N[Return 200 OK with contract details]
+```
+
 ##### POST /api/v1/contracts/{id}/approve-bank - Bank Approve Contract
 **Mô tả**: Ngân hàng phê duyệt và phát hành token
 
@@ -943,6 +1017,30 @@ Authorization: Bearer <jwt_token>
 - 404: Contract not found
 - 409: Contract already approved
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive bank approval request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Check user role]
+    E --> F{Is BANK role?}
+    F -->|No| G[Return 403 Forbidden]
+    F -->|Yes| H[Extract contract ID]
+    H --> I[Query contract from database]
+    I --> J{Contract exists?}
+    J -->|No| K[Return 404 Not Found]
+    J -->|Yes| L{Check contract status}
+    L --> M{Already approved?}
+    M -->|Yes| N[Return 409 Conflict]
+    M -->|No| O[Call SCF Chaincode IssueToken]
+    O --> P[Update contract bankApproved=true]
+    P --> Q[Create blockchain event]
+    Q --> R[Submit to PBFT consensus]
+    R --> S[Return approval response]
+    S --> T[Return 200 OK]
+```
 
 ##### POST /api/v1/contracts/{id}/approve - Supplier Approve Contract
 **Mô tả**: Supplier phê duyệt phần của mình trong contract
@@ -979,6 +1077,35 @@ Authorization: Bearer <jwt_token>
 - 404: Contract not found
 - 409: Supplier already approved
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive supplier approval request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Check user role]
+    E --> F{Is SUPPLIER role?}
+    F -->|No| G[Return 403 Forbidden]
+    F -->|Yes| H[Extract contract & supplier IDs]
+    H --> I[Query contract from database]
+    I --> J{Contract exists?}
+    J -->|No| K[Return 404 Not Found]
+    J -->|Yes| L{Check bank approval}
+    L --> M{Bank approved?}
+    M -->|No| N[Return 409 Conflict]
+    M -->|Yes| O{Check supplier already approved?}
+    O -->|Yes| P[Return 409 Conflict]
+    O -->|No| Q[Call SCF Chaincode ApproveContract]
+    Q --> R[Update supplier approval status]
+    R --> S{Check all suppliers approved?}
+    S -->|No| T[Return supplier approval success]
+    S -->|Yes| U[Call SCF Chaincode FinalizeContract]
+    U --> V[Distribute tokens to suppliers]
+    V --> W[Create blockchain event]
+    W --> X[Submit to PBFT consensus]
+    X --> Y[Return 200 OK]
+```
 
 #### 3. Token APIs
 
@@ -1019,6 +1146,20 @@ Authorization: Bearer <jwt_token>
 - 401: Unauthorized
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive tokens list request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Parse query parameters]
+    E --> F[Apply role-based filtering]
+    F --> G[Query tokens from database]
+    G --> H[Apply pagination]
+    H --> I[Format response data]
+    I --> J[Return 200 OK with tokens list]
+```
+
 ##### GET /api/v1/tokens/{id} - Get Token Details
 **Mô tả**: Lấy chi tiết token
 
@@ -1047,6 +1188,20 @@ Authorization: Bearer <jwt_token>
 - 401: Unauthorized
 - 404: Token not found
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive token details request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Extract token ID from path]
+    E --> F[Query token from database]
+    F --> G{Token exists?}
+    G -->|No| H[Return 404 Not Found]
+    G -->|Yes| I[Format token data]
+    I --> J[Return 200 OK with token details]
+```
 
 ##### POST /api/v1/tokens/transfer - Transfer Token
 **Mô tả**: Chuyển token giữa các suppliers
@@ -1087,6 +1242,30 @@ Authorization: Bearer <jwt_token>
 - 409: Transfer failed (business logic error)
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive token transfer request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Check user role]
+    E --> F{Is SUPPLIER role?}
+    F -->|No| G[Return 403 Forbidden]
+    F -->|Yes| H[Validate transfer data]
+    H --> I{Data valid?}
+    I -->|No| J[Return 400 Bad Request]
+    I -->|Yes| K[Check sender balance]
+    K --> L{Sufficient balance?}
+    L -->|No| M[Return 409 Conflict]
+    L -->|Yes| N[Call SCF Chaincode TransferToken]
+    N --> O[Update sender balance -amount]
+    O --> P[Update receiver balance +amount]
+    P --> Q[Create blockchain event]
+    Q --> R[Submit to PBFT consensus]
+    R --> S[Return transfer response]
+    S --> T[Return 200 OK]
+```
+
 ##### POST /api/v1/tokens/settle - Settle Token
 **Mô tả**: Supplier tất toán token với bank
 
@@ -1123,6 +1302,29 @@ Authorization: Bearer <jwt_token>
 - 409: Settlement failed (business logic error)
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive token settlement request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Check user role]
+    E --> F{Is SUPPLIER role?}
+    F -->|No| G[Return 403 Forbidden]
+    F -->|Yes| H[Validate settlement data]
+    H --> I{Data valid?}
+    I -->|No| J[Return 400 Bad Request]
+    I -->|Yes| K[Check supplier balance]
+    K --> L{Has balance to settle?}
+    L -->|No| M[Return 409 Conflict]
+    L -->|Yes| N[Call SCF Chaincode SettleToken]
+    N --> O[Set supplier balance to 0]
+    O --> P[Create blockchain event]
+    P --> Q[Submit to PBFT consensus]
+    Q --> R[Return settlement response]
+    R --> S[Return 200 OK]
+```
+
 #### 4. Supplier APIs
 
 ##### GET /api/v1/suppliers - List Suppliers
@@ -1155,6 +1357,17 @@ Authorization: Bearer <jwt_token>
 - 401: Unauthorized
 - 500: Internal server error
 
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive suppliers list request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Query suppliers from database]
+    E --> F[Format response data]
+    F --> G[Return 200 OK with suppliers list]
+```
+
 ##### GET /api/v1/balances/account/{accountId} - Get Account Balances
 **Mô tả**: Lấy balances của một account
 
@@ -1185,6 +1398,23 @@ Authorization: Bearer <jwt_token>
 - 403: Insufficient permissions
 - 404: Account not found
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive account balances request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Extract account ID from path]
+    E --> F[Check user permissions]
+    F --> G{Has access to account?}
+    G -->|No| H[Return 403 Forbidden]
+    G -->|Yes| I[Query balances from database]
+    I --> J{Account exists?}
+    J -->|No| K[Return 404 Not Found]
+    J -->|Yes| L[Format balance data]
+    L --> M[Return 200 OK with balances]
+```
 
 #### 5. Ledger APIs
 
@@ -1231,6 +1461,26 @@ Authorization: Bearer <jwt_token>
 - 403: Insufficient permissions
 - 404: Contract not found
 - 500: Internal server error
+
+**Flowchart**:
+```mermaid
+flowchart TD
+    A[Receive contract ledger request] --> B[Validate JWT token]
+    B --> C{Token valid?}
+    C -->|No| D[Return 401 Unauthorized]
+    C -->|Yes| E[Extract contract ID from path]
+    E --> F[Query contract from database]
+    F --> G{Contract exists?}
+    G -->|No| H[Return 404 Not Found]
+    G -->|Yes| I[Check user permissions]
+    I --> J{Has access to contract?}
+    J -->|No| K[Return 403 Forbidden]
+    J -->|Yes| L[Query events by contractId]
+    L --> M[Query blocks containing events]
+    M --> N[Derive blockchain state]
+    N --> O[Format ledger data]
+    O --> P[Return 200 OK with ledger]
+```
 
 ### Peer Services APIs (Go - Ports 8082-8084)
 
