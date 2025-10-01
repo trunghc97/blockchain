@@ -14,19 +14,19 @@
 ### Mục đích
 Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho Supply Chain Finance là nền tảng phân quyền sử dụng hybrid architecture. Hệ thống cho phép:
 - **gRPC Direct Communication**: Real-time communication giữa Peer nodes và Orderer cluster
-- **Raft Consensus**: Distributed consensus đảm bảo global transaction ordering
-- **Channel-based Access Control**: SCF và Audit channels với permissions riêng biệt
+- **PBFT Consensus**: Practical Byzantine Fault Tolerance đảm bảo global transaction ordering
+- **SCF Chaincode Service**: Smart contract engine chứa toàn bộ business logic
 - **High Throughput**: Direct gRPC streaming với load balancing và connection pooling
-- **Fault Tolerance**: Raft replication và automatic failover trong orderer cluster
+- **Fault Tolerance**: PBFT consensus với f=1 fault tolerance trong orderer cluster
 - **Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
 
 ### Phạm vi
 - **Direct Communication Architecture**: gRPC làm communication backbone cho tất cả blockchain operations
-- **Channel Segregation**: `scf-channel` cho SCF transactions, `audit-channel` cho bank approvals
+- **Chaincode Decoupling**: Business logic tách riêng trong SCF Chaincode Service
 - **Real-time Processing**: Peers submit transactions và nhận blocks qua persistent gRPC streams
-- **Consensus Replication**: Raft đảm bảo transaction ordering với fault tolerance
+- **PBFT Consensus**: Byzantine fault tolerant consensus với 3f+1 nodes (f=1)
 - **Load Distribution**: Client-side load balancing và leader affinity routing
-- **Network Isolation**: Private network cho peers, direct gRPC access đến orderer cluster
+- **Network Isolation**: Private networks cho peers, orderers, và chaincode service
 
 ## Kiến trúc hệ thống
 
@@ -71,45 +71,49 @@ graph TB
     end
 
     subgraph "gRPC Communication Layer"
+        subgraph "SCF Chaincode Service"
+            CHAINCODE[Smart Contract Engine<br/>Port: 9090<br/>Business Logic Service]
+        end
+
         subgraph "Orderer Service"
-            ORD_SVC[gRPC OrdererService<br/>SubmitTransaction<br/>SubscribeBlocks<br/>GetBlocks]
+            ORD_SVC[gRPC OrdererService<br/>SubmitTx<br/>StreamBlocks<br/>PBFT Consensus]
         end
     end
 
     subgraph "Permissioned Peer Network"
         subgraph "Peer Main Bank"
             MB_API[REST API<br/>Port: 8082]
-            MB_GRPC[gRPC Client<br/>Audit Channel]
-            MB_DB[(MongoDB<br/>blockchain_main_bank)]
+            MB_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
+            MB_DB[(MongoDB<br/>blockchain_private)]
         end
 
         subgraph "Peer Supplier"
             SUP_API[REST API<br/>Port: 8083]
-            SUP_GRPC[gRPC Client<br/>SCF Channel]
-            SUP_DB[(MongoDB<br/>blockchain_supplier)]
+            SUP_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
+            SUP_DB[(MongoDB<br/>blockchain_private)]
         end
 
         subgraph "Peer Anchor"
             ANC_API[REST API<br/>Port: 8084]
-            ANC_GRPC[gRPC Client<br/>SCF Channel]
-            ANC_DB[(MongoDB<br/>blockchain_anchor)]
+            ANC_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
+            ANC_DB[(MongoDB<br/>blockchain_private)]
         end
     end
 
-    subgraph "Orderer Cluster (Raft)"
-        ORD1[Orderer Node 1<br/>Port: 7050<br/>Raft Consensus<br/>Block Ordering]
-        ORD2[Orderer Node 2<br/>Port: 7060<br/>Raft Consensus<br/>Block Ordering]
-        ORD3[Orderer Node 3<br/>Port: 7070<br/>Raft Consensus<br/>Block Ordering]
+    subgraph "Orderer Cluster (PBFT)"
+        ORD1[Orderer Leader<br/>Port: 7050<br/>PBFT Consensus<br/>Block Ordering]
+        ORD2[Orderer Follower<br/>Port: 7060<br/>PBFT Participant]
+        ORD3[Orderer Follower<br/>Port: 7070<br/>PBFT Participant]
     end
 
     subgraph "Shared Services"
-        SHARED_DB[(MongoDB Shared<br/>User Management<br/>blockchain_shared)]
+        SHARED_DB[(MongoDB Shared<br/>Dual Databases<br/>Private + Public)]
     end
 
     subgraph "Network Topology"
         PUBLIC_NW[Public Network<br/>External Access]
         PRIVATE_NW[Private Network<br/>Peer Network<br/>Isolated]
-        ORDERER_BRIDGE[Orderer Bridge<br/>gRPC Access]
+        ORDERER_NW[Orderer Network<br/>PBFT Consensus<br/>Isolated]
     end
 
     %% Communication Flow
@@ -118,39 +122,47 @@ graph TB
     JAVA -->|Smart Routing| SUP_API
     JAVA -->|Smart Routing| ANC_API
 
-    MB_API -->|Submit Transactions| MB_GRPC
-    SUP_API -->|Submit Transactions| SUP_GRPC
-    ANC_API -->|Submit Transactions| ANC_GRPC
+    %% Peers invoke chaincode service for business logic
+    MB_API -->|gRPC| CHAINCODE
+    SUP_API -->|gRPC| CHAINCODE
+    ANC_API -->|gRPC| CHAINCODE
 
-    MB_GRPC -->|gRPC Direct| ORD_SVC
-    SUP_GRPC -->|gRPC Direct| ORD_SVC
-    ANC_GRPC -->|gRPC Direct| ORD_SVC
+    %% Peers submit transactions directly to orderer
+    MB_API --> MB_GRPC
+    SUP_API --> SUP_GRPC
+    ANC_API --> ANC_GRPC
 
-    ORD_SVC -->|Raft Consensus| ORD1
-    ORD_SVC -->|Raft Consensus| ORD2
-    ORD_SVC -->|Raft Consensus| ORD3
+    MB_GRPC -->|SubmitTx| ORD_SVC
+    SUP_GRPC -->|SubmitTx| ORD_SVC
+    ANC_GRPC -->|SubmitTx| ORD_SVC
 
-    ORD1 -->|Ordered Blocks| MB_GRPC
-    ORD2 -->|Ordered Blocks| SUP_GRPC
-    ORD3 -->|Ordered Blocks| ANC_GRPC
+    ORD_SVC -->|PBFT Consensus| ORD1
+    ORD_SVC -->|PBFT Consensus| ORD2
+    ORD_SVC -->|PBFT Consensus| ORD3
+
+    ORD1 -->|StreamBlocks| MB_GRPC
+    ORD1 -->|StreamBlocks| SUP_GRPC
+    ORD1 -->|StreamBlocks| ANC_GRPC
 
     MB_GRPC -->|Apply Blocks| MB_DB
     SUP_GRPC -->|Apply Blocks| SUP_DB
     ANC_GRPC -->|Apply Blocks| ANC_DB
+
+    CHAINCODE -->|State Management| SHARED_DB
     JAVA --> SHARED_DB
 
-    ORD1 -.->|Raft Replication| ORD2
-    ORD2 -.->|Raft Replication| ORD3
-    ORD3 -.->|Raft Replication| ORD1
+    ORD1 -.->|PBFT Replication| ORD2
+    ORD2 -.->|PBFT Replication| ORD3
+    ORD3 -.->|PBFT Replication| ORD1
 
     PUBLIC_NW -.->|External Access| FE
     PUBLIC_NW -.->|External Access| JAVA
     PRIVATE_NW -.->|Internal| MB_GRPC
     PRIVATE_NW -.->|Internal| SUP_GRPC
     PRIVATE_NW -.->|Internal| ANC_GRPC
-    ORDERER_BRIDGE -.->|gRPC Access| ORD1
-    ORDERER_BRIDGE -.->|gRPC Access| ORD2
-    ORDERER_BRIDGE -.->|gRPC Access| ORD3
+    ORDERER_NW -.->|PBFT Network| ORD1
+    ORDERER_NW -.->|PBFT Network| ORD2
+    ORDERER_NW -.->|PBFT Network| ORD3
 ```
 
 ### Kiến trúc Microservices với Multi-peer Network
@@ -220,54 +232,80 @@ graph TB
 
 #### 1. Transaction Submission Flow
 
-Khi một peer node (private blockchain) cần thực hiện một blockchain operation, nó sẽ submit transaction trực tiếp lên orderer cluster (public blockchain) thông qua giao thức gRPC:
+Khi một peer node cần thực hiện một blockchain operation, nó sẽ:
+1. Invoke SCF Chaincode Service để xử lý business logic
+2. Submit transaction trực tiếp lên orderer cluster thông qua gRPC
+3. Nhận block stream từ orderer và apply state changes
 
 ```mermaid
 sequenceDiagram
-    participant Peer as Private Peer Node
-    participant Orderer as Public Orderer Cluster (Leader)
+    participant Peer as Peer Node
+    participant Chaincode as SCF Chaincode Service
+    participant Orderer as Orderer Cluster (Leader)
     participant Followers as Orderer Followers
-    participant Peers as Other Peer Nodes
 
-    Peer->>Orderer: SubmitTransaction(tx, channel)
-    Orderer->>Orderer: Validate transaction format & permissions
-    Orderer->>Followers: Replicate transaction via Raft
-    Followers->>Orderer: Acknowledge replication
+    Peer->>Chaincode: Invoke smart contract method
+    Chaincode->>Chaincode: Execute business logic & state changes
+    Chaincode->>Peer: Return transaction data
 
-    Note over Orderer,Followers: Raft Consensus
-    Orderer->>Orderer: Order transaction with existing txs
-    Orderer->>Orderer: Create block when ready
-    Orderer->>Peer: Return transaction ID + estimated commit time
+    Peer->>Orderer: SubmitTransaction(tx)
+    Orderer->>Orderer: Validate transaction format & signatures
+    Orderer->>Followers: Replicate via PBFT consensus
+    Followers->>Orderer: Send prepare messages
 
-    Note over Orderer: Async Block Creation
-    Orderer->>Orderer: Include transaction in next block
-    Orderer->>Peers: Broadcast new block via gRPC streams
-    Peers->>Peers: Validate and apply block to local state
+    Note over Orderer,Followers: PBFT Consensus
+    Orderer->>Orderer: Pre-Prepare → Prepare → Commit phases
+    Orderer->>Orderer: Create block when quorum reached
+    Orderer->>Peer: StreamBlocks (real-time)
+
+    Peer->>Peer: Validate and apply block to local state
+    Chaincode->>Chaincode: Persist state changes
 ```
 
 **Các bước chi tiết:**
 
-1. **Direct gRPC Submission**
-   - Peer node tạo transaction với đầy đủ metadata (timestamp, channel, signatures)
-   - Gọi trực tiếp gRPC method `SubmitTransaction()` đến orderer leader
-   - Orderer validate transaction format, signatures, và channel permissions
+1. **Chaincode Invocation**
+   - Peer gọi gRPC methods của SCF Chaincode Service
+   - Chaincode thực thi business logic và tạo transaction data
+   - State changes được persist trong MongoDB
 
-2. **Raft Consensus Replication**
-   - Leader orderer replicate transaction đến tất cả followers
-   - Followers validate và acknowledge replication
-   - Quorum phải được đạt để transaction được accept
+2. **Direct gRPC Submission**
+   - Peer submit transaction trực tiếp đến orderer leader qua gRPC
+   - Orderer validate transaction format và digital signatures
+   - Không còn channel-based permissions
 
-3. **Transaction Ordering**
-   - Transactions được order theo timestamp của khi submit
-   - Raft consensus đảm bảo global ordering across cluster
-   - Leader maintain total order của tất cả transactions
+3. **PBFT Consensus**
+   - Leader orderer broadcast Pre-Prepare message
+   - Followers gửi Prepare messages
+   - Quorum 2f+1 signatures để commit block
+   - f=1 fault tolerance với 3 nodes
 
-4. **Block Creation & Broadcasting**
-   - Leader tạo blocks khi đủ transactions hoặc timeout
-   - Blocks được broadcast trực tiếp đến tất cả peers qua gRPC
-   - Peers validate blocks và apply state changes local
+4. **Real-time Block Streaming**
+   - Orderer stream finalized blocks trực tiếp đến peers
+   - Peers validate blocks và apply state changes
+   - Persistent gRPC connections đảm bảo real-time delivery
 
 #### 2. gRPC Communication Protocol
+
+**SCF Chaincode Service Interface:**
+
+```protobuf
+service SCFChaincodeService {
+  // Contract Management
+  rpc CreateContract(CreateContractRequest) returns (CreateContractResponse);
+  rpc ApproveContract(ApproveContractRequest) returns (ApproveContractResponse);
+  rpc FinalizeContract(FinalizeContractRequest) returns (FinalizeContractResponse);
+
+  // Token Management
+  rpc IssueToken(IssueTokenRequest) returns (IssueTokenResponse);
+  rpc TransferToken(TransferTokenRequest) returns (TransferTokenResponse);
+  rpc SettleToken(SettleTokenRequest) returns (SettleTokenResponse);
+
+  // Query Operations
+  rpc GetContract(GetContractRequest) returns (GetContractResponse);
+  rpc GetToken(GetTokenRequest) returns (GetTokenResponse);
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
+}
 
 **Orderer Service Interface:**
 
@@ -276,25 +314,20 @@ service OrdererService {
   // Submit transaction trực tiếp đến orderer cluster
   rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
 
-  // Query trạng thái của transaction
-  rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
-
   // Streaming blocks từ orderer đến peer
-  rpc SubscribeBlocks(SubscribeBlocksRequest) returns (stream Block);
+  rpc StreamBlocks(StreamBlocksRequest) returns (stream Block);
 
-  // Sync missing blocks
-  rpc GetBlocks(GetBlocksRequest) returns (stream Block);
+  // Query block information
+  rpc GetBlockInfo(GetBlockInfoRequest) returns (GetBlockInfoResponse);
 }
 
 message SubmitTransactionRequest {
-  string channel = 1;           // "scf-channel" or "audit-channel"
-  string transaction_id = 2;    // Unique transaction ID
-  string sender_id = 3;         // Peer node ID (peer_main_bank, peer_supplier, etc.)
-  string transaction_type = 4;  // CONTRACT_CREATE, TOKEN_TRANSFER, etc.
-  bytes transaction_data = 5;   // Serialized transaction payload
-  bytes signature = 6;          // Digital signature của peer
-  int64 timestamp = 7;          // Unix timestamp của khi submit
-  map<string, string> metadata = 8; // Additional metadata
+  string transaction_id = 1;    // Unique transaction ID
+  string sender_id = 2;         // Peer node ID (peer_main_bank, peer_supplier, etc.)
+  string transaction_type = 3;  // CONTRACT_CREATE, TOKEN_TRANSFER, etc.
+  bytes transaction_data = 4;   // Serialized transaction payload
+  bytes signature = 5;          // Digital signature của peer
+  int64 timestamp = 6;          // Unix timestamp của khi submit
 }
 
 message SubmitTransactionResponse {
@@ -302,33 +335,12 @@ message SubmitTransactionResponse {
   string status = 2;            // "ACCEPTED", "REJECTED"
   string message = 3;           // Status message
   int64 estimated_commit_time = 4; // Estimated time transaction sẽ được commit
-  int64 current_block_height = 5; // Current block height của channel
+  int64 current_block_height = 5; // Current block height
 }
 
-message GetTransactionStatusRequest {
-  string channel = 1;
-  string transaction_id = 2;
-}
-
-message GetTransactionStatusResponse {
-  string transaction_id = 1;
-  string status = 2;            // "PENDING", "COMMITTED", "FAILED"
-  int64 block_number = 3;       // Block chứa transaction (nếu đã commit)
-  string block_hash = 4;        // Hash của block chứa transaction
-  int64 commit_timestamp = 5;   // Timestamp khi transaction được commit
-  string failure_reason = 6;    // Lý do fail (nếu có)
-}
-
-message SubscribeBlocksRequest {
-  string channel = 1;           // Channel muốn subscribe
-  int64 start_block = 2;        // Block number bắt đầu stream (0 = từ genesis)
-  repeated string peer_id = 3;  // Peer ID để authorization
-}
-
-message GetBlocksRequest {
-  string channel = 1;
-  int64 start_block = 2;        // Block bắt đầu
-  int64 end_block = 3;          // Block kết thúc (0 = đến latest)
+message StreamBlocksRequest {
+  int64 start_block = 1;        // Block number bắt đầu stream (0 = từ latest)
+  string peer_id = 2;           // Peer ID để authorization
 }
 
 message Block {
@@ -366,108 +378,94 @@ enum TransactionStatus {
 }
 ```
 
-#### 3. Channel-based Transaction Routing
+#### 3. Unified Transaction Processing
 
-Hệ thống sử dụng 2 kênh chính cho việc routing transactions, mỗi channel có gRPC endpoints riêng và permissions cụ thể:
+Hệ thống sử dụng kiến trúc unified cho tất cả transaction types, không phân biệt channels. Tất cả peers có quyền submit transactions và receive blocks:
 
-- **`scf-channel`**: Cho Supply Chain Finance transactions
-  - Contract creation, approval (tất cả peers)
-  - Token transfers giữa suppliers (suppliers + anchor)
-  - Token settlements (suppliers)
+**Transaction Types:**
+- **Contract Operations**: Create, approve, finalize contracts
+- **Token Operations**: Issue, transfer, settle tokens
+- **Query Operations**: Get contracts, tokens, balances
 
-- **`audit-channel`**: Cho Bank Audit transactions
-  - Bank approvals (chỉ main bank)
-  - Regulatory reporting (chỉ main bank)
-  - Compliance events (chỉ main bank)
-
-**Channel Configuration:**
+**Processing Configuration:**
 
 ```yaml
-channels:
-  scf-channel:
-    id: "scf-channel"
-    orderer_endpoints:
-      - "orderer1:7050"
-      - "orderer2:7060"
-      - "orderer3:7070"
-    grpc_service: "OrdererService"
-    permissions:
-      submit:  # Peers được phép submit transactions
-        - peer_main_bank
-        - peer_supplier
-        - peer_anchor
-      subscribe:  # Peers được phép subscribe blocks
-        - peer_main_bank
-        - peer_supplier
-        - peer_anchor
-    block_creation:
-      min_transactions: 5      # Tạo block khi có ít nhất 5 tx
-      max_wait_time: 5000ms    # Hoặc sau 5 giây
-      max_block_size: 100      # Tối đa 100 tx per block
-
-  audit-channel:
-    id: "audit-channel"
-    orderer_endpoints:
-      - "orderer1:7050"
-      - "orderer2:7060"
-      - "orderer3:7070"
-    grpc_service: "OrdererService"
-    permissions:
-      submit:  # Chỉ main bank được submit
-        - peer_main_bank
-      subscribe:  # Tất cả peers được subscribe để audit
-        - peer_main_bank
-        - peer_supplier
-        - peer_anchor
-    block_creation:
-      min_transactions: 1       # Tạo block ngay khi có tx
-      max_wait_time: 1000ms     # Hoặc sau 1 giây
-      max_block_size: 50        # Tối đa 50 tx per block
-```
+transaction_processing:
+  orderer_endpoints:
+    - "orderer-ord1:7050"
+    - "orderer-ord2:7060"
+    - "orderer-ord3:7070"
+  grpc_service: "OrdererService"
+  permissions:
+    submit:  # All peers can submit transactions
+      - peer_main_bank
+      - peer_supplier
+      - peer_anchor
+    stream:  # All peers can stream blocks
+      - peer_main_bank
+      - peer_supplier
+      - peer_anchor
+  block_creation:
+    min_transactions: 5      # Create block with at least 5 tx
+    max_wait_time: 5000ms    # Or after 5 seconds
+    max_block_size: 100      # Maximum 100 tx per block
+  pbft_config:
+    fault_tolerance: 1       # f=1
+    total_nodes: 3           # 3f+1 = 4 nodes minimum, we use 3
+    consensus_timeout: 3000ms
 
 #### 4. Consensus và Ordering Mechanism
 
-**Raft Consensus trong Orderer Cluster:**
+**PBFT Consensus trong Orderer Cluster:**
 
 ```mermaid
 graph TD
-    A[Peer Submits Tx via gRPC] --> B[Leader Orderer]
-    B --> C[Validate Tx & Permissions]
-    C --> D[Assign Sequence Number]
-    D --> E[Replicate to Followers via Raft]
-    E --> F{Quorum Reached?}
-    F -->|Yes| G[Accept Transaction]
-    F -->|No| H[Retry Replication]
+    A[Peer Submits Tx via gRPC] --> B[Chaincode Service]
+    B --> C[Execute Business Logic]
+    C --> D[Return Tx Data to Peer]
 
-    G --> I[Buffer Ordered Transactions]
-    I --> J{Block Creation Trigger?}
-    J -->|Min Tx Count OR Timeout| K[Create Block]
-    J -->|No| I
+    D --> E[Leader Orderer]
+    E --> F[Validate Tx & Signatures]
+    F --> G[Pre-Prepare Phase]
+    G --> H[Broadcast to Followers]
 
-    K --> L[Calculate Merkle Root]
-    L --> M[Generate Block Hash]
-    M --> N[Broadcast Block via gRPC Streams]
-    N --> O[Peers Validate & Apply]
+    H --> I[Prepare Phase]
+    I --> J{2f+1 Prepare Msgs?}
+    J -->|Yes| K[Commit Phase]
+    J -->|No| L[Wait/Retry]
+
+    K --> M{2f+1 Commit Msgs?}
+    M -->|Yes| N[Create Block]
+    M -->|No| L
+
+    N --> O[Calculate Merkle Root]
+    O --> P[Generate Block Hash]
+    P --> Q[ECDSA Sign Block]
+    Q --> R[Stream Block to Peers]
+    R --> S[Peers Validate & Apply]
 ```
 
-**Ordering Rules:**
-1. **Transaction Sequencing**: Mỗi transaction được assign sequence number ngay khi submit
-2. **Timestamp-based Ordering**: Transactions với cùng sequence được order theo timestamp
-3. **Raft Consensus**: Đảm bảo tất cả orderers agree trên global order
-4. **Block Creation Triggers**:
-   - Minimum transaction count per channel
-   - Maximum wait time timeout
-   - Maximum block size limit
-5. **Block Hash Calculation**: `SHA256(prevBlockHash + merkleRoot + blockTimestamp)`
+**PBFT Ordering Rules:**
+1. **Pre-Prepare Phase**: Leader broadcasts proposed block to followers
+2. **Prepare Phase**: Followers validate và send prepare messages
+3. **Commit Phase**: Quorum 2f+1 signatures required to commit
+4. **Fault Tolerance**: f=1 với 3 nodes (tối thiểu 3f+1 = 4 nodes)
+5. **Block Creation Triggers**:
+   - Minimum transaction count (5 tx)
+   - Maximum wait time timeout (5 giây)
+   - Maximum block size limit (100 tx)
+6. **Block Hash Calculation**: `SHA256(prevBlockHash + merkleRoot + blockTimestamp)`
 
-**Raft Log Structure:**
+**PBFT Message Structure:**
 ```go
-type RaftLogEntry struct {
+type PBFTMessage struct {
+    Type          string // "PRE-PREPARE", "PREPARE", "COMMIT"
+    ViewNumber    int64
     SequenceNumber int64
-    Transaction    *Transaction
-    Channel        string
-    Timestamp      int64
-    Hash           string  // Hash của transaction
+    Block         *Block
+    SenderID      string
+    Signature     []byte
+    Timestamp     int64
 }
 ```
 
@@ -756,50 +754,165 @@ sequenceDiagram
 
 ### API Gateway (Java Spring Boot - Port 8080)
 
-#### 1. Contract APIs
+#### 1. Authentication APIs
 
-##### POST /api/contracts - Create Contract
-**Mô tả**: Tạo hợp đồng mới
+##### POST /api/auth/login
+**Mô tả**: Xác thực người dùng và trả về JWT token
 
 **Input**:
 ```json
 {
-  "buyer": "ANCHOR001",
-  "bankId": "BANK001",
-  "description": "Supply Chain Contract",
-  "suppliers": [
-    {
-      "supplierId": "SUP001",
-      "name": "Supplier 1",
-      "allocatedAmount": 50000.00
-    }
-  ],
-  "totalAmount": 50000.00
+  "username": "bank_user",
+  "password": "secure_password"
 }
 ```
 
-**Output**:
+**Output (Success - 200)**:
 ```json
 {
-  "id": "contract_1234567890",
-  "status": "success"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "BANK001",
+    "username": "bank_user",
+    "role": "BANK",
+    "name": "Main Bank"
+  },
+  "expiresIn": 3600
 }
 ```
 
 **Mã lỗi**:
-- 400: Invalid contract data
+- 400: Missing username or password
+- 401: Invalid credentials
+- 403: Account disabled
 - 500: Internal server error
 
-**Flowchart**:
-```mermaid
-flowchart TD
-    A[Receive request] --> B[Validate input]
-    B --> C[Call Go service /contract/create]
-    C --> D[Return response]
+#### 2. Contract APIs
+
+##### POST /api/v1/contracts - Create Contract
+**Mô tả**: Anchor tạo hợp đồng mới với file upload
+
+**Input** (FormData):
+```
+buyer: "ANCHOR001"
+bankId: "BANK001"
+description: "Supply Chain Contract Q1 2024"
+suppliers: [
+  {
+    "supplierId": "SUP001",
+    "name": "ABC Corp",
+    "allocatedAmount": 30000.00
+  },
+  {
+    "supplierId": "SUP002",
+    "name": "XYZ Ltd",
+    "allocatedAmount": 20000.00
+  }
+]
+totalAmount: 50000.00
+file: [PDF file upload]
 ```
 
-##### POST /api/contracts/{id}/approve-bank - Bank Approve Contract
-**Mô tả**: Ngân hàng phê duyệt hợp đồng
+**Output (Success - 200)**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "created",
+  "message": "Contract created successfully"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid contract data or file format
+- 401: Unauthorized (invalid JWT)
+- 403: Insufficient permissions (not ANCHOR role)
+- 413: File too large (>10MB)
+- 422: Invalid PDF file
+- 500: Internal server error
+
+##### GET /api/v1/contracts - List Contracts
+**Mô tả**: Lấy danh sách contracts theo role
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Query Parameters**:
+- status: "PENDING", "BANK_APPROVED", "EXECUTED"
+- page: 0 (default)
+- size: 20 (default)
+
+**Output (Success - 200)**:
+```json
+{
+  "contracts": [
+    {
+      "_id": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+      "description": "Supply Chain Contract Q1",
+      "anchorId": "ANCHOR001",
+      "bankId": "BANK001",
+      "bankApproved": true,
+      "totalAmount": 50000.00,
+      "status": "EXECUTED",
+      "createdAt": "2024-01-01T10:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "currentPage": 0,
+  "size": 20
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 403: Insufficient permissions
+- 500: Internal server error
+
+##### GET /api/v1/contracts/{id} - Get Contract Details
+**Mô tả**: Lấy chi tiết contract
+
+**Path Parameters**:
+- id: Contract ID
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "_id": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "description": "Supply Chain Contract Q1",
+  "anchorId": "ANCHOR001",
+  "bankId": "BANK001",
+  "bankApproved": true,
+  "suppliers": [
+    {
+      "supplierId": "SUP001",
+      "name": "ABC Corp",
+      "allocatedAmount": 30000.00,
+      "approved": true
+    }
+  ],
+  "totalAmount": 50000.00,
+  "status": "EXECUTED",
+  "fileUrl": "/api/files/contract_3ef8cdb0.pdf",
+  "createdAt": "2024-01-01T10:00:00Z"
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 403: Insufficient permissions
+- 404: Contract not found
+- 500: Internal server error
+
+##### POST /api/v1/contracts/{id}/approve-bank - Bank Approve Contract
+**Mô tả**: Ngân hàng phê duyệt và phát hành token
 
 **Input**:
 ```json
@@ -808,29 +921,467 @@ flowchart TD
 }
 ```
 
-**Output**:
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
 ```json
 {
-  "status": "success",
-  "message": "Contract approved by bank successfully",
-  "tokenId": "token_contract_123"
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "approved",
+  "message": "Contract approved by bank and token issued successfully"
 }
 ```
 
 **Mã lỗi**:
+- 400: Invalid request data
+- 401: Unauthorized
+- 403: Insufficient permissions (not BANK role)
 - 404: Contract not found
-- 403: Bank does not have permission
+- 409: Contract already approved
 - 500: Internal server error
 
-#### 2. Token APIs
+##### POST /api/v1/contracts/{id}/approve - Supplier Approve Contract
+**Mô tả**: Supplier phê duyệt phần của mình trong contract
 
-##### POST /api/v1/tokens/transfer - Transfer Token
-**Mô tả**: Chuyển token giữa các tài khoản
+**Path Parameters**:
+- id: Contract ID
 
 **Input**:
 ```json
 {
-  "tokenId": "token_contract_123",
+  "supplierId": "SUP001"
+}
+```
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "supplierId": "SUP001",
+  "status": "approved",
+  "message": "Contract approved by supplier successfully"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid request data
+- 401: Unauthorized
+- 403: Insufficient permissions (not SUPPLIER role)
+- 404: Contract not found
+- 409: Supplier already approved
+- 500: Internal server error
+
+#### 3. Token APIs
+
+##### GET /api/v1/tokens - List Tokens
+**Mô tả**: Lấy danh sách tokens
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Query Parameters**:
+- page: 0 (default)
+- size: 20 (default)
+
+**Output (Success - 200)**:
+```json
+{
+  "tokens": [
+    {
+      "_id": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+      "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+      "symbol": "TK-3ef8cdb0",
+      "totalSupply": 50000.00,
+      "issuer": "SYSTEM",
+      "owner": "ANCHOR001",
+      "createdAt": "2024-01-01T10:00:00Z"
+    }
+  ],
+  "totalElements": 1,
+  "totalPages": 1,
+  "currentPage": 0,
+  "size": 20
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 500: Internal server error
+
+##### GET /api/v1/tokens/{id} - Get Token Details
+**Mô tả**: Lấy chi tiết token
+
+**Path Parameters**:
+- id: Token ID
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "_id": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "symbol": "TK-3ef8cdb0",
+  "totalSupply": 50000.00,
+  "issuer": "SYSTEM",
+  "owner": "ANCHOR001",
+  "createdAt": "2024-01-01T10:00:00Z"
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 404: Token not found
+- 500: Internal server error
+
+##### POST /api/v1/tokens/transfer - Transfer Token
+**Mô tả**: Chuyển token giữa các suppliers
+
+**Input**:
+```json
+{
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "from": "SUP001",
+  "to": "SUP002",
+  "amount": 10000.00
+}
+```
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "transferId": "transfer_1234567890",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "from": "SUP001",
+  "to": "SUP002",
+  "amount": 10000.00,
+  "status": "transferred",
+  "message": "Token transferred successfully"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid transfer data or insufficient balance
+- 401: Unauthorized
+- 403: Insufficient permissions (not SUPPLIER role)
+- 404: Token not found
+- 409: Transfer failed (business logic error)
+- 500: Internal server error
+
+##### POST /api/v1/tokens/settle - Settle Token
+**Mô tả**: Supplier tất toán token với bank
+
+**Input**:
+```json
+{
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "supplierId": "SUP001"
+}
+```
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "settlementId": "settlement_1234567890",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "supplierId": "SUP001",
+  "settledAmount": 25000.00,
+  "status": "settled",
+  "message": "Token settled successfully with bank"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid settlement data or no balance to settle
+- 401: Unauthorized
+- 403: Insufficient permissions (not SUPPLIER role)
+- 404: Token not found
+- 409: Settlement failed (business logic error)
+- 500: Internal server error
+
+#### 4. Supplier APIs
+
+##### GET /api/v1/suppliers - List Suppliers
+**Mô tả**: Lấy danh sách suppliers
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "suppliers": [
+    {
+      "id": "SUP001",
+      "name": "ABC Corporation",
+      "username": "supplier1"
+    },
+    {
+      "id": "SUP002",
+      "name": "XYZ Ltd",
+      "username": "supplier2"
+    }
+  ]
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 500: Internal server error
+
+##### GET /api/v1/balances/account/{accountId} - Get Account Balances
+**Mô tả**: Lấy balances của một account
+
+**Path Parameters**:
+- accountId: Account ID (supplier ID)
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "accountId": "SUP001",
+  "balances": [
+    {
+      "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+      "balance": 25000.00,
+      "lastUpdated": "2024-01-01T12:00:00Z"
+    }
+  ]
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 403: Insufficient permissions
+- 404: Account not found
+- 500: Internal server error
+
+#### 5. Ledger APIs
+
+##### GET /api/v1/contracts/{id}/ledger - Get Contract Ledger
+**Mô tả**: Xem lịch sử blockchain của contract
+
+**Path Parameters**:
+- id: Contract ID
+
+**Headers**:
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Output (Success - 200)**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "events": [
+    {
+      "eventId": "evt_1234567890",
+      "eventType": "CONTRACT_CREATED",
+      "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+      "actorId": "ANCHOR001",
+      "timestamp": "2024-01-01T10:00:00Z",
+      "blockNumber": 1,
+      "blockHash": "block_hash_123..."
+    }
+  ],
+  "blocks": [
+    {
+      "blockNumber": 1,
+      "timestamp": "2024-01-01T10:00:00Z",
+      "hash": "block_hash_123...",
+      "previousHash": "genesis",
+      "transactionCount": 1
+    }
+  ]
+}
+```
+
+**Mã lỗi**:
+- 401: Unauthorized
+- 403: Insufficient permissions
+- 404: Contract not found
+- 500: Internal server error
+
+### Peer Services APIs (Go - Ports 8082-8084)
+
+#### 1. Peer Anchor APIs (Port 8084)
+
+##### POST /contract/create - Create Contract
+**Mô tả**: Tạo contract mới và submit lên blockchain
+
+**Input**: Same as Java API
+
+**Output (Success - 200)**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "created",
+  "message": "Contract created successfully"
+}
+```
+
+**Mã lỗi**:
+- 400: Invalid contract data
+- 500: Internal server error (SCF Chaincode or Orderer failure)
+
+##### GET /contract/{id} - Get Contract Details
+**Mô tả**: Lấy chi tiết contract từ local database
+
+**Output**: Same as Java API
+
+##### GET /contract/list - List Contracts
+**Mô tả**: Lấy danh sách contracts đã tạo
+
+**Output**: Same as Java API
+
+#### 2. Peer Main Bank APIs (Port 8082)
+
+##### POST /contract/{id}/approve-bank - Bank Approve Contract
+**Mô tả**: Bank phê duyệt contract và phát hành token
+
+**Input/Output**: Same as Java API
+
+##### GET /contract/list - List All Contracts
+**Mô tả**: Bank xem tất cả contracts
+
+**Output**: Same as Java API
+
+##### GET /contract/{id}/ledger - Get Contract Ledger
+**Mô tả**: Xem audit trail của contract
+
+**Output**: Same as Java API
+
+##### GET /token/issued/{bankId} - Get Issued Tokens
+**Mô tả**: Bank xem tokens đã phát hành
+
+**Output**: Same as Java API
+
+#### 3. Peer Supplier APIs (Port 8083)
+
+##### POST /contract/{id}/approve - Supplier Approve Contract
+**Mô tả**: Supplier phê duyệt contract
+
+**Input/Output**: Same as Java API
+
+##### POST /token/transfer - Transfer Token
+**Mô tả**: Chuyển token giữa suppliers
+
+**Input/Output**: Same as Java API
+
+##### POST /token/settle - Settle Token
+**Mô tả**: Tất toán token với bank
+
+**Input/Output**: Same as Java API
+
+##### GET /balances/account/{accountId} - Get Account Balances
+**Mô tả**: Lấy balances của supplier
+
+**Output**: Same as Java API
+
+### SCF Chaincode Service APIs (Go - Port 9090)
+
+#### Smart Contract Methods
+
+##### CreateContract - Tạo Contract
+**Input**:
+```json
+{
+  "anchorId": "ANCHOR001",
+  "suppliers": [
+    {
+      "supplierId": "SUP001",
+      "name": "ABC Corp",
+      "allocatedAmount": 30000.00
+    }
+  ],
+  "totalAmount": 50000.00,
+  "description": "Supply Chain Contract",
+  "fileHash": "pdf_hash_123..."
+}
+```
+
+**Output**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "success"
+}
+```
+
+##### ApproveContract - Phê duyệt Contract
+**Input**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "supplierId": "SUP001"
+}
+```
+
+**Output**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "supplierId": "SUP001",
+  "status": "approved"
+}
+```
+
+##### IssueToken - Phát hành Token
+**Input**:
+```json
+{
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "issuer": "SYSTEM",
+  "totalSupply": 50000.00
+}
+```
+
+**Output**:
+```json
+{
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "contractId": "3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "issued"
+}
+```
+
+##### TransferToken - Chuyển Token
+**Input**:
+```json
+{
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
   "from": "SUP001",
   "to": "SUP002",
   "amount": 10000.00
@@ -840,23 +1391,17 @@ flowchart TD
 **Output**:
 ```json
 {
-  "status": "transferred",
-  "message": "Token transferred successfully"
+  "transferId": "transfer_1234567890",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "status": "transferred"
 }
 ```
 
-**Mã lỗi**:
-- 400: Invalid transfer data / Insufficient balance
-- 404: Token not found
-- 500: Internal server error
-
-##### POST /api/v1/tokens/settle - Settle Token
-**Mô tả**: Tất toán token với ngân hàng
-
+##### SettleToken - Tất toán Token
 **Input**:
 ```json
 {
-  "tokenId": "token_contract_123",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
   "supplierId": "SUP001"
 }
 ```
@@ -864,555 +1409,23 @@ flowchart TD
 **Output**:
 ```json
 {
-  "status": "settled",
-  "message": "Token settled successfully with bank",
-  "settledAmount": 25000.00
+  "settlementId": "settlement_1234567890",
+  "tokenId": "token_3ef8cdb0-266f-451d-a6f6-fa163502360b",
+  "settledAmount": 25000.00,
+  "status": "settled"
 }
 ```
 
-**Mã lỗi**:
-- 400: Supplier has no balance
-- 404: Token not found
-- 500: Internal server error
+### Orderer gRPC APIs (Ports 7050-7070)
 
-### Blockchain Service APIs (Golang - Port 8081)
+#### PBFT Consensus APIs
 
-#### 1. Contract APIs
+##### SubmitTransaction - Submit Transaction
+**Mô tả**: Submit transaction to PBFT consensus
 
-##### POST /contract/create
-**Input/Output**: Same as Java API
+**Input/Output**: Same as protobuf definition above
 
-##### POST /contract/{id}/approve-bank
-**Input/Output**: Same as Java API
+##### StreamBlocks - Stream Blocks
+**Mô tả**: Real-time streaming of finalized blocks
 
-##### POST /contract/{id}/approve
-**Input**:
-```json
-{
-  "supplierId": "SUP001"
-}
-```
-
-**Output**:
-```json
-{
-  "status": "success",
-  "message": "Contract approved successfully"
-}
-```
-
-#### 2. Token APIs
-
-##### POST /token/transfer
-**Input/Output**: Same as Java API
-
-##### POST /token/settle
-**Input/Output**: Same as Java API
-
-##### GET /token/{id}
-**Output**:
-```json
-{
-  "id": "token_contract_123",
-  "contractId": "contract_123",
-  "symbol": "TK123",
-  "total": 50000.00,
-  "issuer": "SYSTEM",
-  "owner": "ANCHOR001",
-  "createdAt": "2024-01-01T10:00:00Z"
-}
-```
-
-##### GET /tokens
-**Output**:
-```json
-[
-  {
-    "id": "token_contract_123",
-    "contractId": "contract_123",
-    "symbol": "TK123",
-    "total": 50000.00,
-    "issuer": "SYSTEM",
-    "owner": "ANCHOR001",
-    "createdAt": "2024-01-01T10:00:00Z"
-  }
-]
-```
-
-#### 3. Query APIs
-
-##### GET /contract/list
-**Output**:
-```json
-[
-  {
-    "_id": "contract_123",
-    "description": "Supply Chain Contract",
-    "anchorId": "ANCHOR001",
-    "bankId": "BANK001",
-    "bankApproved": true,
-    "suppliers": [...],
-    "approved": true,
-    "createdAt": "2024-01-01T09:00:00Z"
-  }
-]
-```
-
-##### GET /balances/account/{accountId}
-**Output**:
-```json
-[
-  {
-    "tokenId": "token_contract_123",
-    "account": "SUP001",
-    "balance": 25000.00
-  }
-]
-```
-
-## Blockchain Technical Details
-
-### Thuật toán Hash và Cơ chế Blockchain
-
-#### 1. Thuật toán Hash
-Hệ thống sử dụng **SHA256** làm thuật toán hash chính cho blockchain:
-
-```go
-func calculateBlockHash(blockNumber int64, timestamp, previousHash string, events []string) string {
-    hashData := map[string]interface{}{
-        "blockNumber":  blockNumber,
-        "timestamp":    timestamp,
-        "previousHash": previousHash,
-        "events":       events,
-    }
-
-    jsonData, err := json.Marshal(hashData)
-    if err != nil {
-        return ""
-    }
-
-    hash := sha256.Sum256(jsonData)
-    return hex.EncodeToString(hash[:])
-}
-```
-
-**Đặc điểm của SHA256:**
-- **Cryptographic Hash Function**: Một chiều, không thể reverse
-- **Deterministic**: Input giống nhau luôn tạo ra output giống nhau
-- **Avalanche Effect**: Thay đổi nhỏ trong input tạo ra thay đổi lớn trong output
-- **Collision Resistant**: Rất khó tìm 2 inputs khác nhau tạo ra cùng hash
-
-#### 2. Merkle Tree Implementation
-
-Hệ thống sử dụng **Merkle Tree** để tối ưu hóa việc verify các events trong block:
-
-```go
-func (b *BlockBuilder) calculateMerkleRoot(eventIds []string) string {
-    if len(eventIds) == 0 {
-        return b.calculateSHA256("")
-    }
-
-    // Calculate SHA256 for each event ID
-    hashes := make([]string, len(eventIds))
-    for i, eventId := range eventIds {
-        hashes[i] = b.calculateSHA256(eventId)
-    }
-
-    // Build merkle tree
-    for len(hashes) > 1 {
-        var newHashes []string
-        for i := 0; i < len(hashes); i += 2 {
-            left := hashes[i]
-            right := ""
-            if i+1 < len(hashes) {
-                right = hashes[i+1]
-            } else {
-                right = left // Duplicate last hash if odd number
-            }
-            newHashes = append(newHashes, b.calculateSHA256(left+right))
-        }
-        hashes = newHashes
-    }
-
-    return hashes[0]
-}
-```
-
-**Lợi ích của Merkle Tree:**
-- **Efficient Verification**: Có thể verify một event mà không cần toàn bộ events
-- **Data Integrity**: Phát hiện được thay đổi trong bất kỳ event nào
-- **Compact Representation**: Merkle root đại diện cho tất cả events
-
-#### 3. Cách nối các Chain với nhau
-
-Mỗi block được nối với block trước thông qua **Previous Hash**:
-
-```mermaid
-graph LR
-    B0[Genesis Block<br/>hash: H0] --> B1[Block 1<br/>prevHash: H0<br/>hash: H1]
-    B1 --> B2[Block 2<br/>prevHash: H1<br/>hash: H2]
-    B2 --> B3[Block 3<br/>prevHash: H2<br/>hash: H3]
-
-    B0 --> H0((H0))
-    B1 --> H1((H1))
-    B2 --> H2((H2))
-    B3 --> H3((H3))
-```
-
-**Công thức hash của block:**
-```
-Block_Hash = SHA256(prevHash + merkleRoot + timestamp)
-```
-
-**Genesis Block:**
-- `blockNumber = 1`
-- `prevHash = "genesis"`
-- `hash = SHA256("genesis" + merkleRoot + timestamp)`
-
-#### 4. Block Verification Algorithm
-
-Để verify một block, hệ thống kiểm tra:
-
-```go
-func verifyBlock(block Block) bool {
-    // 1. Verify block hash
-    expectedHash := calculateBlockHash(
-        block.BlockNumber,
-        block.Timestamp.Format(time.RFC3339),
-        block.PrevHash,
-        extractEventIds(block.Events)
-    )
-
-    if expectedHash != block.Hash {
-        return false // Block hash is invalid
-    }
-
-    // 2. Verify merkle root
-    eventIds := extractEventIds(block.Events)
-    expectedMerkleRoot := calculateMerkleRoot(eventIds)
-
-    if expectedMerkleRoot != block.MerkleRoot {
-        return false // Merkle root is invalid
-    }
-
-    // 3. Verify events exist and are valid
-    for _, event := range block.Events {
-        if !verifyEvent(event) {
-            return false // Event is invalid
-        }
-    }
-
-    return true // Block is valid
-}
-```
-
-**Các bước verification:**
-
-1. **Hash Verification**:
-   ```
-   calculated_hash = SHA256(blockNumber + timestamp + prevHash + events[])
-   if calculated_hash != block.hash → INVALID
-   ```
-
-2. **Merkle Root Verification**:
-   ```
-   calculated_merkle = buildMerkleTree(eventIds[])
-   if calculated_merkle != block.merkleRoot → INVALID
-   ```
-
-3. **Chain Continuity Verification**:
-   ```
-   if block.prevHash != previousBlock.hash → INVALID
-   ```
-
-4. **Event Verification**:
-   - Kiểm tra event tồn tại trong database
-   - Verify timestamp hợp lệ
-   - Kiểm tra business logic rules
-
-#### 5. Blockchain Integrity Verification
-
-Để verify toàn bộ blockchain:
-
-```mermaid
-flowchart TD
-    A[Start from Genesis Block] --> B[Verify Block 1]
-    B --> C{Block Valid?}
-    C -->|No| D[INVALID Blockchain]
-    C -->|Yes| E[Verify Next Block]
-    E --> F{More Blocks?}
-    F -->|Yes| B
-    F -->|No| G[VALID Blockchain]
-
-    E --> H[Check Chain Continuity]
-    H --> I{prevHash matches previous block hash?}
-    I -->|No| D
-    I -->|Yes| F
-```
-
-**Verification Rules:**
-- **Genesis Block**: prevHash = "genesis"
-- **Chain Continuity**: block[N].prevHash == block[N-1].hash
-- **No Double Spending**: Token balances không âm, tổng balance = token.total
-- **Business Rules**: Contract states hợp lệ, approvals đúng quyền
-
-#### 6. Security Features
-
-**Cryptographic Security:**
-- SHA256 collision resistance
-- Timestamp prevents replay attacks
-- Event ordering đảm bảo causality
-
-**Data Integrity:**
-- Merkle tree cho efficient verification
-- Block hash chaining
-- Immutable audit trail
-
-**Tamper Detection:**
-- Bất kỳ thay đổi nào trong events sẽ làm thay đổi merkle root
-- Thay đổi merkle root làm thay đổi block hash
-- Thay đổi block hash làm đứt chain continuity
-
-## Thiết kế Database
-
-### MongoDB Collections
-
-#### 1. contracts
-```javascript
-{
-  _id: "contract_1234567890",
-  description: "Supply Chain Contract Q1 2024",
-  anchorId: "ANCHOR001",
-  supplierId: "SUP001", // Primary supplier
-  bankId: "BANK001",
-  bankApproved: true,
-  amount: 50000.00,
-  suppliers: [
-    {
-      supplierId: "SUP001",
-      name: "ABC Corporation",
-      amount: 30000.00,
-      status: "APPROVED"
-    },
-    {
-      supplierId: "SUP002",
-      name: "XYZ Ltd",
-      amount: 20000.00,
-      status: "APPROVED"
-    }
-  ],
-  approvers: ["SUP001", "SUP002"],
-  approved: true,
-  createdAt: "2024-01-01T09:00:00Z",
-  status: "APPROVED"
-}
-```
-
-**Indexes**:
-- `{bankId: 1}`
-- `{approved: 1}`
-- `{bankApproved: 1}`
-
-#### 2. tokens
-```javascript
-{
-  _id: "token_contract_1234567890",
-  contractId: "contract_1234567890",
-  symbol: "TK567890",
-  total: 50000.00,
-  issuer: "SYSTEM",
-  owner: "ANCHOR001",
-  createdAt: "2024-01-01T10:00:00Z"
-}
-```
-
-**Indexes**:
-- `{contractId: 1}`
-- `{issuer: 1}`
-- `{owner: 1}`
-
-#### 3. balances
-```javascript
-{
-  tokenId: "token_contract_1234567890",
-  account: "SUP001",
-  balance: 25000.00,
-  transferredFrom: "ANCHOR001"
-}
-```
-
-**Indexes**:
-- `{tokenId: 1, account: 1}` (unique compound index)
-- `{account: 1}`
-
-#### 4. events
-```javascript
-{
-  eventId: "evt_1234567890",
-  eventType: "CONTRACT_CREATED", // or CONTRACT_BANK_APPROVED, SUPPLIER_APPROVED, etc.
-  contractId: "contract_1234567890",
-  tokenId: "token_contract_1234567890", // optional
-  supplierId: "SUP001", // optional
-  bankId: "BANK001", // optional
-  anchorId: "ANCHOR001", // optional
-  totalAmount: 50000.00, // optional
-  settledAmount: 25000.00, // optional
-  description: "Bank approved contract and system auto-generated token for anchor",
-  timestamp: "2024-01-01T10:00:00Z"
-}
-```
-
-**Indexes**:
-- `{contractId: 1}`
-- `{tokenId: 1}`
-- `{eventType: 1}`
-- `{timestamp: 1}`
-
-#### 5. blocks
-```javascript
-{
-  blockNumber: 1,
-  timestamp: "2024-01-01T10:00:00Z",
-  events: ["evt_1234567890"],
-  previousHash: "genesis",
-  hash: "a1b2c3d4e5f6...",
-  merkleRoot: "m1n2o3p4q5r6..."
-}
-```
-
-**Indexes**:
-- `{blockNumber: 1}` (unique)
-- `{timestamp: 1}`
-
-#### 6. users
-```javascript
-{
-  id: "SUP001",
-  username: "supplier1",
-  password: "$2a$10$encrypted_password",
-  role: "SUPPLIER" // ANCHOR, BANK, SUPPLIER
-}
-```
-
-**Indexes**:
-- `{id: 1}` (unique)
-- `{username: 1}` (unique)
-- `{role: 1}`
-
-### Database Relationships
-
-```
-contracts (1) ──── (1) tokens
-    │                    │
-    │                    │
-    └─── suppliers[] ────┼─── (many) balances
-                         │
-                         └─── (many) events
-                              │
-                              └─── (many) blocks
-```
-
-### Data Flow Patterns
-
-1. **Contract Creation**: `contracts` → `events` → `blocks`
-2. **Token Issuance**: `contracts` → `tokens` → `balances` → `events` → `blocks`
-3. **Token Transfer**: `balances` → `events` → `blocks`
-4. **Token Settlement**: `balances` → `events` → `blocks`
-
-## Luồng Xử lý Nghiệp vụ
-
-### 1. Contract Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> Draft: Contract Created
-    Draft --> BankApproval: Bank Approves
-    BankApproval --> SupplierApproval: Suppliers Approve
-    SupplierApproval --> Active: All Approved
-    Active --> Completed: All Tokens Settled
-    Completed --> [*]
-
-    Draft --> Cancelled: Cancelled
-    BankApproval --> Cancelled: Cancelled
-    SupplierApproval --> Cancelled: Cancelled
-    Cancelled --> [*]
-```
-
-### 2. Token Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> Created: Token Created<br/>(by System)
-    Created --> Distributed: Distributed to<br/>Suppliers
-    Distributed --> Trading: Peer-to-peer<br/>Trading
-    Trading --> Settled: Settled with Bank
-    Settled --> [*]
-
-    Trading --> PartiallySettled: Some Suppliers<br/>Settled
-    PartiallySettled --> Settled: All Settled
-```
-
-### 3. Business Rules
-
-#### Contract Rules
-- Chỉ Anchor có thể tạo contract
-- Bank phải phê duyệt trước khi suppliers có thể phê duyệt
-- Tất cả suppliers phải phê duyệt để contract active
-- Contract chỉ có thể bị hủy khi ở trạng thái Draft
-
-#### Token Rules
-- Token được tạo tự động bởi hệ thống khi bank phê duyệt
-- Token ban đầu thuộc về Anchor
-- Token được phân phối cho suppliers khi tất cả đã phê duyệt
-- Suppliers có thể chuyển token cho nhau
-- Suppliers có thể tất toán token với bank bất cứ lúc nào
-
-#### Balance Rules
-- Balance không được âm
-- Tổng balance của tất cả accounts cho một token luôn bằng token.total
-- Balance được cập nhật atomically trong transfer operations
-
-#### Blockchain Rules
-- Mọi operation quan trọng đều tạo event
-- Mọi event được ghi vào block
-- Block hash được tính toán từ previous block + current data
-- Blockchain đảm bảo immutability và audit trail
-
-### 4. Security Considerations
-
-#### Authentication & Authorization
-- JWT tokens cho user authentication
-- Role-based access control (ANCHOR, BANK, SUPPLIER)
-- API-level authorization checks
-
-#### Data Integrity
-- Blockchain hashing đảm bảo data integrity
-- Database transactions cho multi-document operations
-- Audit trail hoàn chỉnh
-
-#### Network Security
-- HTTPS cho tất cả communications
-- CORS configuration
-- Docker network isolation
-
-### 5. Performance Considerations
-
-#### Database Optimization
-- Compound indexes cho frequent queries
-- Pagination cho large result sets
-- Connection pooling
-
-#### Caching Strategy
-- Redis cache cho frequently accessed data (future enhancement)
-- In-memory caching cho user sessions
-
-#### Scalability
-- Horizontal scaling với multiple instances
-- Database sharding strategy
-- Load balancing configuration
-
----
-
-*Document Version: 1.0*
-*Last Updated: January 2024*
-*Author: System Design Team*
+**Input/Output**: Same as protobuf definition above

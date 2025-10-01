@@ -1,81 +1,73 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với PBFT Consensus & Events Sync & Chaincode Service
+# Hệ thống Blockchain Supply Chain Finance (SCF) với gRPC Direct Communication & PBFT Consensus
 
-## Tổng quan kiến trúc với PBFT Consensus, Events Sync & Chaincode Service
+## Tổng quan kiến trúc với gRPC Direct Communication, PBFT Consensus & SCF Chaincode Service
 
-### 🆕 **Cập nhật kiến trúc: Chaincode Service Integration**
-Hệ thống đã được nâng cấp với **SCF Chaincode Service** - microservice riêng biệt chứa toàn bộ business logic smart contracts:
+### 🆕 **Cập nhật kiến trúc: SCF Chaincode Service & gRPC Direct Communication**
+Hệ thống đã được triển khai với kiến trúc hoàn toàn mới sử dụng **gRPC Direct Communication** thay thế Kafka:
 
-- **🔗 SCF Chaincode Service**: Smart Contract Engine trên port 9090, chứa business logic cho contracts & tokens
-- **📡 gRPC Communication**: Peer services sử dụng gRPC clients để invoke chaincode methods
+- **🔗 SCF Chaincode Service**: Smart Contract Engine trên port 9090, chứa toàn bộ business logic cho contracts & tokens
+- **📡 gRPC Direct Communication**: Peer services giao tiếp trực tiếp với Orderer cluster qua gRPC APIs
 - **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
 - **💾 State Persistence**: Chaincode service quản lý state trong MongoDB blockchain_private
 
-## Tổng quan kiến trúc với PBFT Consensus & Events Sync
+## Tổng quan kiến trúc với gRPC Direct Communication & PBFT Consensus
 
-Hệ thống blockchain permissioned đã được triển khai với PBFT (Practical Byzantine Fault Tolerance) làm consensus algorithm và Events Sync architecture:
+Hệ thống blockchain permissioned đã được triển khai với gRPC Direct Communication và PBFT (Practical Byzantine Fault Tolerance) consensus:
 
-- **✅ PBFT-only Ordering**: Peers gửi transactions trực tiếp tới Orderer cluster qua gRPC, PBFT consensus đảm bảo ordering
+- **✅ gRPC-only Communication**: Peers gửi transactions trực tiếp tới Orderer cluster qua gRPC, không cần message broker trung gian
+- **✅ PBFT Consensus**: 3-node orderer cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
 - **✅ Events Sync**: Sự kiện được đồng bộ real-time từ private sang public blockchain
-- **✅ No Kafka Dependency**: Loại bỏ Kafka/Zookeeper khỏi core ordering path, chỉ giữ lại nếu cần integration ngoài
-- **✅ Direct gRPC Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, SubmitEvent, StreamBlocks, Consensus)
-- **✅ PBFT Consensus Engine**: 3-node cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
+- **✅ Direct Peer-to-Orderer Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, StreamBlocks, Consensus)
 - **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
-- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua gRPC
+- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua persistent gRPC streams
 - **✅ Dual Blockchain**: Private operations + Public transparency với Events Sync
 
 ## Trạng thái triển khai hiện tại ✅
 
-### ✅ **Hoàn thành (11/11 containers chạy ổn định)**
+### ✅ **Hoàn thành (9/9 containers chạy ổn định)**
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
 | **scf-chaincode** | 9090 | ✅ Running | Smart Contract Engine - business logic cho contracts & tokens |
-| **peer-main-bank** | 8082 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
-| **peer-supplier** | 8083 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
-| **peer-anchor** | 8084 | ✅ Running | REST API gateway, gRPC client to chaincode, Events Sync |
-| **orderer-ord1** | 7050 | ✅ Running | PBFT primary, consensus engine, Events Sync handler |
-| **orderer-ord2** | 7060 | ✅ Running | PBFT replica, consensus participant |
-| **orderer-ord3** | 7070 | ✅ Running | PBFT replica, consensus participant |
+| **peer-main-bank** | 8082 | ✅ Running | REST API gateway, gRPC client to orderer & chaincode |
+| **peer-supplier** | 8083 | ✅ Running | REST API gateway, gRPC client to orderer & chaincode |
+| **peer-anchor** | 8084 | ✅ Running | REST API gateway, gRPC client to orderer & chaincode |
+| **orderer-ord1** | 7050 | ✅ Running | PBFT leader, consensus engine, block ordering |
+| **orderer-ord2** | 7060 | ✅ Running | PBFT follower, consensus participant |
+| **orderer-ord3** | 7070 | ✅ Running | PBFT follower, consensus participant |
 | **mongo-shared** | 27017 | ✅ Running | Dual databases: blockchain_private + blockchain_public |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
-### ✅ **PBFT Consensus & Events Sync End-to-End Test**
+### ✅ **gRPC Direct Communication & PBFT Consensus End-to-End Test**
 
 ```bash
-# Test successful - Events Sync từ private → public blockchain ✅
-Private Event → gRPC SubmitEvent → Orderer Events Sync → Public Blockchain ✅
+# Test successful - gRPC Direct Communication từ private → orderer cluster ✅
+Private Transaction → gRPC SubmitTx → PBFT Consensus → Block Creation → Events Sync ✅
 
 # Complete test flow:
-✅ CONTRACT_CREATED synced to public
-✅ CONTRACT_BANK_APPROVED_TOKEN_GENERATED synced to public
-✅ CONTRACT_FULLY_APPROVED synced to public
-✅ TOKEN_TRANSFERRED synced to public
-✅ TOKEN_SETTLED synced to public
+✅ CONTRACT_CREATED via gRPC direct submission
+✅ CONTRACT_BANK_APPROVED_TOKEN_GENERATED via gRPC direct submission
+✅ CONTRACT_FULLY_APPROVED via gRPC direct submission
+✅ TOKEN_TRANSFERRED via gRPC direct submission
+✅ TOKEN_SETTLED via gRPC direct submission
 
-Sample synchronized events in blockchain_public:
-[
-  {
-    "eventId": "0845917c79d28d6da74de438031b97a4",
-    "eventType": "CONTRACT_CREATED",
-    "contractId": "0845917c79d28d6da74de438031b97a4",
-    "timestamp": "2025-09-30T17:04:28Z"
-  },
-  {
-    "eventId": "97c62bed6b37aafe867c455f86e10518",
-    "eventType": "CONTRACT_FULLY_APPROVED",
-    "contractId": "0845917c79d28d6da74de438031b97a4",
-    "tokenId": "token_0845917c79d28d6da74de438031b97a4",
-    "supplierId": "SUPPLIER001",
-    "timestamp": "2025-09-30T17:09:17Z"
-  }
-]
+Sample gRPC transaction submission:
+{
+  "channel": "scf-channel",
+  "transaction_id": "tx_0845917c79d28d6da74de438031b97a4",
+  "sender_id": "peer-anchor",
+  "transaction_type": "CONTRACT_CREATE",
+  "transaction_data": "...",
+  "signature": "ecdsa_sig_1...",
+  "timestamp": "2025-10-01T16:00:48Z"
+}
 
-Sample stored block with PBFT signatures:
+Sample PBFT consensus block with signatures:
 {
   "_id": "block_1",
   "height": 1,
-  "timestamp": "2025-09-29T10:30:00Z",
+  "timestamp": "2025-10-01T16:00:48Z",
   "transactions": [...],
   "previous_hash": "genesis",
   "hash": "block_hash_123...",
@@ -103,13 +95,13 @@ Sample stored block with PBFT signatures:
 ### ✅ **Implemented APIs**
 
 **Peer Anchor (Port 8084) - Contract Creation:**
-- `POST /contract/create` - Anchor tạo contract + ledger entry + gRPC SubmitTx + Events Sync
-- `GET /contract/{id}` - Contract details
+- `POST /contract/create` - Anchor tạo contract + gRPC SubmitTx to orderer + Events Sync
+- `GET /contract/{id}` - Contract details from local DB
 - `GET /contract/list` - Danh sách contracts đã tạo
 - `GET /health` - Health check
 
 **Peer Main Bank (Port 8082) - Bank Operations:**
-- `POST /contract/{id}/approve-bank` - Bank phê duyệt + token issuance + Events Sync
+- `POST /contract/{id}/approve-bank` - Bank phê duyệt + token issuance + gRPC SubmitTx
 - `GET /contract/list` - List tất cả contracts
 - `GET /contract/{id}` - Contract details
 - `GET /contract/{id}/ledger` - Contract audit trail
@@ -117,16 +109,22 @@ Sample stored block with PBFT signatures:
 - `GET /tokens` - All tokens issued by bank
 
 **Peer Supplier (Port 8083) - Token Operations:**
-- `POST /contract/{id}/approve` - Supplier phê duyệt contract + Events Sync
-- `POST /token/transfer` - Token transfer giữa suppliers + Events Sync
-- `POST /token/settle` - Supplier settle token với bank + Events Sync
+- `POST /contract/{id}/approve` - Supplier phê duyệt contract + gRPC SubmitTx
+- `POST /token/transfer` - Token transfer giữa suppliers + gRPC SubmitTx
+- `POST /token/settle` - Supplier settle token với bank + gRPC SubmitTx
 - `GET /balances/account/{accountId}` - Account balances của supplier
 - `GET /health` - Health check
 
+**SCF Chaincode Service (Port 9090) - Smart Contracts:**
+- `CreateContract()` - Tạo contract và state
+- `ApproveContract()` - Phê duyệt contract
+- `IssueToken()` - Phát hành token
+- `TransferToken()` - Chuyển token
+- `SettleToken()` - Tất toán token
+
 **Orderer gRPC APIs (Ports 7050-7070):**
-- `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for consensus
-- `SubmitEvent(SubmitEventRequest) → SubmitEventReply` - Events Sync to public blockchain
-- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks
+- `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for PBFT consensus
+- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks to peers
 - `Consensus(ConsensusMsg) → Ack` - PBFT consensus messages between orderers
 
 ```mermaid
@@ -150,28 +148,32 @@ graph TB
         PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "PBFT Consensus & Events Sync Layer"
+    subgraph "gRPC Direct Communication & PBFT Consensus Layer"
         subgraph "Orderer Cluster (PBFT 3f+1 = 4 nodes, f=1)"
-            ORD1[Orderer Primary<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Events Sync]
-            ORD2[Orderer Replica<br/>Port 7060<br/>✅ PBFT Replica<br/>Consensus Participant]
-            ORD3[Orderer Replica<br/>Port 7070<br/>✅ PBFT Replica<br/>Consensus Participant]
+            ORD1[Orderer Leader<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Block Streaming]
+            ORD2[Orderer Follower<br/>Port 7060<br/>✅ PBFT Follower<br/>Consensus Participant]
+            ORD3[Orderer Follower<br/>Port 7070<br/>✅ PBFT Follower<br/>Consensus Participant]
             subgraph "PBFT Consensus Phases"
                 PREP[Pre-Prepare<br/>Leader broadcasts<br/>proposed block]
-                PREPARE[Prepare<br/>Replicas validate<br/>send prepare msgs]
+                PREPARE[Prepare<br/>Followers validate<br/>send prepare msgs]
                 COMMIT[Commit<br/>Quorum reached<br/>2f+1 signatures]
-                FINAL[Finalize<br/>Block committed<br/>Events Sync]
+                FINAL[Finalize<br/>Block committed<br/>Stream to peers]
             end
         end
-        subgraph "Events Sync Services"
-            EVSYNC[Events Sync Handler<br/>gRPC SubmitEvent<br/>Public Blockchain]
+        subgraph "SCF Chaincode Service"
+            CHAINCODE[Smart Contract Engine<br/>Port 9090<br/>✅ Running<br/>Business Logic]
+            STATE_MGMT[State Management<br/>MongoDB Integration<br/>Token & Contract State]
+        end
+        subgraph "gRPC Communication"
+            GRPC_DIRECT[gRPC Direct APIs<br/>SubmitTx, StreamBlocks<br/>No Message Broker]
             SIG[ECDSA Signatures<br/>Per-orderer keys<br/>Quorum validation]
             CRYPTO[Merkle Trees<br/>Block integrity<br/>SHA256 hashing]
         end
     end
 
-    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Events Sync)"
+    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Direct)"
         MB_API[REST API<br/>Port 8082<br/>✅ Running]
-        MB_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
+        MB_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
         subgraph "Main Bank Logic ✅"
             MB_CON[Contract Approval<br/>Bank Validation ✅]
             MB_TOK[Token Issuance<br/>Bank Authority ✅]
@@ -180,9 +182,9 @@ graph TB
         MB_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
     end
 
-    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Events Sync)"
+    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Direct)"
         SUP_API[REST API<br/>Port 8083<br/>✅ Running]
-        SUP_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
+        SUP_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
         subgraph "Supplier Logic ✅"
             SUP_APP[Contract Approval<br/>Supplier Validation ✅]
             SUP_TOK[Token Transfer<br/>P2P Circulation ✅]
@@ -191,9 +193,9 @@ graph TB
         SUP_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
     end
 
-    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Events Sync)"
+    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Direct)"
         ANC_API[REST API<br/>Port 8084<br/>✅ Running]
-        ANC_GRPC[gRPC Client<br/>✅ Active<br/>SubmitTx + SubmitEvent]
+        ANC_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
         subgraph "Anchor Logic ✅"
             ANC_CON[Contract Creation<br/>Anchor Authority ✅]
             ANC_TOK[Token Reception<br/>Initial Ownership ✅]
@@ -207,7 +209,7 @@ graph TB
         PUBLIC_DB[(MongoDB Public ✅<br/>Events Transparency<br/>blockchain_public)]
     end
 
-    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC → Orderer PBFT → Events Sync
+    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC Direct → Orderer PBFT → Block Streaming
     ANC --> AR
     BNK --> AR
     SUP --> AR
@@ -217,14 +219,19 @@ graph TB
     PR --> SUP_API
     PR --> ANC_API
 
-    %% Peers submit transactions & events via gRPC to Orderer
+    %% Peers invoke chaincode service for business logic
+    MB_API -->|gRPC| CHAINCODE
+    SUP_API -->|gRPC| CHAINCODE
+    ANC_API -->|gRPC| CHAINCODE
+
+    %% Peers submit transactions directly via gRPC to Orderer
     MB_API --> MB_GRPC
     SUP_API --> SUP_GRPC
     ANC_API --> ANC_GRPC
 
-    MB_GRPC -->|SubmitTx + SubmitEvent| ORD1
-    SUP_GRPC -->|SubmitTx + SubmitEvent| ORD1
-    ANC_GRPC -->|SubmitTx + SubmitEvent| ORD1
+    MB_GRPC -->|SubmitTx| ORD1
+    SUP_GRPC -->|SubmitTx| ORD1
+    ANC_GRPC -->|SubmitTx| ORD1
 
     %% PBFT Consensus Process
     ORD1 --> PREP
@@ -234,15 +241,14 @@ graph TB
     ORD3 --> PREPARE
     PREPARE --> COMMIT
     COMMIT --> FINAL
-    FINAL --> EVSYNC
 
-    %% Events Sync to Public Blockchain
-    EVSYNC --> PUBLIC_DB
-
-    %% Orderers stream finalized blocks to peers
+    %% Orderers stream finalized blocks directly to peers
     FINAL -->|StreamBlocks| MB_GRPC
     FINAL -->|StreamBlocks| SUP_GRPC
     FINAL -->|StreamBlocks| ANC_GRPC
+
+    %% Chaincode manages state in shared database
+    CHAINCODE -->|State| PRIVATE_DB
 
     %% Database connections
     MB_API --> PRIVATE_DB
@@ -645,54 +651,47 @@ graph TB
         end
     end
 
-    subgraph "Kafka Event-Driven Messaging Layer"
-        subgraph "Zookeeper Cluster"
-            ZK1[Zookeeper 1<br/>Port 2181<br/>Coordination Service]
-            ZK2[Zookeeper 2<br/>Port 2182<br/>Coordination Service]
-            ZK3[Zookeeper 3<br/>Port 2183<br/>Coordination Service]
+    subgraph "gRPC Direct Communication Layer"
+        subgraph "SCF Chaincode Service"
+            CHAINCODE[Smart Contract Engine<br/>Port 9090<br/>Business Logic Service]
+            SC_METHODS[Contract Management<br/>Token Operations<br/>State Persistence]
         end
 
-        subgraph "Kafka Broker Cluster"
-            KB1[Kafka Broker 1<br/>Port 9092<br/>Leader election]
-            KB2[Kafka Broker 2<br/>Port 9093<br/>Replication]
-            KB3[Kafka Broker 3<br/>Port 9094<br/>Replication]
-
-            subgraph "SCF Topics"
-                SCF_TX[scf-channel-tx<br/>Contract & Token Events<br/>Partitions: 1, Replication: 3]
-                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks<br/>Partitions: 1, Replication: 3]
-            end
-
-            subgraph "Audit Topics"
-                AUDIT_TX[audit-channel-tx<br/>Bank Approval Events<br/>Partitions: 1, Replication: 3]
-                AUDIT_BLOCKS[audit-channel-blocks<br/>Audit Blocks<br/>Partitions: 1, Replication: 3]
-            end
+        subgraph "gRPC Communication Protocols"
+            GRPC_TX[gRPC Transaction APIs<br/>SubmitTx, StreamBlocks<br/>Direct Peer-to-Orderer]
+            GRPC_CHAINCODE[gRPC Chaincode APIs<br/>CreateContract, TransferToken<br/>Business Logic Calls]
+            GRPC_CONSENSUS[gRPC Consensus APIs<br/>PBFT Messages<br/>Leader Election]
         end
 
-        subgraph "Kafka Streams Processing"
-            KSP[Kafka Streams<br/>Event aggregation<br/>Real-time processing]
+        subgraph "gRPC Streaming & State Sync"
+            STREAMING[gRPC Bidirectional Streams<br/>Real-time Block Delivery<br/>Connection Pooling]
+            STATE_SYNC[State Synchronization<br/>Merkle Tree Validation<br/>Block Integrity]
         end
     end
 
     subgraph "Peer Services Layer (Endorsing Peers)"
         subgraph "Peer Main Bank (✅ IMPLEMENTED)"
             MB_API[REST API<br/>Port 8082<br/>✅ Contract creation]
-            MB_KAFKA[Kafka Producer<br/>✅ SCF & Audit Events]
+            MB_GRPC[gRPC Client<br/>✅ Direct to Orderer<br/>SubmitTx + StreamBlocks]
             MB_HANDLER[Contract Handlers<br/>Bank approval, Token issuance]
-            MB_DB[(MongoDB Main Bank<br/>✅ World State<br/>blockchain_main_bank)]
+            MB_CHAINCODE[gRPC to Chaincode<br/>Business Logic Calls]
+            MB_DB[(MongoDB Private<br/>✅ World State<br/>blockchain_private)]
         end
 
         subgraph "Peer Supplier (✅ IMPLEMENTED)"
             SUP_API[REST API<br/>Port 8083<br/>✅ Token transfer]
-            SUP_KAFKA[Kafka Producer<br/>✅ SCF Events]
+            SUP_GRPC[gRPC Client<br/>✅ Direct to Orderer<br/>SubmitTx + StreamBlocks]
             SUP_HANDLER[Token Handlers<br/>Transfer, Balance mgmt]
-            SUP_DB[(MongoDB Supplier<br/>✅ World State<br/>blockchain_supplier)]
+            SUP_CHAINCODE[gRPC to Chaincode<br/>Business Logic Calls]
+            SUP_DB[(MongoDB Private<br/>✅ World State<br/>blockchain_private)]
         end
 
         subgraph "Peer Anchor (✅ IMPLEMENTED)"
             ANC_API[REST API<br/>Port 8084<br/>✅ Contract form]
-            ANC_KAFKA[Kafka Producer<br/>✅ SCF Events]
+            ANC_GRPC[gRPC Client<br/>✅ Direct to Orderer<br/>SubmitTx + StreamBlocks]
             ANC_HANDLER[Contract Handlers<br/>Creation, Ledger]
-            ANC_DB[(MongoDB Anchor<br/>✅ World State<br/>blockchain_anchor)]
+            ANC_CHAINCODE[gRPC to Chaincode<br/>Business Logic Calls]
+            ANC_DB[(MongoDB Private<br/>✅ World State<br/>blockchain_private)]
         end
 
         subgraph "Peer Business Logic"
@@ -702,34 +701,34 @@ graph TB
         end
     end
 
-    subgraph "Orderer Cluster (Ordering Service) ✅ IMPLEMENTED"
+    subgraph "Orderer Cluster (PBFT Consensus) ✅ IMPLEMENTED"
         subgraph "Orderer Node 1 (Leader)"
-            ORD1_API[gRPC API<br/>Port 7050<br/>✅ Transaction ordering]
-            ORD1_KAFKA[Kafka Consumer<br/>✅ Event consumption]
-            ORD1_PROC[Event Processor<br/>✅ Database storage]
-            ORD1_BLOCK[Block Builder<br/>✅ Consensus logic]
+            ORD1_API[gRPC API<br/>Port 7050<br/>✅ SubmitTx, StreamBlocks]
+            ORD1_PBFT[PBFT Leader<br/>✅ Pre-Prepare, Commit<br/>Consensus coordination]
+            ORD1_PROC[Transaction Processor<br/>✅ Block creation<br/>Merkle tree building]
+            ORD1_BLOCK[Block Builder<br/>✅ ECDSA signing<br/>Block finalization]
         end
 
         subgraph "Orderer Node 2 (Follower)"
             ORD2_API[gRPC API<br/>Port 7060<br/>✅ Backup ordering]
-            ORD2_KAFKA[Kafka Consumer<br/>✅ Event consumption]
-            ORD2_PROC[Event Processor<br/>Block validation]
+            ORD2_PBFT[PBFT Follower<br/>✅ Prepare, Commit<br/>Consensus participation]
+            ORD2_PROC[Transaction Processor<br/>Block validation]
         end
 
         subgraph "Orderer Node 3 (Follower)"
             ORD3_API[gRPC API<br/>Port 7070<br/>✅ Backup ordering]
-            ORD3_KAFKA[Kafka Consumer<br/>✅ Event consumption]
-            ORD3_PROC[Event Processor<br/>Block validation]
+            ORD3_PBFT[PBFT Follower<br/>✅ Prepare, Commit<br/>Consensus participation]
+            ORD3_PROC[Transaction Processor<br/>Block validation]
         end
 
         subgraph "Orderer Shared Database"
-            ORD_DB[(MongoDB Shared<br/>✅ Event Storage<br/>blockchain_shared<br/>✅ Events persisted)]
+            ORD_DB[(MongoDB Shared<br/>✅ Dual Databases<br/>Private + Public<br/>✅ Events & blocks persisted)]
         end
 
         subgraph "Orderer Core Components"
-            ORD_CONS[Consensus Engine<br/>Raft/PBFT<br/>Fault tolerance]
-            ORD_CRYPTO[Cryptographic Service<br/>Digital signatures<br/>Hash functions]
-            ORD_LEDGER[Ledger Manager<br/>Block validation<br/>State updates]
+            ORD_CONS[PBFT Consensus Engine<br/>3f+1 fault tolerance<br/>Leader election]
+            ORD_CRYPTO[Cryptographic Service<br/>ECDSA signatures<br/>SHA256 hashing]
+            ORD_LEDGER[Ledger Manager<br/>Block validation<br/>Merkle tree verification]
         end
     end
 
@@ -780,37 +779,39 @@ graph TB
     BC --> SUP_API
     BC --> ANC_API
 
-    %% Peer Services to Kafka (Event Publishing)
-    MB_HANDLER --> MB_KAFKA
-    SUP_HANDLER --> SUP_KAFKA
-    ANC_HANDLER --> ANC_KAFKA
+    %% Peer Services to Chaincode Service
+    MB_HANDLER --> MB_CHAINCODE
+    SUP_HANDLER --> SUP_CHAINCODE
+    ANC_HANDLER --> ANC_CHAINCODE
 
-    MB_KAFKA --> SCF_TX
-    MB_KAFKA --> AUDIT_TX
-    SUP_KAFKA --> SCF_TX
-    ANC_KAFKA --> SCF_TX
+    MB_CHAINCODE --> CHAINCODE
+    SUP_CHAINCODE --> CHAINCODE
+    ANC_CHAINCODE --> CHAINCODE
 
-    %% Orderer Services from Kafka (Event Consumption)
-    SCF_TX --> ORD1_KAFKA
-    SCF_TX --> ORD2_KAFKA
-    SCF_TX --> ORD3_KAFKA
-    AUDIT_TX --> ORD1_KAFKA
-    AUDIT_TX --> ORD2_KAFKA
-    AUDIT_TX --> ORD3_KAFKA
+    %% Peer Services to Orderer (gRPC Direct)
+    MB_HANDLER --> MB_GRPC
+    SUP_HANDLER --> SUP_GRPC
+    ANC_HANDLER --> ANC_GRPC
+
+    MB_GRPC --> ORD1_API
+    SUP_GRPC --> ORD1_API
+    ANC_GRPC --> ORD1_API
+
+    %% PBFT Consensus Process
+    ORD1_PBFT --> ORD2_PBFT
+    ORD1_PBFT --> ORD3_PBFT
+    ORD2_PBFT --> ORD1_PBFT
+    ORD3_PBFT --> ORD1_PBFT
 
     %% Orderer Processing and Database Storage
     ORD1_PROC --> ORD_DB
     ORD2_PROC --> ORD_DB
     ORD3_PROC --> ORD_DB
 
-    ORD1_PROC --> SCF_BLOCKS
-    ORD2_PROC --> SCF_BLOCKS
-    ORD3_PROC --> SCF_BLOCKS
-
-    %% Peers consume ordered blocks
-    SCF_BLOCKS --> MB_KAFKA
-    SCF_BLOCKS --> SUP_KAFKA
-    SCF_BLOCKS --> ANC_KAFKA
+    %% Orderers stream blocks directly to peers
+    ORD1_BLOCK --> MB_GRPC
+    ORD1_BLOCK --> SUP_GRPC
+    ORD1_BLOCK --> ANC_GRPC
 
     %% Database connections
     MB_API --> MB_DB
@@ -876,16 +877,15 @@ graph TB
         end
     end
 
-    subgraph "Kafka Network (kafka-network)"
-        subgraph "Zookeeper Layer"
-            ZK[zookeeper:7.4.0<br/>Coordination<br/>Port 2181:2181]
-            ZK_CONF[Zookeeper config<br/>Cluster coordination]
+    subgraph "gRPC Communication Layer"
+        subgraph "SCF Chaincode Service"
+            CHAINCODE[scf-chaincode: golang<br/>Smart Contracts<br/>Port 9090:9090]
+            CHAINCODE_CONF[Chaincode config<br/>gRPC server<br/>MongoDB integration]
         end
 
-        subgraph "Kafka Broker Layer"
-            KAFKA[kafka:7.4.0<br/>Message Broker<br/>Port 9092:29092]
-            KAFKA_TOPICS[Topics created:<br/>scf-channel-tx<br/>audit-channel-tx<br/>Partitions: 1, RF: 1]
-            KAFKA_CONF[Kafka config<br/>Advertised listeners]
+        subgraph "gRPC Direct APIs"
+            GRPC_APIS[gRPC APIs<br/>SubmitTx, StreamBlocks<br/>PBFT Consensus]
+            GRPC_CONF[gRPC config<br/>Direct communication<br/>No message broker]
         end
     end
 
@@ -894,7 +894,7 @@ graph TB
             ORD1[orderer-ord1: golang<br/>Leader Node<br/>Port 7050:7050]
             ORD2[orderer-ord2: golang<br/>Follower Node<br/>Port 7060:7060]
             ORD3[orderer-ord3: golang<br/>Follower Node<br/>Port 7070:7070]
-            ORD_CONF[Orderer config<br/>Kafka brokers<br/>MongoDB URI]
+            ORD_CONF[Orderer config<br/>PBFT consensus<br/>MongoDB URI]
         end
     end
 
@@ -902,19 +902,19 @@ graph TB
         subgraph "Peer Main Bank Layer"
             MB_PEER[peer-main-bank: golang<br/>Main Bank Peer<br/>Port 8082:8082]
             MB_MONGO[mongo-main-bank<br/>Bank world state]
-            MB_CONF[Bank config<br/>Kafka brokers<br/>MongoDB URI]
+            MB_CONF[Bank config<br/>gRPC clients<br/>MongoDB URI]
         end
 
         subgraph "Peer Supplier Layer"
             SUP_PEER[peer-supplier: golang<br/>Supplier Peer<br/>Port 8083:8083]
             SUP_MONGO[mongo-supplier<br/>Supplier world state]
-            SUP_CONF[Supplier config<br/>Kafka brokers<br/>MongoDB URI]
+            SUP_CONF[Supplier config<br/>gRPC clients<br/>MongoDB URI]
         end
 
         subgraph "Peer Anchor Layer"
             ANC_PEER[peer-anchor: golang<br/>Anchor Peer<br/>Port 8084:8084]
             ANC_MONGO[mongo-anchor<br/>Anchor world state]
-            ANC_CONF[Anchor config<br/>Kafka brokers<br/>MongoDB URI]
+            ANC_CONF[Anchor config<br/>gRPC clients<br/>MongoDB URI]
         end
     end
 
@@ -924,13 +924,14 @@ graph TB
     JAVA --> SUP_PEER
     JAVA --> ANC_PEER
 
-    MB_PEER --> KAFKA
-    SUP_PEER --> KAFKA
-    ANC_PEER --> KAFKA
+    %% gRPC Direct Communication
+    MB_PEER --> ORD1
+    SUP_PEER --> ORD1
+    ANC_PEER --> ORD1
 
-    ORD1 --> KAFKA
-    ORD2 --> KAFKA
-    ORD3 --> KAFKA
+    MB_PEER --> CHAINCODE
+    SUP_PEER --> CHAINCODE
+    ANC_PEER --> CHAINCODE
 
     ORD1 --> MONGO_SHARED
     ORD2 --> MONGO_SHARED
@@ -958,7 +959,7 @@ graph TB
 
         subgraph "System Monitoring"
             DB_EXT[MongoDB Direct<br/>localhost:27017<br/>Development access]
-            KAFKA_EXT[Kafka Tools<br/>localhost:9092<br/>Message inspection]
+            GRPC_EXT[gRPC Tools<br/>grpcurl, Postman<br/>API inspection]
         end
     end
 
@@ -971,17 +972,17 @@ graph TB
     ANC_API --> ANC_PEER
 
     DB_EXT --> MONGO_SHARED
-    KAFKA_EXT --> KAFKA
+    GRPC_EXT --> GRPC_APIS
 
     subgraph "Docker Networks"
         PUB_NET[public-network<br/>Frontend, Gateway, Shared DB]
-        KAFKA_NET[kafka-network<br/>Zookeeper, Kafka brokers]
+        GRPC_NET[grpc-network<br/>Chaincode, gRPC APIs]
         ORDERER_NET[orderer-network<br/>Orderer cluster]
         PEER_NET[peer-network<br/>Peer services]
     end
 
     subgraph "Service Dependencies"
-        DEP1[depends_on kafka<br/>All peers & orderers]
+        DEP1[depends_on scf-chaincode<br/>All peers]
         DEP2[depends_on mongo-shared<br/>Orderers only]
         DEP3[depends_on mongo-*<br/>Each peer to its DB]
         DEP4[depends_on orderer-ord1<br/>Peers for ordering]
@@ -994,7 +995,7 @@ graph TB
     end
 
     subgraph "Environment Variables"
-        ENV_KAFKA[KAFKA_BROKERS=kafka:29092<br/>All services]
+        ENV_GRPC[ORDERER_ENDPOINTS=orderer-ord1:7050<br/>Peer gRPC config]
         ENV_MONGO[MONGO_URI=mongodb://...<br/>Service-specific]
         ENV_PEER[PEER_NODE_TYPE=...<br/>Peer identification]
         ENV_ORDERER[ORDERER_NODE_ID=...<br/>Orderer identification]
@@ -1027,44 +1028,43 @@ graph TB
         SPRING --> MONGO_SHARED
     end
 
-    subgraph "📨 Kafka Network (kafka-network)"
-        subgraph "Message Infrastructure"
-            ZOOKEEPER[zookeeper<br/>Port 2181<br/>Coordination]
-            KAFKA[kafka<br/>Port 29092<br/>Message Broker]
+    subgraph "📡 gRPC Communication Network"
+        subgraph "Chaincode Infrastructure"
+            CHAINCODE[scf-chaincode<br/>Port 9090<br/>Smart Contracts<br/>Business Logic]
 
-            subgraph "Active Topics"
-                SCF_CHANNEL[scf-channel-tx<br/>✅ SCF Events<br/>Partition:1, RF:1]
-                AUDIT_CHANNEL[audit-channel-tx<br/>✅ Bank Events<br/>Partition:1, RF:1]
+            subgraph "gRPC Methods"
+                CONTRACT_METHODS[CreateContract<br/>ApproveContract<br/>FinalizeContract]
+                TOKEN_METHODS[IssueToken<br/>TransferToken<br/>SettleToken]
             end
         end
 
-        ZOOKEEPER -.->|coordinates| KAFKA
+        subgraph "Direct Communication"
+            GRPC_APIS[gRPC APIs<br/>SubmitTx<br/>StreamBlocks<br/>Consensus]
+        end
     end
 
     subgraph "🏛️ Orderer Network (orderer-network)"
         subgraph "Ordering Service"
-            ORDERER1[orderer-ord1<br/>Port 7050<br/>✅ Leader<br/>Kafka Consumer + DB]
-            ORDERER2[orderer-ord2<br/>Port 7060<br/>Follower<br/>Kafka Consumer]
-            ORDERER3[orderer-ord3<br/>Port 7070<br/>Follower<br/>Kafka Consumer]
+            ORDERER1[orderer-ord1<br/>Port 7050<br/>✅ Leader<br/>PBFT Consensus + DB]
+            ORDERER2[orderer-ord2<br/>Port 7060<br/>Follower<br/>PBFT Participant]
+            ORDERER3[orderer-ord3<br/>Port 7070<br/>Follower<br/>PBFT Participant]
         end
 
-        ORDERER1 -->|reads| SCF_CHANNEL
-        ORDERER1 -->|reads| AUDIT_CHANNEL
-        ORDERER2 -->|reads| SCF_CHANNEL
-        ORDERER2 -->|reads| AUDIT_CHANNEL
-        ORDERER3 -->|reads| SCF_CHANNEL
-        ORDERER3 -->|reads| AUDIT_CHANNEL
+        ORDERER1 -->|PBFT Consensus| ORDERER2
+        ORDERER1 -->|PBFT Consensus| ORDERER3
+        ORDERER2 -->|PBFT Consensus| ORDERER1
+        ORDERER3 -->|PBFT Consensus| ORDERER1
 
-        ORDERER1 -->|writes| MONGO_SHARED
-        ORDERER2 -->|writes| MONGO_SHARED
-        ORDERER3 -->|writes| MONGO_SHARED
+        ORDERER1 -->|Block Storage| MONGO_SHARED
+        ORDERER2 -->|Block Storage| MONGO_SHARED
+        ORDERER3 -->|Block Storage| MONGO_SHARED
     end
 
     subgraph "🏢 Peer Network (peer-network)"
         subgraph "Endorsing Peers"
-            PEER_MAIN_BANK[peer-main-bank<br/>Port 8082<br/>✅ Main Bank<br/>Kafka Producer]
-            PEER_SUPPLIER[peer-supplier<br/>Port 8083<br/>✅ Supplier<br/>Kafka Producer]
-            PEER_ANCHOR[peer-anchor<br/>Port 8084<br/>✅ Anchor<br/>Kafka Producer]
+            PEER_MAIN_BANK[peer-main-bank<br/>Port 8082<br/>✅ Main Bank<br/>gRPC Direct]
+            PEER_SUPPLIER[peer-supplier<br/>Port 8083<br/>✅ Supplier<br/>gRPC Direct]
+            PEER_ANCHOR[peer-anchor<br/>Port 8084<br/>✅ Anchor<br/>gRPC Direct]
         end
 
         subgraph "Peer Databases"
@@ -1083,11 +1083,14 @@ graph TB
         PEER_ANCHOR -->|state| MONGO_ANCHOR
     end
 
-    %% Cross-network communication via Kafka
-    SCF_CHANNEL -.->|ordered blocks| PEER_MAIN_BANK
-    SCF_CHANNEL -.->|ordered blocks| PEER_SUPPLIER
-    SCF_CHANNEL -.->|ordered blocks| PEER_ANCHOR
-    AUDIT_CHANNEL -.->|ordered blocks| PEER_MAIN_BANK
+    %% Cross-network communication via gRPC
+    ORDERER1 -.->|stream blocks| PEER_MAIN_BANK
+    ORDERER1 -.->|stream blocks| PEER_SUPPLIER
+    ORDERER1 -.->|stream blocks| PEER_ANCHOR
+
+    PEER_MAIN_BANK -.->|direct gRPC| ORDERER1
+    PEER_SUPPLIER -.->|direct gRPC| ORDERER1
+    PEER_ANCHOR -.->|direct gRPC| ORDERER1
 
     %% API Gateway to Peers
     SPRING -->|proxies| PEER_MAIN_BANK
@@ -1096,43 +1099,42 @@ graph TB
 
     subgraph "Network Security Zones"
         ZONE_PUBLIC[🌐 Public Zone<br/>External access<br/>Load balancer]
-        ZONE_KAFKA[📨 Message Zone<br/>Internal messaging<br/>Isolated network]
+        ZONE_GRPC[📡 Communication Zone<br/>gRPC direct calls<br/>Chaincode service]
         ZONE_ORDERER[🏛️ Ordering Zone<br/>Transaction ordering<br/>Trusted nodes only]
         ZONE_PEER[🏢 Peer Zone<br/>Business logic<br/>Endorsing peers]
     end
 
     subgraph "Network Flow Summary"
-        FLOW1[Public → Kafka<br/>Peers publish events]
-        FLOW2[Kafka → Orderer<br/>Orderer consumes events]
-        FLOW3[Orderer → Shared DB<br/>Events persisted]
-        FLOW4[Orderer → Kafka<br/>Ordered blocks published]
-        FLOW5[Kafka → Peers<br/>Peers consume blocks]
-        FLOW6[Peers → Peer DBs<br/>World state updates]
-        FLOW7[Public → Peers<br/>API calls via Gateway]
+        FLOW1[Public → Peers<br/>API calls via Gateway]
+        FLOW2[Peers → Chaincode<br/>Business logic via gRPC]
+        FLOW3[Peers → Orderer<br/>SubmitTx via gRPC direct]
+        FLOW4[Orderer → Orderer<br/>PBFT consensus replication]
+        FLOW5[Orderer → Shared DB<br/>Blocks & events persisted]
+        FLOW6[Orderer → Peers<br/>StreamBlocks via gRPC]
+        FLOW7[Peers → Peer DBs<br/>World state updates]
     end
 ```
 
 ### Docker Compose Services - Detailed Breakdown:
 
 #### **Peer Services (Endorsing Peers)**
-| Service | Network | Ports | Database | Kafka Role | Status |
-|---------|---------|-------|----------|------------|--------|
-| **peer-main-bank** | peer-network | 8082:8082 | mongo-main-bank | Producer (SCF + Audit) | ✅ Running |
-| **peer-supplier** | peer-network | 8083:8083 | mongo-supplier | Producer (SCF) | ✅ Running |
-| **peer-anchor** | peer-network | 8084:8084 | mongo-anchor | Producer (SCF) | ✅ Running |
+| Service | Network | Ports | Database | gRPC Role | Status |
+|---------|---------|-------|----------|-----------|--------|
+| **peer-main-bank** | peer-network | 8082:8082 | mongo-private | Client (Orderer + Chaincode) | ✅ Running |
+| **peer-supplier** | peer-network | 8083:8083 | mongo-private | Client (Orderer + Chaincode) | ✅ Running |
+| **peer-anchor** | peer-network | 8084:8084 | mongo-private | Client (Orderer + Chaincode) | ✅ Running |
 
-#### **Orderer Services (Ordering Service)**
-| Service | Network | Ports | Kafka Role | Database | Status |
-|---------|---------|-------|------------|----------|--------|
-| **orderer-ord1** | orderer-network + kafka-network + public-network | 7050:7050 | Consumer + Storage | mongo-shared | ✅ Running |
-| **orderer-ord2** | orderer-network + kafka-network | 7060:7060 | Consumer | - | ✅ Running |
-| **orderer-ord3** | orderer-network + kafka-network | 7070:7070 | Consumer | - | ✅ Running |
+#### **Orderer Services (PBFT Consensus)**
+| Service | Network | Ports | PBFT Role | Database | Status |
+|---------|---------|-------|-----------|----------|--------|
+| **orderer-ord1** | orderer-network | 7050:7050 | Leader + Storage | mongo-shared | ✅ Running |
+| **orderer-ord2** | orderer-network | 7060:7060 | Follower | - | ✅ Running |
+| **orderer-ord3** | orderer-network | 7070:7070 | Follower | - | ✅ Running |
 
-#### **Infrastructure Services**
+#### **Chaincode Services**
 | Service | Network | Ports | Purpose | Status |
 |---------|---------|-------|---------|--------|
-| **kafka** | kafka-network | 9092:29092 | Message broker | ✅ Running |
-| **zookeeper** | kafka-network | 2181:2181 | Kafka coordination | ✅ Running |
+| **scf-chaincode** | peer-network | 9090:9090 | Smart contracts engine | ✅ Running |
 | **mongo-shared** | public-network | 27017:27017 | Event storage | ✅ Running |
 | **mongo-main-bank** | peer-network | - | Bank world state | ✅ Running |
 | **mongo-supplier** | peer-network | - | Supplier world state | ✅ Running |
@@ -1151,9 +1153,9 @@ graph TB
 | Network | Purpose | Services | Security Level | Access Pattern |
 |---------|---------|----------|----------------|----------------|
 | **public-network** | External access | Frontend, Backend, Mongo-Shared | 🌐 Public | Internet → Services |
-| **kafka-network** | Message broker | Zookeeper, Kafka | 📨 Internal | Service-to-service only |
-| **orderer-network** | Transaction ordering | Orderer cluster | 🏛️ Trusted | Kafka + Shared DB access |
-| **peer-network** | Business logic | Peer services + DBs | 🏢 Restricted | API Gateway + Kafka only |
+| **grpc-network** | Direct communication | Chaincode, gRPC APIs | 📡 Internal | gRPC direct calls |
+| **orderer-network** | PBFT consensus | Orderer cluster | 🏛️ Trusted | PBFT replication + Shared DB |
+| **peer-network** | Business logic | Peer services + DBs | 🏢 Restricted | API Gateway + gRPC direct |
 
 #### **Cross-Network Communication Flow** 🔄
 
@@ -1170,9 +1172,9 @@ flowchart LR
         PEER3[Peer Anchor<br/>Port 8084]
     end
 
-    subgraph "Messaging Layer"
-        KAFKA[Kafka Broker<br/>Port 29092]
-        TOPICS[Topics: scf-channel-tx<br/>audit-channel-tx]
+    subgraph "Chaincode Layer"
+        CHAINCODE[SCF Chaincode<br/>Port 9090]
+        METHODS[Smart Contract Methods<br/>CreateContract, TransferToken]
     end
 
     subgraph "Ordering Layer"
@@ -1189,17 +1191,16 @@ flowchart LR
     API --> PEER2
     API --> PEER3
 
-    PEER1 --> KAFKA
-    PEER2 --> KAFKA
-    PEER3 --> KAFKA
+    PEER1 --> CHAINCODE
+    PEER2 --> CHAINCODE
+    PEER3 --> CHAINCODE
 
-    KAFKA --> ORDERER
+    CHAINCODE --> ORDERER
     ORDERER --> SHARED_DB
 
-    ORDERER --> KAFKA
-    KAFKA --> PEER1
-    KAFKA --> PEER2
-    KAFKA --> PEER3
+    ORDERER --> PEER1
+    ORDERER --> PEER2
+    ORDERER --> PEER3
 
     PEER1 --> PEER_DB
     PEER2 --> PEER_DB
@@ -1209,10 +1210,11 @@ flowchart LR
 #### **Key Architecture Principles** 🏗️
 
 - **🔒 Network Isolation**: Each layer runs in separate Docker networks
-- **📨 Async Communication**: Kafka enables decoupled event-driven architecture
-- **🏛️ Consensus Separation**: Orderers handle transaction ordering, peers handle business logic
+- **📡 Direct Communication**: gRPC enables real-time peer-to-orderer communication
+- **🏗️ Decoupled Architecture**: Chaincode service separates business logic from peers
+- **🏛️ Consensus Separation**: Orderers handle PBFT consensus, peers handle business logic
 - **💾 Data Segregation**: Shared events vs. private world state databases
-- **🔄 Fault Tolerance**: Multiple orderer nodes for high availability
+- **🔄 Fault Tolerance**: PBFT consensus with f=1 fault tolerance across orderer cluster
 - **📊 Scalability**: Horizontal scaling possible for each layer independently
 
 ## Business Process Summary
@@ -1316,15 +1318,17 @@ flowchart LR
 - **Transaction ordering**: Peers submit tx trực tiếp → Orderer mempool → Consensus
 - **Block streaming**: Orderers stream finalized blocks với ECDSA signatures
 - **Health checks**: Tất cả services có health endpoints
-- **Network isolation**: 3-layer network architecture (public/orderer/peer)
+- **gRPC Direct Communication**: Real-time peer-to-orderer communication
+- **PBFT Consensus**: 3-node cluster với fault tolerance f=1
+- **Chaincode Service**: Decoupled business logic trong microservice riêng
 
 ### 📋 **Next Steps có thể mở rộng:**
 1. **Frontend Integration**: Kết nối Angular UI với peer APIs
 2. **Authentication**: Implement JWT cho API security
 3. **File Upload**: Contract PDF upload functionality
 4. **View Changes**: PBFT view change protocol cho fault tolerance
-5. **Monitoring**: Metrics và logging nâng cao cho PBFT
-6. **Performance**: Optimize consensus latency và throughput
+5. **Monitoring**: Metrics và logging nâng cao cho gRPC & PBFT
+6. **Performance**: Optimize consensus latency và gRPC throughput
 
 ### 🚀 **Test Commands để verify:**
 
@@ -1352,4 +1356,5 @@ docker-compose exec mongo-shared mongosh --username root --password example --au
 blockchain_public --eval "db.blocks.find().sort({height: -1}).limit(3).toArray()"
 ```
 
-**🎉 Hệ thống blockchain Supply Chain Finance đã hoàn thành với PBFT Consensus & Events Sync Architecture!**
+**🎉 Hệ thống blockchain Supply Chain Finance đã hoàn thành với gRPC Direct Communication & PBFT Consensus Architecture!**
+

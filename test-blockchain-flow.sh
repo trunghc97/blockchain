@@ -408,7 +408,7 @@ fi
 # Get all tokens
 echo "Testing GET /api/v1/tokens"
 response=$(curl -s -X GET "${BACKEND_URL}/api/v1/tokens")
-if echo "$response" | grep -q '"id":'; then
+if echo "$response" | grep -q '"_id":'; then
     echo -e "${GREEN}✅ GET tokens API works${NC}"
 else
     echo -e "${RED}❌ GET tokens API failed${NC}"
@@ -444,7 +444,7 @@ fi
 # Get all suppliers
 echo "Testing GET /api/v1/suppliers"
 response=$(curl -s -X GET "${BACKEND_URL}/api/v1/suppliers")
-if echo "$response" | grep -q '"id":'; then
+if echo "$response" | grep -q '"id":' || echo "$response" | grep -q '"_id":'; then
     echo -e "${GREEN}✅ GET suppliers API works${NC}"
 else
     echo -e "${RED}❌ GET suppliers API failed${NC}"
@@ -471,7 +471,7 @@ fi
 # Test Contract V1 additional endpoints
 echo "Testing GET /api/v1/contracts/tokens/all"
 response=$(curl -s -X GET "${BACKEND_URL}/api/v1/contracts/tokens/all")
-if [ -n "$response" ] && [ "$response" != "null" ] && echo "$response" | grep -q '"id":'; then
+if [ -n "$response" ] && [ "$response" != "null" ] && echo "$response" | grep -q '"_id":'; then
     echo -e "${GREEN}✅ GET all tokens via contracts API works${NC}"
 else
     echo -e "${RED}❌ GET all tokens via contracts API failed${NC}"
@@ -496,7 +496,7 @@ fi
 # Test tokens issued by system (note: tokens are issued by SYSTEM, not BANK)
 echo "Testing GET /api/v1/tokens/issued/SYSTEM"
 response=$(curl -s -X GET "${BACKEND_URL}/api/v1/tokens/issued/SYSTEM")
-if [ -n "$response" ] && [ "$response" != "null" ] && echo "$response" | grep -q '"id":'; then
+if [ -n "$response" ] && [ "$response" != "null" ] && echo "$response" | grep -q '"_id":'; then
     echo -e "${GREEN}✅ GET tokens issued by system API works${NC}"
 else
     echo -e "${RED}❌ GET tokens issued by system API failed${NC}"

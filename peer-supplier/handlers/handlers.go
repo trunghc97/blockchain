@@ -162,11 +162,15 @@ func (h *Handler) GetToken(w http.ResponseWriter, r *http.Request) {
 	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": tokenId}).Decode(&token)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			http.Error(w, "Token not found", http.StatusNotFound)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Token not found", "tokenId": tokenId})
 			return
 		}
 		fmt.Printf("Error getting token: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 

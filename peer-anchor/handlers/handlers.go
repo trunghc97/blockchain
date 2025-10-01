@@ -213,16 +213,20 @@ func (h *Handler) GetContract(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	contractId := vars["id"]
 
-	// Query contract from database
+	// Query contract from database by contractId field
 	var contract map[string]interface{}
-	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"_id": contractId}).Decode(&contract)
+	err := h.db.Collection("contracts").FindOne(context.Background(), bson.M{"contractId": contractId}).Decode(&contract)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			http.Error(w, "Contract not found", http.StatusNotFound)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Contract not found", "contractId": contractId})
 			return
 		}
 		fmt.Printf("Error getting contract: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
