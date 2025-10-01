@@ -321,9 +321,9 @@ sequenceDiagram
         PeerSupplier->>MongoSupplier: Save globally ordered block
     end
 
-    %% 2. Bank phê duyệt - publish to audit channel
+    %% 2. Bank phê duyệt - submit via gRPC direct
     rect rgb(255, 248, 240)
-        Note over Bank,Kafka: Bank Approval via Audit Channel
+        Note over Bank,OrdererPrimary: Bank Approval via gRPC Direct
         Bank->>Frontend: Click bank approve button
         Frontend->>APIGateway: POST /api/contracts/{id}/approve-bank
         APIGateway->>PeerMainBank: Route to Main Bank Peer /contract/approve-bank
@@ -339,7 +339,7 @@ sequenceDiagram
         Frontend-->>Bank: Token created notification
     end
 
-    %% 3. Suppliers phê duyệt - publish to SCF channel
+    %% 3. Suppliers phê duyệt - submit via gRPC direct
     rect rgb(248, 255, 240)
         Note over Supplier,OrdererPrimary: Supplier Approval via gRPC + PBFT
         Supplier->>Frontend: Click supplier approve button
@@ -941,8 +941,10 @@ graph TB
     SUP_PEER --> SUP_MONGO
     ANC_PEER --> ANC_MONGO
 
-    %% Zookeeper coordination
-    ZK -.-> KAFKA
+    %% gRPC Direct Communication
+    MB_PEER -->|gRPC Direct| ORD1
+    SUP_PEER -->|gRPC Direct| ORD1
+    ANC_PEER -->|gRPC Direct| ORD1
 
     subgraph "External Access Points"
         subgraph "Web Interfaces"
@@ -1073,10 +1075,9 @@ graph TB
             MONGO_ANCHOR[mongo-anchor<br/>Anchor World State]
         end
 
-        PEER_MAIN_BANK -->|publishes| SCF_CHANNEL
-        PEER_MAIN_BANK -->|publishes| AUDIT_CHANNEL
-        PEER_SUPPLIER -->|publishes| SCF_CHANNEL
-        PEER_ANCHOR -->|publishes| SCF_CHANNEL
+        PEER_MAIN_BANK -->|gRPC SubmitTx| ORDERER1
+        PEER_SUPPLIER -->|gRPC SubmitTx| ORDERER1
+        PEER_ANCHOR -->|gRPC SubmitTx| ORDERER1
 
         PEER_MAIN_BANK -->|state| MONGO_MAIN_BANK
         PEER_SUPPLIER -->|state| MONGO_SUPPLIER
@@ -1254,7 +1255,7 @@ flowchart LR
 #### **Peer Anchor (Port 8084) - Contract Creation:**
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/contract/create` | Anchor tạo contract + ledger entry + Kafka publish |
+| POST | `/contract/create` | Anchor tạo contract + ledger entry + gRPC SubmitTx |
 | GET | `/contract/{id}` | Chi tiết contract từ anchor perspective |
 | GET | `/contract/list` | Danh sách contracts đã tạo |
 
@@ -1263,7 +1264,7 @@ flowchart LR
 |--------|----------|-------------|
 | POST | `/contract/{id}/approve` | Supplier phê duyệt contract + token transfer |
 | POST | `/token/transfer` | Token transfer giữa suppliers |
-| POST | `/token/settle` | Supplier settle token với bank + Kafka publish |
+| POST | `/token/settle` | Supplier settle token với bank + gRPC SubmitTx |
 | GET | `/balances/account/{accountId}` | Account balances của supplier |
 | GET | `/health` | Health check |
 
@@ -1305,7 +1306,7 @@ flowchart LR
 ## 🎯 **Tóm tắt trạng thái hiện tại**
 
 ### ✅ **Đã hoàn thành:**
-- **11/11 containers** chạy ổn định (đã loại bỏ Kafka/Zookeeper)
+- **9/9 containers** chạy ổn định với gRPC Direct Communication
 - **PBFT consensus** end-to-end hoạt động với 3 orderer nodes
 - **gRPC communication** giữa Peers ↔ Orderer cluster
 - **ECDSA signatures** cho block validation (2f+1 quorum)
