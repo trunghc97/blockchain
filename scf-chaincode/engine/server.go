@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 
-	pb "scf-chaincode/share"
+	pb "share"
 
 	"google.golang.org/grpc"
 )

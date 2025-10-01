@@ -11,7 +11,9 @@ services:
 
   # SCF Chaincode Service - Smart Contract Engine
   scf-chaincode:
-    build: ./scf-chaincode
+    build:
+      context: .
+      dockerfile: ./scf-chaincode/Dockerfile
     ports:
       - "9090:9090"
     depends_on:
@@ -110,7 +112,9 @@ services:
 
   # Peer Nodes - now submit tx to Orderer via gRPC
   peer-main-bank:
-    build: ./peer-main-bank
+    build:
+      context: .
+      dockerfile: ./peer-main-bank/Dockerfile
     ports:
       - "8082:8082"
       - "9095:9092"
@@ -129,7 +133,9 @@ services:
       - public-network
 
   peer-supplier:
-    build: ./peer-supplier
+    build:
+      context: .
+      dockerfile: ./peer-supplier/Dockerfile
     ports:
       - "8083:8083"
       - "9093:9093"
@@ -148,7 +154,9 @@ services:
       - public-network
 
   peer-anchor:
-    build: ./peer-anchor
+    build:
+      context: .
+      dockerfile: ./peer-anchor/Dockerfile
     ports:
       - "8084:8084"
       - "9094:9094"

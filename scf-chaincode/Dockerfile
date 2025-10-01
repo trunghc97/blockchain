@@ -10,14 +10,17 @@ ENV GOPROXY=https://proxy.golang.org,direct
 # Set working directory
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum ./
+# Copy entire workspace
+COPY . .
+
+# Change to scf-chaincode directory for Go operations
+WORKDIR /app/scf-chaincode
+
+# Disable go work mode for this build
+ENV GOWORK=off
 
 # Download dependencies
 RUN go mod download
-
-# Copy source code
-COPY . .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
@@ -31,7 +34,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 # Copy the binary from builder stage
-COPY --from=builder /app/main .
+COPY --from=builder /app/scf-chaincode/main .
 
 # Expose port
 EXPOSE 9090

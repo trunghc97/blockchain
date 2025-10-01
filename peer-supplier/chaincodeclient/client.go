@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	pb "peer-supplier/share"
+	pb "share"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

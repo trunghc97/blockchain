@@ -9,6 +9,12 @@ ENV GOPROXY=https://proxy.golang.org,direct
 WORKDIR /app
 COPY . .
 
+# Change to peer-main-bank directory for Go operations
+WORKDIR /app/peer-main-bank
+
+# Disable go work mode for this build
+ENV GOWORK=off
+
 # Resolve dependencies
 RUN go mod tidy
 
@@ -20,7 +26,7 @@ FROM alpine:latest
 WORKDIR /root/
 
 # Copy the binary from builder stage
-COPY --from=builder /app/peer .
+COPY --from=builder /app/peer-main-bank/peer .
 
 EXPOSE 8082
 
