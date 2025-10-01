@@ -37,13 +37,6 @@ func main() {
 		log.Fatalf("CreateContract failed: %v", err)
 	}
 
-	fmt.Printf("CreateContract Response:\n")
-	fmt.Printf("  Success: %v\n", resp.Success)
-	fmt.Printf("  Message: %s\n", resp.Message)
-	fmt.Printf("  Contract ID: %s\n", resp.ContractId)
-	fmt.Printf("  Status: %s\n", resp.Status)
-	fmt.Printf("  Created At: %s\n", resp.CreatedAt)
-
 	// Wait a bit
 	time.Sleep(1 * time.Second)
 
@@ -59,12 +52,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("ApproveContract failed: %v", err)
 	}
-
-	fmt.Printf("ApproveContract Response:\n")
-	fmt.Printf("  Success: %v\n", approveResp.Success)
-	fmt.Printf("  Message: %s\n", approveResp.Message)
-	fmt.Printf("  Contract ID: %s\n", approveResp.ContractId)
-	fmt.Printf("  Status: %s\n", approveResp.Status)
 
 	fmt.Println("\n✅ All tests completed successfully!")
 }

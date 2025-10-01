@@ -24,7 +24,7 @@ func (s *SmartContractEngine) CreateContract(ctx context.Context, req *pb.Create
 
 	return &pb.ContractResponse{
 		ContractId: contractID,
-		Status:     "CREATED",
+		Status:     "success",
 		Message:    "Contract created successfully",
 	}, nil
 }

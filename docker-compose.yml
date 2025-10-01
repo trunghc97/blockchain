@@ -170,6 +170,10 @@ services:
     depends_on:
       - mongo-shared
       - orderer-ord1
+    volumes:
+      # Cache Go modules for faster rebuilds
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
     networks:
       - peer-network
       - public-network
@@ -190,6 +194,13 @@ services:
     networks:
       - public-network
       - peer-network
+
+# Volumes for Go module caching
+volumes:
+  go-mod-cache:
+    driver: local
+  go-build-cache:
+    driver: local
 
 # Network topology
 networks:

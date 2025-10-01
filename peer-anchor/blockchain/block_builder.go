@@ -60,11 +60,8 @@ func (b *BlockBuilder) buildNextBlock() {
 	}
 
 	if len(events) == 0 {
-		fmt.Printf("No pending events found\n")
 		return
 	}
-
-	fmt.Printf("Found %d pending events to process\n", len(events))
 
 	// Get latest block
 	var latestBlock models.Block
@@ -122,8 +119,6 @@ func (b *BlockBuilder) buildNextBlock() {
 		return
 	}
 
-	fmt.Printf("Created block #%d with hash: %s\n", blockNumber, block.Hash)
-
 	// Mark events as included
 	for _, eventId := range eventIds {
 		filter := bson.M{
@@ -140,8 +135,6 @@ func (b *BlockBuilder) buildNextBlock() {
 			fmt.Printf("Error updating event %s: %v\n", eventId, err)
 		}
 	}
-
-	fmt.Printf("Marked %d events as included in block #%d\n", len(eventIds), blockNumber)
 }
 
 func (b *BlockBuilder) calculateMerkleRoot(eventIds []string) string {

@@ -135,7 +135,7 @@ public class PeerRoutingService {
     }
 
     public List<Map<String, Object>> getAllTokens() {
-        return callPeerForList(supplierPeerUrl, "/tokens", HttpMethod.GET, null);
+        return callPeerForList(anchorPeerUrl, "/tokens", HttpMethod.GET, null);
     }
 
     /**

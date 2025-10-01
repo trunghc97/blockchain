@@ -7,7 +7,10 @@ RUN apk add --no-cache git
 ENV GOPROXY=https://proxy.golang.org,direct
 
 WORKDIR /app
-COPY . .
+
+# Copy go mod files and share directory first for better caching
+COPY peer-supplier/go.mod peer-supplier/go.sum ./peer-supplier/
+COPY share/ ./share/
 
 # Change to peer-supplier directory for Go operations
 WORKDIR /app/peer-supplier
@@ -15,8 +18,11 @@ WORKDIR /app/peer-supplier
 # Disable go work mode for this build
 ENV GOWORK=off
 
-# Resolve dependencies
-RUN go mod tidy
+# Download dependencies (cached if go.mod/go.sum unchanged)
+RUN go mod download
+
+# Copy source code after dependencies are cached
+COPY peer-supplier/ .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o peer .

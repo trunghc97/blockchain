@@ -39,7 +39,7 @@ func main() {
 	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
 	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
 	router.HandleFunc("/contract/{id}/approve-bank", handler.ApproveContractByBank).Methods("POST")
-	router.HandleFunc("/contract/list", handler.GetContracts).Methods("GET")
+	router.HandleFunc("/contracts", handler.GetContracts).Methods("GET")
 	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
 	router.HandleFunc("/contract/{id}/ledger", handler.GetContractLedger).Methods("GET")
 

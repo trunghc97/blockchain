@@ -27,7 +27,6 @@ public class ContractService {
     private final UserService userService;
 
     public ContractService(MongoTemplate mongoTemplate, BlockchainService blockchainService, UserService userService) {
-        System.out.println("DEBUG: ContractService initialized with database: " + mongoTemplate.getDb().getName());
         this.mongoTemplate = mongoTemplate;
         this.blockchainService = blockchainService;
         this.userService = userService;
@@ -97,18 +96,27 @@ public class ContractService {
             Map<String, Object> blockchainResponse = blockchainService.createContract(contractData);
             System.out.println("DEBUG: Blockchain response: " + blockchainResponse);
 
-            if (blockchainResponse != null && "success".equals(blockchainResponse.get("status"))) {
+            if (blockchainResponse != null) {
                 // Get the created contract from blockchain service to save complete data
                 String createdContractId = (String) blockchainResponse.get("contractId");
                 if (createdContractId != null) {
-                    Map<String, Object> blockchainContract = blockchainService.getContract(createdContractId);
-                    if (blockchainContract != null) {
-                        Contract localContract = convertBlockchainContractToLocal(blockchainContract);
-                        // Save contract to local MongoDB with blockchain data
-                        System.out.println("DEBUG: Saving contract to database: " + mongoTemplate.getDb().getName() + " with blockchain ID: " + localContract.getId());
-                        Contract savedContract = mongoTemplate.save(localContract, "contracts");
-                        System.out.println("DEBUG: Contract saved to database: " + mongoTemplate.getDb().getName() + " with ID: " + savedContract.getId());
-                        return savedContract;
+                    try {
+                        Map<String, Object> blockchainContract = blockchainService.getContract(createdContractId);
+                        if (blockchainContract != null) {
+                            System.out.println("DEBUG: Converting blockchain contract: " + blockchainContract);
+                            // Contract localContract = convertBlockchainContractToLocal(blockchainContract);
+                            // // Save contract to local MongoDB with blockchain data
+                            // System.out.println("DEBUG: Saving contract to database: " + mongoTemplate.getDb().getName() + " with blockchain ID: " + localContract.getId());
+                            // Contract savedContract = mongoTemplate.save(localContract, "contracts");
+                            // System.out.println("DEBUG: Contract saved to database: " + mongoTemplate.getDb().getName() + " with ID: " + savedContract.getId());
+                            // return savedContract;
+                            System.out.println("DEBUG: Skipping convert and save, going to fallback");
+                        } else {
+                            System.out.println("DEBUG: blockchainContract is null");
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Error getting contract from blockchain: " + e.getMessage());
+                        e.printStackTrace();
                     }
                 }
                 // Fallback: Save original contract if blockchain data is not available

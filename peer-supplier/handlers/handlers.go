@@ -154,7 +154,24 @@ func (h *Handler) GetContractLedger(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetToken(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	tokenId := vars["id"]
+
+	// Query token from database
+	var token map[string]interface{}
+	err := h.db.Collection("tokens").FindOne(context.Background(), bson.M{"_id": tokenId}).Decode(&token)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			http.Error(w, "Token not found", http.StatusNotFound)
+			return
+		}
+		fmt.Printf("Error getting token: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(token)
 }
 
 func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
@@ -189,23 +206,132 @@ func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetTokensIssuedByBank(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	bankId := vars["bankId"]
+
+	// Query tokens issued by bank from database
+	cursor, err := h.db.Collection("tokens").Find(context.Background(), bson.M{"issuer": bankId})
+	if err != nil {
+		fmt.Printf("Error getting tokens issued by bank: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var tokens []map[string]interface{}
+	for cursor.Next(context.Background()) {
+		var token map[string]interface{}
+		if err := cursor.Decode(&token); err != nil {
+			fmt.Printf("Error decoding token: %v\n", err)
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tokens)
 }
 
 func (h *Handler) GetSuppliers(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	// Query suppliers from database (users with role SUPPLIER)
+	cursor, err := h.db.Collection("users").Find(context.Background(), bson.M{"role": "SUPPLIER"})
+	if err != nil {
+		fmt.Printf("Error getting suppliers: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var suppliers []map[string]interface{}
+	for cursor.Next(context.Background()) {
+		var supplier map[string]interface{}
+		if err := cursor.Decode(&supplier); err != nil {
+			fmt.Printf("Error decoding supplier: %v\n", err)
+			continue
+		}
+		suppliers = append(suppliers, supplier)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(suppliers)
 }
 
 func (h *Handler) GetAllTokens(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	// Query all tokens from database
+	cursor, err := h.db.Collection("tokens").Find(context.Background(), bson.M{})
+	if err != nil {
+		fmt.Printf("Error getting tokens: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var tokens []map[string]interface{}
+	for cursor.Next(context.Background()) {
+		var token map[string]interface{}
+		if err := cursor.Decode(&token); err != nil {
+			fmt.Printf("Error decoding token: %v\n", err)
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tokens)
 }
 
 func (h *Handler) GetBalancesByAccount(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	accountId := vars["accountId"]
+
+	// Query balances for account from database
+	cursor, err := h.db.Collection("balances").Find(context.Background(), bson.M{"userId": accountId})
+	if err != nil {
+		fmt.Printf("Error getting balances for account: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var balances []map[string]interface{}
+	for cursor.Next(context.Background()) {
+		var balance map[string]interface{}
+		if err := cursor.Decode(&balance); err != nil {
+			fmt.Printf("Error decoding balance: %v\n", err)
+			continue
+		}
+		balances = append(balances, balance)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(balances)
 }
 
 func (h *Handler) GetBalancesByToken(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Not implemented", http.StatusNotImplemented)
+	vars := mux.Vars(r)
+	tokenId := vars["tokenId"]
+
+	// Query balances for token from database
+	cursor, err := h.db.Collection("balances").Find(context.Background(), bson.M{"tokenId": tokenId})
+	if err != nil {
+		fmt.Printf("Error getting balances for token: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(context.Background())
+
+	var balances []map[string]interface{}
+	for cursor.Next(context.Background()) {
+		var balance map[string]interface{}
+		if err := cursor.Decode(&balance); err != nil {
+			fmt.Printf("Error decoding balance: %v\n", err)
+			continue
+		}
+		balances = append(balances, balance)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(balances)
 }
 
 func (h *Handler) UpdateBlockHashes(w http.ResponseWriter, r *http.Request) {
