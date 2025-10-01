@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: peer-anchor
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    app.kubernetes.io/part-of: blockchain
+    peer-type: anchor
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8084
+    targetPort: 8084
+    name: http
+  - port: 9094
+    targetPort: 9094
+    name: grpc
+  - port: 9096
+    targetPort: 9096
+    name: metrics
+  selector:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    peer-type: anchor

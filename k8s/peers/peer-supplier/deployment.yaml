@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer-supplier
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain-peer
+    app.kubernetes.io/component: peer
+    app.kubernetes.io/part-of: blockchain
+    peer-type: supplier
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blockchain-peer
+      app.kubernetes.io/component: peer
+      peer-type: supplier
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blockchain-peer
+        app.kubernetes.io/component: peer
+        app.kubernetes.io/part-of: blockchain
+        peer-type: supplier
+    spec:
+      serviceAccountName: blockchain-service-account
+      containers:
+      - name: peer-supplier
+        image: blockchain/peer-supplier:latest  # Replace with your registry
+        ports:
+        - containerPort: 8083
+          name: http
+        - containerPort: 9093
+          name: grpc
+        - containerPort: 9095
+          name: metrics
+        env:
+        # Application configuration
+        - name: SERVER_PORT
+          value: "8083"
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: JAVA_OPTS
+        # Peer identification
+        - name: PEER_ID
+          value: "peer-supplier"
+        - name: PEER_TYPE
+          value: "SUPPLIER"
+        # MongoDB configuration
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-secrets
+              key: mongodb-supplier-uri
+        # Orderer connection
+        - name: ORDERER_ENDPOINTS
+          value: "orderer-service.blockchain-production.svc.cluster.local:7050"
+        - name: SCF_CHANNEL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: SCF_CHANNEL
+        # JWT configuration
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-secrets
+              key: jwt-secret
+        # Monitoring
+        - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+        - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+        volumeMounts:
+        - name: peer-data
+          mountPath: /app/data
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: peer-data
+        emptyDir: {}  # Use PVC in production

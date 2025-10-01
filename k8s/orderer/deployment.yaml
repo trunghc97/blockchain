@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orderer-cluster
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: consensus
+    app.kubernetes.io/part-of: blockchain
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orderer
+      app.kubernetes.io/component: consensus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orderer
+        app.kubernetes.io/component: consensus
+        app.kubernetes.io/part-of: blockchain
+    spec:
+      serviceAccountName: blockchain-service-account
+      containers:
+      - name: orderer
+        image: blockchain/orderer:latest  # Replace with your registry
+        ports:
+        - containerPort: 7050
+          name: grpc
+        - containerPort: 9443
+          name: metrics
+        env:
+        - name: ORDERER_GENERAL_LISTENADDRESS
+          value: "0.0.0.0"
+        - name: ORDERER_GENERAL_LISTENPORT
+          value: "7050"
+        - name: ORDERER_GENERAL_LOCALMSPID
+          value: "OrdererMSP"
+        - name: ORDERER_GENERAL_LOCALMSPDIR
+          value: "/etc/hyperledger/orderer/msp"
+        # Raft consensus configuration
+        - name: ORDERER_CONSENSUS_WALDIR
+          value: "/var/hyperledger/orderer/etcdraft/wal"
+        - name: ORDERER_CONSENSUS_SNAPDIR
+          value: "/var/hyperledger/orderer/etcdraft/snapshot"
+        # Channel configurations
+        - name: SCF_CHANNEL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: SCF_CHANNEL
+        - name: AUDIT_CHANNEL
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: AUDIT_CHANNEL
+        # Metrics
+        - name: ORDERER_OPERATIONS_LISTENADDRESS
+          value: "0.0.0.0:9443"
+        - name: ORDERER_METRICS_PROVIDER
+          value: "prometheus"
+        volumeMounts:
+        - name: orderer-keys
+          mountPath: /etc/hyperledger/orderer/msp
+          readOnly: true
+        - name: orderer-data
+          mountPath: /var/hyperledger/orderer
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 9443
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 9443
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      volumes:
+      - name: orderer-keys
+        configMap:
+          name: orderer-keys-config
+      - name: orderer-data
+        emptyDir: {}  # Use PVC in production

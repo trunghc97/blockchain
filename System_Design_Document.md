@@ -12,25 +12,25 @@
 ## Tổng quan hệ thống
 
 ### Mục đích
-Hệ thống Blockchain Permissioned Network với Kafka Messaging cho Supply Chain Finance là nền tảng phân quyền sử dụng event-driven architecture. Hệ thống cho phép:
-- **Kafka-based Messaging**: Event-driven communication giữa Peer nodes và Orderer cluster
-- **Decoupled Architecture**: Peers publish events asynchronously, Orderers consume và order globally
-- **Channel-based Topics**: SCF transactions và Audit events trên các Kafka topics riêng biệt
-- **High Throughput**: Async processing với Kafka's scalable messaging infrastructure
-- **Fault Tolerance**: Kafka's replication và persistence đảm bảo message durability
-- **Event Sourcing**: Tất cả blockchain events được publish và consume qua Kafka
+Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho Supply Chain Finance là nền tảng phân quyền sử dụng hybrid architecture. Hệ thống cho phép:
+- **gRPC Direct Communication**: Real-time communication giữa Peer nodes và Orderer cluster
+- **Raft Consensus**: Distributed consensus đảm bảo global transaction ordering
+- **Channel-based Access Control**: SCF và Audit channels với permissions riêng biệt
+- **High Throughput**: Direct gRPC streaming với load balancing và connection pooling
+- **Fault Tolerance**: Raft replication và automatic failover trong orderer cluster
+- **Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
 
 ### Phạm vi
-- **Event-Driven Architecture**: Kafka làm messaging backbone cho tất cả blockchain events
-- **Channel Segregation**: `scf-channel-tx` cho SCF transactions, `audit-channel-tx` cho bank approvals
-- **Async Processing**: Peers publish events và continue, Orderers process asynchronously
-- **Message Persistence**: Kafka đảm bảo không mất events với replication và persistence
-- **Consumer Groups**: Orderer nodes chia sẻ load qua Kafka consumer groups
-- **Network Isolation**: Private network cho Peer+Kafka, Orderer access qua bridge
+- **Direct Communication Architecture**: gRPC làm communication backbone cho tất cả blockchain operations
+- **Channel Segregation**: `scf-channel` cho SCF transactions, `audit-channel` cho bank approvals
+- **Real-time Processing**: Peers submit transactions và nhận blocks qua persistent gRPC streams
+- **Consensus Replication**: Raft đảm bảo transaction ordering với fault tolerance
+- **Load Distribution**: Client-side load balancing và leader affinity routing
+- **Network Isolation**: Private network cho peers, direct gRPC access đến orderer cluster
 
 ## Kiến trúc hệ thống
 
-### Mô hình kết nối với Kafka Event-Driven Architecture
+### Mô hình kết nối với gRPC Direct Communication
 
 ```mermaid
 graph TB
@@ -42,46 +42,36 @@ graph TB
         JAVA[Java Spring Boot<br/>Port: 8080<br/>Smart Routing & Auth]
     end
 
-    subgraph "Kafka Messaging Layer"
-        subgraph "Zookeeper"
-            ZK[Zookeeper<br/>Port: 2181<br/>Coordination]
-        end
-
-        subgraph "Kafka Broker"
-            KB[Kafka Broker<br/>Port: 9092<br/>Message Broker]
-            subgraph "Topics"
-                SCF_TX[scf-channel-tx<br/>SCF Transactions]
-                AUDIT_TX[audit-channel-tx<br/>Bank Approvals]
-                SCF_BLOCKS[scf-channel-blocks<br/>Ordered Blocks]
-                AUDIT_BLOCKS[audit-channel-blocks<br/>Ordered Blocks]
-            end
+    subgraph "gRPC Communication Layer"
+        subgraph "Orderer Service"
+            ORD_SVC[gRPC OrdererService<br/>SubmitTransaction<br/>SubscribeBlocks<br/>GetBlocks]
         end
     end
 
     subgraph "Permissioned Peer Network"
         subgraph "Peer Main Bank"
             MB_API[REST API<br/>Port: 8082]
-            MB_KAFKA[Kafka Producer<br/>Audit Events]
+            MB_GRPC[gRPC Client<br/>Audit Channel]
             MB_DB[(MongoDB<br/>blockchain_main_bank)]
         end
 
         subgraph "Peer Supplier"
             SUP_API[REST API<br/>Port: 8083]
-            SUP_KAFKA[Kafka Producer<br/>SCF Events]
+            SUP_GRPC[gRPC Client<br/>SCF Channel]
             SUP_DB[(MongoDB<br/>blockchain_supplier)]
         end
 
         subgraph "Peer Anchor"
             ANC_API[REST API<br/>Port: 8084]
-            ANC_KAFKA[Kafka Producer<br/>SCF Events]
+            ANC_GRPC[gRPC Client<br/>SCF Channel]
             ANC_DB[(MongoDB<br/>blockchain_anchor)]
         end
     end
 
-    subgraph "Orderer Cluster"
-        ORD1[Orderer Node 1<br/>Port: 7050<br/>Kafka Consumer<br/>Block Ordering]
-        ORD2[Orderer Node 2<br/>Port: 7060<br/>Kafka Consumer<br/>Block Ordering]
-        ORD3[Orderer Node 3<br/>Port: 7070<br/>Kafka Consumer<br/>Block Ordering]
+    subgraph "Orderer Cluster (Raft)"
+        ORD1[Orderer Node 1<br/>Port: 7050<br/>Raft Consensus<br/>Block Ordering]
+        ORD2[Orderer Node 2<br/>Port: 7060<br/>Raft Consensus<br/>Block Ordering]
+        ORD3[Orderer Node 3<br/>Port: 7070<br/>Raft Consensus<br/>Block Ordering]
     end
 
     subgraph "Shared Services"
@@ -90,58 +80,49 @@ graph TB
 
     subgraph "Network Topology"
         PUBLIC_NW[Public Network<br/>External Access]
-        PRIVATE_NW[Private Network<br/>Peer + Kafka<br/>Isolated]
-        KAFKA_BRIDGE[Kafka Bridge<br/>Orderer Access]
+        PRIVATE_NW[Private Network<br/>Peer Network<br/>Isolated]
+        ORDERER_BRIDGE[Orderer Bridge<br/>gRPC Access]
     end
 
-    %% Event Flow
+    %% Communication Flow
     FE -->|HTTP| JAVA
     JAVA -->|Smart Routing| MB_API
     JAVA -->|Smart Routing| SUP_API
     JAVA -->|Smart Routing| ANC_API
 
-    MB_API -->|Bank Approval Events| MB_KAFKA
-    SUP_API -->|SCF Events| SUP_KAFKA
-    ANC_API -->|SCF Events| ANC_KAFKA
+    MB_API -->|Submit Transactions| MB_GRPC
+    SUP_API -->|Submit Transactions| SUP_GRPC
+    ANC_API -->|Submit Transactions| ANC_GRPC
 
-    MB_KAFKA -->|Publish| AUDIT_TX
-    SUP_KAFKA -->|Publish| SCF_TX
-    ANC_KAFKA -->|Publish| SCF_TX
+    MB_GRPC -->|gRPC Direct| ORD_SVC
+    SUP_GRPC -->|gRPC Direct| ORD_SVC
+    ANC_GRPC -->|gRPC Direct| ORD_SVC
 
-    SCF_TX -->|Consume| ORD1
-    SCF_TX -->|Consume| ORD2
-    SCF_TX -->|Consume| ORD3
-    AUDIT_TX -->|Consume| ORD1
-    AUDIT_TX -->|Consume| ORD2
-    AUDIT_TX -->|Consume| ORD3
+    ORD_SVC -->|Raft Consensus| ORD1
+    ORD_SVC -->|Raft Consensus| ORD2
+    ORD_SVC -->|Raft Consensus| ORD3
 
-    ORD1 -->|Ordered Blocks| SCF_BLOCKS
-    ORD2 -->|Ordered Blocks| SCF_BLOCKS
-    ORD3 -->|Ordered Blocks| SCF_BLOCKS
+    ORD1 -->|Ordered Blocks| MB_GRPC
+    ORD2 -->|Ordered Blocks| SUP_GRPC
+    ORD3 -->|Ordered Blocks| ANC_GRPC
 
-    SCF_BLOCKS -->|Broadcast| MB_API
-    SCF_BLOCKS -->|Broadcast| SUP_API
-    SCF_BLOCKS -->|Broadcast| ANC_API
-
-    MB_API --> MB_DB
-    SUP_API --> SUP_DB
-    ANC_API --> ANC_DB
+    MB_GRPC -->|Apply Blocks| MB_DB
+    SUP_GRPC -->|Apply Blocks| SUP_DB
+    ANC_GRPC -->|Apply Blocks| ANC_DB
     JAVA --> SHARED_DB
 
-    ZK -.->|Coordination| KB
-    KB -.->|Topics| SCF_TX
-    KB -.->|Topics| AUDIT_TX
-    KB -.->|Topics| SCF_BLOCKS
-    KB -.->|Topics| AUDIT_BLOCKS
+    ORD1 -.->|Raft Replication| ORD2
+    ORD2 -.->|Raft Replication| ORD3
+    ORD3 -.->|Raft Replication| ORD1
 
     PUBLIC_NW -.->|External Access| FE
     PUBLIC_NW -.->|External Access| JAVA
-    PRIVATE_NW -.->|Internal| MB_KAFKA
-    PRIVATE_NW -.->|Internal| SUP_KAFKA
-    PRIVATE_NW -.->|Internal| ANC_KAFKA
-    KAFKA_BRIDGE -.->|Orderer Access| ORD1
-    KAFKA_BRIDGE -.->|Orderer Access| ORD2
-    KAFKA_BRIDGE -.->|Orderer Access| ORD3
+    PRIVATE_NW -.->|Internal| MB_GRPC
+    PRIVATE_NW -.->|Internal| SUP_GRPC
+    PRIVATE_NW -.->|Internal| ANC_GRPC
+    ORDERER_BRIDGE -.->|gRPC Access| ORD1
+    ORDERER_BRIDGE -.->|gRPC Access| ORD2
+    ORDERER_BRIDGE -.->|gRPC Access| ORD3
 ```
 
 ### Kiến trúc Microservices với Multi-peer Network
@@ -207,16 +188,338 @@ graph TB
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+### Private-Public Blockchain Integration
+
+#### 1. Transaction Submission Flow
+
+Khi một peer node (private blockchain) cần thực hiện một blockchain operation, nó sẽ submit transaction trực tiếp lên orderer cluster (public blockchain) thông qua giao thức gRPC:
+
+```mermaid
+sequenceDiagram
+    participant Peer as Private Peer Node
+    participant Orderer as Public Orderer Cluster (Leader)
+    participant Followers as Orderer Followers
+    participant Peers as Other Peer Nodes
+
+    Peer->>Orderer: SubmitTransaction(tx, channel)
+    Orderer->>Orderer: Validate transaction format & permissions
+    Orderer->>Followers: Replicate transaction via Raft
+    Followers->>Orderer: Acknowledge replication
+
+    Note over Orderer,Followers: Raft Consensus
+    Orderer->>Orderer: Order transaction with existing txs
+    Orderer->>Orderer: Create block when ready
+    Orderer->>Peer: Return transaction ID + estimated commit time
+
+    Note over Orderer: Async Block Creation
+    Orderer->>Orderer: Include transaction in next block
+    Orderer->>Peers: Broadcast new block via gRPC streams
+    Peers->>Peers: Validate and apply block to local state
+```
+
+**Các bước chi tiết:**
+
+1. **Direct gRPC Submission**
+   - Peer node tạo transaction với đầy đủ metadata (timestamp, channel, signatures)
+   - Gọi trực tiếp gRPC method `SubmitTransaction()` đến orderer leader
+   - Orderer validate transaction format, signatures, và channel permissions
+
+2. **Raft Consensus Replication**
+   - Leader orderer replicate transaction đến tất cả followers
+   - Followers validate và acknowledge replication
+   - Quorum phải được đạt để transaction được accept
+
+3. **Transaction Ordering**
+   - Transactions được order theo timestamp của khi submit
+   - Raft consensus đảm bảo global ordering across cluster
+   - Leader maintain total order của tất cả transactions
+
+4. **Block Creation & Broadcasting**
+   - Leader tạo blocks khi đủ transactions hoặc timeout
+   - Blocks được broadcast trực tiếp đến tất cả peers qua gRPC
+   - Peers validate blocks và apply state changes local
+
+#### 2. gRPC Communication Protocol
+
+**Orderer Service Interface:**
+
+```protobuf
+service OrdererService {
+  // Submit transaction trực tiếp đến orderer cluster
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+
+  // Query trạng thái của transaction
+  rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
+
+  // Streaming blocks từ orderer đến peer
+  rpc SubscribeBlocks(SubscribeBlocksRequest) returns (stream Block);
+
+  // Sync missing blocks
+  rpc GetBlocks(GetBlocksRequest) returns (stream Block);
+}
+
+message SubmitTransactionRequest {
+  string channel = 1;           // "scf-channel" or "audit-channel"
+  string transaction_id = 2;    // Unique transaction ID
+  string sender_id = 3;         // Peer node ID (peer_main_bank, peer_supplier, etc.)
+  string transaction_type = 4;  // CONTRACT_CREATE, TOKEN_TRANSFER, etc.
+  bytes transaction_data = 5;   // Serialized transaction payload
+  bytes signature = 6;          // Digital signature của peer
+  int64 timestamp = 7;          // Unix timestamp của khi submit
+  map<string, string> metadata = 8; // Additional metadata
+}
+
+message SubmitTransactionResponse {
+  string transaction_id = 1;
+  string status = 2;            // "ACCEPTED", "REJECTED"
+  string message = 3;           // Status message
+  int64 estimated_commit_time = 4; // Estimated time transaction sẽ được commit
+  int64 current_block_height = 5; // Current block height của channel
+}
+
+message GetTransactionStatusRequest {
+  string channel = 1;
+  string transaction_id = 2;
+}
+
+message GetTransactionStatusResponse {
+  string transaction_id = 1;
+  string status = 2;            // "PENDING", "COMMITTED", "FAILED"
+  int64 block_number = 3;       // Block chứa transaction (nếu đã commit)
+  string block_hash = 4;        // Hash của block chứa transaction
+  int64 commit_timestamp = 5;   // Timestamp khi transaction được commit
+  string failure_reason = 6;    // Lý do fail (nếu có)
+}
+
+message SubscribeBlocksRequest {
+  string channel = 1;           // Channel muốn subscribe
+  int64 start_block = 2;        // Block number bắt đầu stream (0 = từ genesis)
+  repeated string peer_id = 3;  // Peer ID để authorization
+}
+
+message GetBlocksRequest {
+  string channel = 1;
+  int64 start_block = 2;        // Block bắt đầu
+  int64 end_block = 3;          // Block kết thúc (0 = đến latest)
+}
+
+message Block {
+  int64 block_number = 1;
+  int64 timestamp = 2;
+  string previous_hash = 3;
+  string hash = 4;
+  string channel = 5;
+  repeated Transaction transactions = 6;
+  string merkle_root = 7;
+  BlockMetadata metadata = 8;
+}
+
+message Transaction {
+  string transaction_id = 1;
+  string transaction_type = 2;
+  bytes transaction_data = 3;
+  string sender_id = 4;
+  int64 timestamp = 5;
+  bytes signature = 6;
+  TransactionStatus status = 7;
+}
+
+message BlockMetadata {
+  string creator_id = 1;        // Orderer node tạo block
+  int64 transaction_count = 2;
+  string channel = 3;
+}
+
+enum TransactionStatus {
+  UNKNOWN = 0;
+  PENDING = 1;
+  COMMITTED = 2;
+  FAILED = 3;
+}
+```
+
+#### 3. Channel-based Transaction Routing
+
+Hệ thống sử dụng 2 kênh chính cho việc routing transactions, mỗi channel có gRPC endpoints riêng và permissions cụ thể:
+
+- **`scf-channel`**: Cho Supply Chain Finance transactions
+  - Contract creation, approval (tất cả peers)
+  - Token transfers giữa suppliers (suppliers + anchor)
+  - Token settlements (suppliers)
+
+- **`audit-channel`**: Cho Bank Audit transactions
+  - Bank approvals (chỉ main bank)
+  - Regulatory reporting (chỉ main bank)
+  - Compliance events (chỉ main bank)
+
+**Channel Configuration:**
+
+```yaml
+channels:
+  scf-channel:
+    id: "scf-channel"
+    orderer_endpoints:
+      - "orderer1:7050"
+      - "orderer2:7060"
+      - "orderer3:7070"
+    grpc_service: "OrdererService"
+    permissions:
+      submit:  # Peers được phép submit transactions
+        - peer_main_bank
+        - peer_supplier
+        - peer_anchor
+      subscribe:  # Peers được phép subscribe blocks
+        - peer_main_bank
+        - peer_supplier
+        - peer_anchor
+    block_creation:
+      min_transactions: 5      # Tạo block khi có ít nhất 5 tx
+      max_wait_time: 5000ms    # Hoặc sau 5 giây
+      max_block_size: 100      # Tối đa 100 tx per block
+
+  audit-channel:
+    id: "audit-channel"
+    orderer_endpoints:
+      - "orderer1:7050"
+      - "orderer2:7060"
+      - "orderer3:7070"
+    grpc_service: "OrdererService"
+    permissions:
+      submit:  # Chỉ main bank được submit
+        - peer_main_bank
+      subscribe:  # Tất cả peers được subscribe để audit
+        - peer_main_bank
+        - peer_supplier
+        - peer_anchor
+    block_creation:
+      min_transactions: 1       # Tạo block ngay khi có tx
+      max_wait_time: 1000ms     # Hoặc sau 1 giây
+      max_block_size: 50        # Tối đa 50 tx per block
+```
+
+#### 4. Consensus và Ordering Mechanism
+
+**Raft Consensus trong Orderer Cluster:**
+
+```mermaid
+graph TD
+    A[Peer Submits Tx via gRPC] --> B[Leader Orderer]
+    B --> C[Validate Tx & Permissions]
+    C --> D[Assign Sequence Number]
+    D --> E[Replicate to Followers via Raft]
+    E --> F{Quorum Reached?}
+    F -->|Yes| G[Accept Transaction]
+    F -->|No| H[Retry Replication]
+
+    G --> I[Buffer Ordered Transactions]
+    I --> J{Block Creation Trigger?}
+    J -->|Min Tx Count OR Timeout| K[Create Block]
+    J -->|No| I
+
+    K --> L[Calculate Merkle Root]
+    L --> M[Generate Block Hash]
+    M --> N[Broadcast Block via gRPC Streams]
+    N --> O[Peers Validate & Apply]
+```
+
+**Ordering Rules:**
+1. **Transaction Sequencing**: Mỗi transaction được assign sequence number ngay khi submit
+2. **Timestamp-based Ordering**: Transactions với cùng sequence được order theo timestamp
+3. **Raft Consensus**: Đảm bảo tất cả orderers agree trên global order
+4. **Block Creation Triggers**:
+   - Minimum transaction count per channel
+   - Maximum wait time timeout
+   - Maximum block size limit
+5. **Block Hash Calculation**: `SHA256(prevBlockHash + merkleRoot + blockTimestamp)`
+
+**Raft Log Structure:**
+```go
+type RaftLogEntry struct {
+    SequenceNumber int64
+    Transaction    *Transaction
+    Channel        string
+    Timestamp      int64
+    Hash           string  // Hash của transaction
+}
+```
+
+#### 5. Error Handling và Recovery
+
+**gRPC Error Codes:**
+- `INVALID_ARGUMENT`: Transaction data không đúng format hoặc missing required fields
+- `PERMISSION_DENIED`: Peer không có quyền submit lên channel hoặc subscribe blocks
+- `NOT_FOUND`: Channel không tồn tại hoặc transaction ID không tìm thấy
+- `UNAVAILABLE`: Orderer cluster không thể truy cập (network issues)
+- `DEADLINE_EXCEEDED`: gRPC timeout
+- `INTERNAL`: Lỗi internal của orderer (consensus failure, storage error)
+
+**Recovery Mechanisms:**
+- **Transaction Resubmission**: Failed transactions có thể resubmit với exponential backoff
+- **Block Synchronization**: Peers có thể gọi `GetBlocks()` để sync missing blocks
+- **Stream Reconnection**: gRPC streams tự động reconnect với resume capability
+- **State Validation**: Peers validate blockchain state consistency across network
+- **Leader Election**: Raft tự động elect new leader nếu current leader fails
+
+**Connection Management:**
+```go
+// gRPC Connection với retry logic
+func connectToOrderer(endpoint string) (*grpc.ClientConn, error) {
+    return grpc.Dial(endpoint,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithConnectParams(grpc.ConnectParams{
+            Backoff:           backoff.DefaultConfig,
+            MinConnectTimeout: 5 * time.Second,
+        }),
+        grpc.WithKeepaliveParams(keepalive.ClientParameters{
+            Time:                10 * time.Second,
+            Timeout:             5 * time.Second,
+            PermitWithoutStream: true,
+        }),
+    )
+}
+```
+
+#### 6. Performance Optimizations
+
+**gRPC Streaming:**
+- **Bi-directional Streams**: Peers maintain persistent gRPC streams cho real-time block delivery
+- **Flow Control**: gRPC flow control prevents memory overflow trong high-throughput scenarios
+- **Compression**: Message compression cho large transaction payloads
+
+**Load Balancing & Scaling:**
+- **Client-side Load Balancing**: Peers distribute requests across orderer nodes
+- **Leader Affinity**: Transaction submissions route to current Raft leader
+- **Connection Pooling**: Reused gRPC connections reduce connection overhead
+
+**Caching & Optimization:**
+- **Block Cache**: Peers cache recent blocks để reduce validation time
+- **Merkle Proofs**: Efficient state proofs cho large blockchains
+- **Batch Validation**: Validate multiple transactions together
+
+**Monitoring & Metrics:**
+- **gRPC Metrics**: Request latency, error rates, connection health
+- **Consensus Metrics**: Leader election time, replication lag
+- **Block Metrics**: Creation time, transaction throughput, block size distribution
+- **Peer Health**: Sync status, block height, connection stability
+
+**Performance Benchmarks:**
+- **Transaction Submission**: <50ms average latency
+- **Block Propagation**: <200ms to all peers
+- **Block Validation**: <100ms per block
+- **Throughput**: 1000+ TPS per channel
+
 ### Công nghệ sử dụng với kiến trúc mới
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
 | **Frontend** | Angular | 17 | Single Page Application với role-based components |
 | **API Gateway** | Java Spring Boot | 3.1.5 | Smart routing, authentication, business logic |
-| **Peer Nodes** | Golang | 1.21 | Permissioned blockchain operations, gRPC services |
-| **Orderer Cluster** | Golang | 1.21 | Raft consensus, global block ordering |
+| **Peer Nodes** | Golang | 1.21 | Permissioned blockchain operations, gRPC clients |
+| **Orderer Cluster** | Golang | 1.21 | Raft consensus, global transaction ordering |
 | **Databases** | MongoDB | 7.x | Isolated World State databases per peer |
-| **Communication** | gRPC + REST | - | Cross-peer validation và API access |
+| **Communication** | gRPC + REST | - | Direct peer-to-orderer và API access |
+| **Consensus** | Raft | - | Distributed consensus protocol |
+| **Streaming** | gRPC Streams | - | Real-time block broadcasting |
 | **Container** | Docker | 24.x | Multi-service containerization |
 | **Orchestration** | Docker Compose | 2.20 | Complex network topology management |
 | **Networks** | Docker Networks | - | Isolated public/private/orderer networks |

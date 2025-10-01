@@ -250,3 +250,5 @@ docker-compose up -d --build
 
 - [SYSTEM_DIAGRAM.md](SYSTEM_DIAGRAM.md) - Kiến trúc hệ thống
 - [API_Flow_Diagrams.md](API_Flow_Diagrams.md) - API flows
+- [System_Design_Document.md](System_Design_Document.md) - Tài liệu thiết kế hệ thống chi tiết
+- [k8s/README.md](k8s/README.md) - Hướng dẫn triển khai Kubernetes production

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blockchain-production
+  labels:
+    name: blockchain-production
+    environment: production

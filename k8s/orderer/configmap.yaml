@@ -1,0 +1,32 @@
+# This ConfigMap should be created from the generated orderer keys
+# Run: kubectl create configmap orderer-keys-config --from-file=secrets/ord1/ --from-file=secrets/ord2/ --from-file=secrets/ord3/
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orderer-config
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: config
+data:
+  # Orderer configuration
+  ORDERER_GENERAL_GENESISPROFILE: "SampleInsecureSolo"
+  ORDERER_GENERAL_GENESISMETHOD: "file"
+  ORDERER_GENERAL_GENESISFILE: "/etc/hyperledger/orderer/genesis.block"
+
+  # Raft configuration
+  ORDERER_CONSENSUS_TYPE: "etcdraft"
+  ORDERER_CONSENSUS_STATE: "NORMAL"
+
+  # Channel configurations
+  ORDERER_CHANNELPARTICIPATION_ENABLED: "true"
+
+  # Logging
+  ORDERER_GENERAL_LOGLEVEL: "info"
+  ORDERER_DEBUG_BROADCASTTRACEDIR: "/var/hyperledger/orderer/logs"
+
+  # Performance tuning
+  ORDERER_GENERAL_BATCHTIMEOUT: "2s"
+  ORDERER_GENERAL_BATCHSIZE_MAXMESSAGECOUNT: "100"
+  ORDERER_GENERAL_BATCHSIZE_PREFERREDMAXBYTES: "2MB"
+  ORDERER_GENERAL_BATCHSIZE_MAXBYTES: "10MB"

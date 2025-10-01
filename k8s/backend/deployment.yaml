@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: blockchain
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: blockchain
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: blockchain-service-account
+      containers:
+      - name: backend
+        image: blockchain/backend:latest  # Replace with your registry
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Application configuration
+        - name: SERVER_PORT
+          value: "8080"
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: JAVA_OPTS
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: JAVA_OPTS
+        # Database configuration
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-secrets
+              key: mongodb-shared-uri
+        # Peer service endpoints
+        - name: PEER_MAIN_BANK_URL
+          value: "http://peer-main-bank.blockchain-production.svc.cluster.local:8082"
+        - name: PEER_SUPPLIER_URL
+          value: "http://peer-supplier.blockchain-production.svc.cluster.local:8083"
+        - name: PEER_ANCHOR_URL
+          value: "http://peer-anchor.blockchain-production.svc.cluster.local:8084"
+        # JWT configuration
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: blockchain-secrets
+              key: jwt-secret
+        # Monitoring
+        - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+        - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: blockchain-config
+              key: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3

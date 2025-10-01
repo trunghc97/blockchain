@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: orderer-service
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: consensus
+    app.kubernetes.io/part-of: blockchain
+spec:
+  type: ClusterIP
+  ports:
+  - port: 7050
+    targetPort: 7050
+    name: grpc
+  - port: 9443
+    targetPort: 9443
+    name: metrics
+  selector:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: consensus
+
+---
+# LoadBalancer service for external access (optional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: orderer-external
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: consensus
+    app.kubernetes.io/part-of: blockchain
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 7050
+    targetPort: 7050
+    name: grpc
+  selector:
+    app.kubernetes.io/name: orderer
+    app.kubernetes.io/component: consensus

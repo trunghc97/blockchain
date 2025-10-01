@@ -1,0 +1,87 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: blockchain-alerts
+  namespace: blockchain-production
+  labels:
+    app.kubernetes.io/name: blockchain
+    app.kubernetes.io/component: monitoring
+spec:
+  groups:
+  - name: blockchain-alerts
+    rules:
+    # Pod alerts
+    - alert: PodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total{namespace="blockchain-production"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod {{$labels.pod}} is crash looping"
+        description: "Pod {{$labels.pod}} has restarted {{$value}} times in the last 5 minutes"
+
+    - alert: PodNotReady
+      expr: kube_pod_status_ready{namespace="blockchain-production", condition="false"} > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod {{$labels.pod}} is not ready"
+        description: "Pod {{$labels.pod}} has been in not ready state for more than 5 minutes"
+
+    # Resource alerts
+    - alert: HighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{namespace="blockchain-production"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High CPU usage on {{$labels.pod}}"
+        description: "CPU usage is above 80% for pod {{$labels.pod}}"
+
+    - alert: HighMemoryUsage
+      expr: container_memory_usage_bytes{namespace="blockchain-production"} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "High memory usage on {{$labels.pod}}"
+        description: "Memory usage is above 90% for pod {{$labels.pod}}"
+
+    # Application-specific alerts
+    - alert: BackendDown
+      expr: up{job="backend-monitor"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Backend API is down"
+        description: "Backend API has been down for more than 2 minutes"
+
+    - alert: OrdererDown
+      expr: up{job="orderer-monitor"} == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Orderer cluster is down"
+        description: "Orderer cluster has been down for more than 2 minutes"
+
+    - alert: PeerDown
+      expr: up{job="peer-monitor"} == 0
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Peer node is down"
+        description: "Peer node {{$labels.instance}} has been down for more than 2 minutes"
+
+    # Database alerts
+    - alert: MongoDBDown
+      expr: mongodb_up == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "MongoDB is down"
+        description: "MongoDB instance has been down for more than 2 minutes"
