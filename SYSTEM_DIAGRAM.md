@@ -1,28 +1,28 @@
-# Hệ thống Blockchain Supply Chain Finance (SCF) với gRPC Direct Communication & PBFT Consensus
+# Hệ thống Blockchain Supply Chain Finance (SCF) với Blockchain Gateway Architecture
 
-## Tổng quan kiến trúc với gRPC Direct Communication, PBFT Consensus & Blockchain Gateway
+## Tổng quan kiến trúc với Blockchain Gateway & PBFT Consensus
 
-### 🆕 **Kiến trúc mới: gRPC Direct Communication & PBFT Consensus**
+### 🆕 **Kiến trúc mới: Blockchain Gateway Architecture**
 Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
-- **🔗 Blockchain Gateway**: Tổng hợp và gửi transactions sang Orderer cluster trên port 9090
-- **📡 gRPC Direct Communication**: Peer services giao tiếp trực tiếp với Orderer cluster qua gRPC APIs, không cần message broker
-- **🏗️ Integrated Chaincode**: Business logic tích hợp trong từng peer service (endorsement layer)
-- **💾 State Persistence**: Mỗi peer quản lý state riêng trong MongoDB blockchain_private
+- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster trên port 9090
+- **📡 gRPC Direct Communication**: Peer services giao tiếp với blockchain-gw qua gRPC APIs để thực hiện endorsement
+- **🏗️ Endorsement Layer**: Peers chỉ đóng vai trò Endorser, chạy chaincode logic và trả về endorsements
+- **💾 State Persistence**: blockchain-gw quản lý world state trong MongoDB shared
 - **🏛️ PBFT Consensus**: Practical Byzantine Fault Tolerance với 3-node orderer cluster (f=1 fault tolerance)
 - **⚡ Real-time Processing**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
 
-## Kiến trúc gRPC Direct Communication & PBFT Consensus
+## Kiến trúc Blockchain Gateway & PBFT Consensus
 
 ### **Core Architecture Principles:**
 
-- **✅ gRPC-only Communication**: Peers gửi transactions trực tiếp tới Orderer cluster qua gRPC, loại bỏ hoàn toàn message broker trung gian
+- **✅ Blockchain Gateway Architecture**: blockchain-gw đóng vai trò Fabric Client, tổng hợp endorsements từ peers và gửi transactions sang Orderer
+- **✅ Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
 - **✅ PBFT Consensus**: 3-node orderer cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
-- **✅ Integrated Chaincode**: Business logic tích hợp trong từng peer service (endorsement layer)
-- **✅ Direct Peer-to-Orderer Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs (SubmitTx, StreamBlocks, Consensus)
+- **✅ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, peers trả về endorsements
 - **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
 - **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua persistent gRPC streams
-- **✅ Dual Database Architecture**: Private operations + Public transparency với Events Sync
+- **✅ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 
 ## Trạng thái triển khai hiện tại ✅
 
@@ -30,37 +30,43 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **blockchain-gw** | 9090 | ✅ Running | Transaction Aggregator - tổng hợp và gửi transactions sang orderer |
-| **peer-main-bank** | 8082 | ✅ Running | REST API gateway + integrated chaincode + gRPC client to orderer |
-| **peer-supplier** | 8083 | ✅ Running | REST API gateway + integrated chaincode + gRPC client to orderer |
-| **peer-anchor** | 8084 | ✅ Running | REST API gateway + integrated chaincode + gRPC client to orderer |
+| **blockchain-gw** | 9090 | ✅ Running | Blockchain Gateway - Fabric Client, tổng hợp endorsements và gửi transactions sang orderer |
+| **peer-main-bank** | 8082 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
+| **peer-supplier** | 8083 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
+| **peer-anchor** | 8084 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
 | **orderer-ord1** | 7050 | ✅ Running | PBFT leader, consensus engine, block ordering |
 | **orderer-ord2** | 7060 | ✅ Running | PBFT follower, consensus participant |
 | **orderer-ord3** | 7070 | ✅ Running | PBFT follower, consensus participant |
-| **mongo-shared** | 27017 | ✅ Running | Dual databases: blockchain_private + blockchain_public |
+| **mongo-shared** | 27017 | ✅ Running | World state database cho blockchain-gw |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
-### ✅ **gRPC Direct Communication & PBFT Consensus End-to-End Test**
+### ✅ **Blockchain Gateway Architecture End-to-End Test**
 
 ```bash
-# Test successful - gRPC Direct Communication từ peers → orderer cluster ✅
-Peer Request → Integrated Chaincode → Blockchain Gateway → gRPC SubmitTx → PBFT Consensus → Block Creation → Events Sync ✅
+# Test successful - Blockchain Gateway Architecture ✅
+Peer Request → blockchain-gw → ProposalRequest to Peers → Endorsements → SubmitTx to Orderer → PBFT Consensus → Block Creation → Events Sync ✅
 
 # Complete test flow:
-✅ CONTRACT_CREATED via peer chaincode + blockchain gateway + gRPC direct submission
-✅ CONTRACT_BANK_APPROVED_TOKEN_GENERATED via peer chaincode + blockchain gateway + gRPC direct submission
-✅ CONTRACT_FULLY_APPROVED via peer chaincode + blockchain gateway + gRPC direct submission
-✅ TOKEN_TRANSFERRED via peer chaincode + blockchain gateway + gRPC direct submission
-✅ TOKEN_SETTLED via peer chaincode + blockchain gateway + gRPC direct submission
+✅ CONTRACT_CREATED via blockchain-gw + peer endorsements + orderer submission
+✅ CONTRACT_BANK_APPROVED_TOKEN_GENERATED via blockchain-gw + peer endorsements + orderer submission
+✅ CONTRACT_FULLY_APPROVED via blockchain-gw + peer endorsements + orderer submission
+✅ TOKEN_TRANSFERRED via blockchain-gw + peer endorsements + orderer submission
+✅ TOKEN_SETTLED via blockchain-gw + peer endorsements + orderer submission
 
-Sample gRPC transaction submission:
+Sample blockchain-gw transaction submission:
 {
   "transaction_id": "tx_0845917c79d28d6da74de438031b97a4",
-  "sender_id": "peer-anchor",
+  "sender_id": "blockchain-gw",
   "transaction_type": "CONTRACT_CREATE",
   "transaction_data": "...",
-  "signature": "ecdsa_sig_1...",
+  "endorsements": [
+    {
+      "peer_id": "peer-anchor",
+      "rwset": "...",
+      "signature": "ecdsa_sig_1..."
+    }
+  ],
   "timestamp": "2025-10-01T16:00:48Z"
 }
 
@@ -95,32 +101,32 @@ Sample PBFT consensus block with signatures:
 
 ### ✅ **Implemented APIs**
 
-**Peer Anchor (Port 8084) - Contract Creation:**
-- `POST /contract/create` - Anchor tạo contract → Integrated Chaincode → Blockchain Gateway → gRPC SubmitTx to orderer
-- `GET /contract/{id}` - Contract details from local DB
-- `GET /contract/list` - Danh sách contracts đã tạo
+**Peer Anchor (Port 8084) - Endorsement Only:**
+- `POST /contract/create` - Anchor tạo contract → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
+- `GET /contract/{id}` - Contract details from blockchain-gw
+- `GET /contract/list` - Danh sách contracts từ blockchain-gw
 - `GET /health` - Health check
 
-**Peer Main Bank (Port 8082) - Bank Operations:**
-- `POST /contract/{id}/approve-bank` - Bank phê duyệt → Integrated Chaincode → Blockchain Gateway → token issuance → gRPC SubmitTx
-- `GET /contract/list` - List tất cả contracts
-- `GET /contract/{id}` - Contract details
-- `GET /contract/{id}/ledger` - Contract audit trail
-- `GET /token/issued/{bankId}` - Tokens issued by bank
-- `GET /tokens` - All tokens issued by bank
+**Peer Main Bank (Port 8082) - Endorsement Only:**
+- `POST /contract/{id}/approve-bank` - Bank phê duyệt → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
+- `GET /contract/list` - List tất cả contracts từ blockchain-gw
+- `GET /contract/{id}` - Contract details từ blockchain-gw
+- `GET /contract/{id}/ledger` - Contract audit trail từ blockchain-gw
+- `GET /token/issued/{bankId}` - Tokens issued by bank từ blockchain-gw
+- `GET /tokens` - All tokens issued by bank từ blockchain-gw
 
-**Peer Supplier (Port 8083) - Token Operations:**
-- `POST /contract/{id}/approve` - Supplier phê duyệt contract → Integrated Chaincode → Blockchain Gateway → gRPC SubmitTx
-- `POST /token/transfer` - Token transfer giữa suppliers → Integrated Chaincode → Blockchain Gateway → gRPC SubmitTx
-- `POST /token/settle` - Supplier settle token với bank → Integrated Chaincode → Blockchain Gateway → gRPC SubmitTx
-- `GET /balances/account/{accountId}` - Account balances của supplier
+**Peer Supplier (Port 8083) - Endorsement Only:**
+- `POST /contract/{id}/approve` - Supplier phê duyệt contract → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
+- `POST /token/transfer` - Token transfer giữa suppliers → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
+- `POST /token/settle` - Supplier settle token với bank → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
+- `GET /balances/account/{accountId}` - Account balances của supplier từ blockchain-gw
 - `GET /health` - Health check
 
-**Blockchain Gateway (Port 9090) - Transaction Aggregator:**
-- `AggregateTransactions()` - Tổng hợp transactions từ peers
-- `SubmitToOrderer()` - Gửi transactions sang orderer cluster
-- `ValidateTransactions()` - Validate transaction format và signatures
-- `ManageEndorsements()` - Quản lý endorsements từ peers
+**blockchain-gw (Port 9090) - Blockchain Gateway:**
+- `ProposalRequest()` - Gửi proposal đến peers để lấy endorsements
+- `CollectEndorsements()` - Thu thập endorsements từ peers
+- `SubmitTx()` - Gửi transaction + endorsements sang orderer cluster
+- `ValidateEndorsements()` - Kiểm tra endorsement policy
 
 **Orderer gRPC APIs (Ports 7050-7070):**
 - `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for PBFT consensus
@@ -148,7 +154,15 @@ graph TB
         PR[Peer Routing Service<br/>Business Logic Routing]
     end
 
-    subgraph "gRPC Direct Communication & PBFT Consensus Layer"
+    subgraph "Blockchain Gateway Architecture"
+        subgraph "blockchain-gw (Port 9090)"
+            GW[Blockchain Gateway<br/>Fabric Client<br/>✅ Running<br/>Endorsement Aggregator]
+            PROPOSAL[ProposalRequest<br/>Gửi đến peers]
+            COLLECT[CollectEndorsements<br/>Thu thập từ peers]
+            SUBMIT[SubmitTx<br/>Gửi sang Orderer]
+            POLICY[Endorsement Policy<br/>Kiểm tra quorum]
+        end
+        
         subgraph "Orderer Cluster (PBFT 3f+1 = 4 nodes, f=1)"
             ORD1[Orderer Leader<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Block Streaming]
             ORD2[Orderer Follower<br/>Port 7060<br/>✅ PBFT Follower<br/>Consensus Participant]
@@ -160,56 +174,46 @@ graph TB
                 FINAL[Finalize<br/>Block committed<br/>Stream to peers]
             end
         end
-        subgraph "Blockchain Gateway"
-            CHAINCODE[Blockchain Gateway<br/>Port 9090<br/>✅ Running<br/>Transaction Aggregator]
-            STATE_MGMT[State Management<br/>MongoDB Integration<br/>Token & Contract State]
-        end
-        subgraph "gRPC Communication"
-            GRPC_DIRECT[gRPC Direct APIs<br/>SubmitTx, StreamBlocks<br/>No Message Broker]
-            SIG[ECDSA Signatures<br/>Per-orderer keys<br/>Quorum validation]
-            CRYPTO[Merkle Trees<br/>Block integrity<br/>SHA256 hashing]
-        end
     end
 
-    subgraph "Peer Main Bank (✅ IMPLEMENTED - gRPC Direct)"
+    subgraph "Peer Main Bank (✅ IMPLEMENTED - Endorser Only)"
         MB_API[REST API<br/>Port 8082<br/>✅ Running]
-        MB_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
+        MB_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
         subgraph "Main Bank Logic ✅"
             MB_CON[Contract Approval<br/>Bank Validation ✅]
             MB_TOK[Token Issuance<br/>Bank Authority ✅]
             MB_LED[Ledger Management<br/>Bank Oversight ✅]
         end
-        MB_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
+        MB_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
     end
 
-    subgraph "Peer Supplier (✅ IMPLEMENTED - gRPC Direct)"
+    subgraph "Peer Supplier (✅ IMPLEMENTED - Endorser Only)"
         SUP_API[REST API<br/>Port 8083<br/>✅ Running]
-        SUP_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
+        SUP_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
         subgraph "Supplier Logic ✅"
             SUP_APP[Contract Approval<br/>Supplier Validation ✅]
             SUP_TOK[Token Transfer<br/>P2P Circulation ✅]
             SUP_BAL[Balance Management<br/>Token Holdings ✅]
         end
-        SUP_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
+        SUP_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
     end
 
-    subgraph "Peer Anchor (✅ IMPLEMENTED - gRPC Direct)"
+    subgraph "Peer Anchor (✅ IMPLEMENTED - Endorser Only)"
         ANC_API[REST API<br/>Port 8084<br/>✅ Running]
-        ANC_GRPC[gRPC Client<br/>✅ Active<br/>Direct to Orderer]
+        ANC_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
         subgraph "Anchor Logic ✅"
             ANC_CON[Contract Creation<br/>Anchor Authority ✅]
             ANC_TOK[Token Reception<br/>Initial Ownership ✅]
             ANC_LED[Contract Ledger<br/>Anchor Tracking ✅]
         end
-        ANC_DB[(MongoDB ✅<br/>Private Operations<br/>blockchain_private)]
+        ANC_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
     end
 
-    subgraph "Dual Database Architecture ✅"
-        PRIVATE_DB[(MongoDB Private ✅<br/>Operations & State<br/>blockchain_private)]
-        PUBLIC_DB[(MongoDB Public ✅<br/>Events Transparency<br/>blockchain_public)]
+    subgraph "Centralized Database Architecture ✅"
+        SHARED_DB[(MongoDB Shared ✅<br/>World State<br/>blockchain_public<br/>Managed by blockchain-gw)]
     end
 
-    %% Transaction Flow: Frontend → API Gateway → Peer → gRPC Direct → Orderer PBFT → Block Streaming
+    %% Transaction Flow: Frontend → API Gateway → Peer → blockchain-gw → ProposalRequest → Endorsements → SubmitTx → Orderer PBFT → Block Streaming
     ANC --> AR
     BNK --> AR
     SUP --> AR
@@ -219,22 +223,21 @@ graph TB
     PR --> SUP_API
     PR --> ANC_API
 
-    %% Peers invoke blockchain gateway for business logic
-    MB_API -->|gRPC| CHAINCODE
-    SUP_API -->|gRPC| CHAINCODE
-    ANC_API -->|gRPC| CHAINCODE
+    %% Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+    MB_API -->|ProposalRequest| GW
+    SUP_API -->|ProposalRequest| GW
+    ANC_API -->|ProposalRequest| GW
 
-    %% Blockchain gateway manages state and returns transaction data
-    CHAINCODE -->|Transaction Aggregation| ORDERER_CLUSTER
+    %% blockchain-gw thu thập endorsements và gửi lên Orderer
+    GW -->|CollectEndorsements| MB_ENDORSE
+    GW -->|CollectEndorsements| SUP_ENDORSE
+    GW -->|CollectEndorsements| ANC_ENDORSE
 
-    %% Peers submit transactions directly via gRPC to Orderer
-    MB_API --> MB_GRPC
-    SUP_API --> SUP_GRPC
-    ANC_API --> ANC_GRPC
+    MB_ENDORSE -->|Endorsement| GW
+    SUP_ENDORSE -->|Endorsement| GW
+    ANC_ENDORSE -->|Endorsement| GW
 
-    MB_GRPC -->|SubmitTx| ORD1
-    SUP_GRPC -->|SubmitTx| ORD1
-    ANC_GRPC -->|SubmitTx| ORD1
+    GW -->|SubmitTx + Endorsements| ORD1
 
     %% PBFT Consensus Process
     ORD1 --> PREP
@@ -245,23 +248,24 @@ graph TB
     PREPARE --> COMMIT
     COMMIT --> FINAL
 
-    %% Orderers stream finalized blocks directly to peers
-    FINAL -->|StreamBlocks| MB_GRPC
-    FINAL -->|StreamBlocks| SUP_GRPC
-    FINAL -->|StreamBlocks| ANC_GRPC
+    %% Orderers stream finalized blocks về peers
+    FINAL -->|StreamBlocks| MB_API
+    FINAL -->|StreamBlocks| SUP_API
+    FINAL -->|StreamBlocks| ANC_API
 
     %% Database connections
     MB_API --> MB_DB
     SUP_API --> SUP_DB
     ANC_API --> ANC_DB
-    FINAL --> PRIVATE_DB
+    GW --> SHARED_DB
+    FINAL --> SHARED_DB
 
     %% PBFT cryptographic services
-    ORD1 --> SIG
-    ORD2 --> SIG
-    ORD3 --> SIG
-    PREP --> CRYPTO
-    COMMIT --> CRYPTO
+    ORD1 --> POLICY
+    ORD2 --> POLICY
+    ORD3 --> POLICY
+    PREP --> POLICY
+    COMMIT --> POLICY
 ```
 
 ## Luồng nghiệp vụ chi tiết
@@ -270,169 +274,35 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    participant Anchor
-    participant Bank
-    participant Supplier
-    participant Frontend
-    participant APIGateway
-    participant PeerAnchor
-    participant PeerMainBank
-    participant PeerSupplier
-    participant OrdererPrimary
-    participant OrdererReplica2
-    participant OrdererReplica3
-    participant MongoAnchor
-    participant MongoMainBank
-    participant MongoSupplier
+    participant User(App/Web)
+    participant APIGW(Java)
+    participant GW as blockchain-gw
+    participant PeerA as Peer Anchor
+    participant PeerB as Peer Bank
+    participant PeerS as Peer Supplier
+    participant ORD as Orderer PBFT
+    participant LED as Ledger
 
-    %% 1. Anchor tạo hợp đồng - submit via gRPC ✅ IMPLEMENTED
-    rect rgb(240, 248, 255)
-        Note over Anchor,OrdererPrimary: Contract Creation via Blockchain Gateway + gRPC + PBFT ✅
-        Anchor->>Frontend: Submit contract form (with PDF file)
-        Frontend->>APIGateway: POST /api/contracts (multipart/form-data)
-        APIGateway->>PeerAnchor: Route to Anchor Peer /contract/create
-        PeerAnchor->>BlockchainGateway: gRPC CreateContract() ✅
-        BlockchainGateway->>BlockchainGateway: Execute business logic & validation
-        BlockchainGateway->>MongoShared: Save contract state
-        BlockchainGateway-->>PeerAnchor: Return contractId + transaction data
-        PeerAnchor->>OrdererPrimary: gRPC SubmitTx(Transaction) ✅
-        OrdererPrimary-->>PeerAnchor: SubmitTxReply (immediate)
-        PeerAnchor-->>APIGateway: Contract created (immediate response)
-        APIGateway-->>Frontend: Success response
-        Frontend-->>Anchor: Contract created notification
-    end
+    User->>APIGW(Java): Submit TX
+    APIGW(Java)->>GW: Forward Request
 
-    %% PBFT Consensus Processing (async background) ✅ IMPLEMENTED
-    rect rgb(255, 248, 220)
-        Note over OrdererPrimary,MongoSupplier: PBFT Consensus Processing ✅
-        OrdererPrimary->>OrdererPrimary: Add tx to mempool
-        OrdererPrimary->>OrdererPrimary: Start PBFT consensus (as primary)
-        OrdererPrimary->>OrdererReplica2: Pre-Prepare message (proposed block)
-        OrdererPrimary->>OrdererReplica3: Pre-Prepare message (proposed block)
-        OrdererReplica2->>OrdererPrimary: Prepare message (validation)
-        OrdererReplica3->>OrdererPrimary: Prepare message (validation)
-        OrdererReplica2->>OrdererPrimary: Commit message (quorum reached)
-        OrdererReplica3->>OrdererPrimary: Commit message (quorum reached)
-        OrdererPrimary->>OrdererPrimary: Finalize block (2f+1 signatures)
-        OrdererPrimary->>MongoShared: Store signed block ✅
-        OrdererPrimary->>PeerAnchor: StreamBlocks (finalized block)
-        PeerAnchor->>MongoAnchor: Save globally ordered block
-        OrdererPrimary->>PeerMainBank: StreamBlocks (finalized block)
-        PeerMainBank->>MongoMainBank: Save globally ordered block
-        OrdererPrimary->>PeerSupplier: StreamBlocks (finalized block)
-        PeerSupplier->>MongoSupplier: Save globally ordered block
-    end
+    GW->>PeerA: ProposalRequest
+    GW->>PeerB: ProposalRequest
+    GW->>PeerS: ProposalRequest
 
-    %% 2. Bank phê duyệt - submit via gRPC direct
-    rect rgb(255, 248, 240)
-        Note over Bank,OrdererPrimary: Bank Approval via Blockchain Gateway + gRPC Direct
-        Bank->>Frontend: Click bank approve button
-        Frontend->>APIGateway: POST /api/contracts/{id}/approve-bank
-        APIGateway->>PeerMainBank: Route to Main Bank Peer /contract/approve-bank
-        PeerMainBank->>BlockchainGateway: gRPC IssueToken() ✅
-        BlockchainGateway->>BlockchainGateway: Validate contract & bank auth
-        BlockchainGateway->>MongoShared: Create token (issuer=SYSTEM, owner=Anchor)
-        BlockchainGateway->>MongoShared: Create initial balance (Anchor=totalAmount)
-        BlockchainGateway->>MongoShared: Update contract bankApproved=true
-        BlockchainGateway-->>PeerMainBank: Return tokenId + transaction data
-        PeerMainBank->>OrdererPrimary: gRPC SubmitTx (bank approval transaction)
-        OrdererPrimary-->>PeerMainBank: SubmitTxReply (immediate)
-        PeerMainBank-->>APIGateway: Token created + contract approved (immediate)
-        APIGateway-->>Frontend: Success response
-        Frontend-->>Bank: Token created notification
-    end
+    PeerA->>PeerA: Execute Chaincode logic
+    PeerA->>GW: Endorsement + RWSet
+    PeerB->>PeerB: Execute Chaincode logic
+    PeerB->>GW: Endorsement + RWSet
+    PeerS->>PeerS: Execute Chaincode logic
+    PeerS->>GW: Endorsement + RWSet
 
-    %% 3. Suppliers phê duyệt - submit via gRPC direct
-    rect rgb(248, 255, 240)
-        Note over Supplier,OrdererPrimary: Supplier Approval via Blockchain Gateway + gRPC + PBFT
-        Supplier->>Frontend: Click supplier approve button
-        Frontend->>APIGateway: POST /api/contracts/{id}/approve
-        APIGateway->>PeerSupplier: Route to Supplier Peer /contract/approve
-        PeerSupplier->>BlockchainGateway: gRPC ApproveContract() ✅
-        BlockchainGateway->>BlockchainGateway: Check contract status & supplier auth
-        BlockchainGateway->>MongoShared: Update supplier approval status
-        alt All suppliers approved
-            BlockchainGateway->>BlockchainGateway: gRPC FinalizeContract()
-            BlockchainGateway->>MongoShared: Update contract.approved = true
-            BlockchainGateway->>MongoShared: Transfer token ownership (Anchor → Suppliers)
-            BlockchainGateway->>MongoShared: Update balances proportionally
-            BlockchainGateway-->>PeerSupplier: Return CONTRACT_FULLY_APPROVED + transaction data
-            PeerSupplier->>OrdererPrimary: gRPC SubmitTx (contract fully approved)
-        else
-            BlockchainGateway-->>PeerSupplier: Return SUPPLIER_APPROVED + transaction data
-            PeerSupplier->>OrdererPrimary: gRPC SubmitTx (supplier approved)
-        end
-        OrdererPrimary-->>PeerSupplier: SubmitTxReply (immediate)
-        PeerSupplier-->>APIGateway: Approval successful (immediate)
-        APIGateway-->>Frontend: Contract updated
-        Frontend-->>Supplier: Approval confirmed
-    end
-
-    %% 4. Token transfer - submit via gRPC
-    rect rgb(248, 255, 240)
-        Note over Supplier,OrdererPrimary: P2P Token Transfer via Blockchain Gateway + gRPC + PBFT
-        Supplier->>Frontend: Initiate token transfer to another supplier
-        Frontend->>APIGateway: POST /api/tokens/transfer
-        APIGateway->>PeerSupplier: Route to Supplier Peer /token/transfer
-        PeerSupplier->>BlockchainGateway: gRPC TransferToken() ✅
-        BlockchainGateway->>BlockchainGateway: Validate sender balance & ownership
-        BlockchainGateway->>MongoShared: Debit sender balance
-        BlockchainGateway->>MongoShared: Credit receiver balance
-        BlockchainGateway-->>PeerSupplier: Return transfer result + transaction data
-        PeerSupplier->>OrdererPrimary: gRPC SubmitTx (token transfer transaction)
-        OrdererPrimary-->>PeerSupplier: SubmitTxReply (immediate)
-        PeerSupplier-->>APIGateway: Transfer successful (immediate)
-        APIGateway-->>Frontend: Success response
-        Frontend-->>Supplier: Transfer confirmed
-    end
-
-    %% 5. Orderer Cluster PBFT consensus
-    rect rgb(255, 240, 248)
-        Note over OrdererPrimary,PeerAnchor: PBFT Consensus Ordering
-        loop Continuous transaction processing
-            OrdererPrimary->>OrdererPrimary: Collect transactions from mempool
-            OrdererPrimary->>OrdererReplica2: PBFT Pre-Prepare (proposed block)
-            OrdererPrimary->>OrdererReplica3: PBFT Pre-Prepare (proposed block)
-            OrdererReplica2->>OrdererPrimary: PBFT Prepare (validation)
-            OrdererReplica3->>OrdererPrimary: PBFT Prepare (validation)
-            OrdererReplica2->>OrdererPrimary: PBFT Commit (quorum reached)
-            OrdererReplica3->>OrdererPrimary: PBFT Commit (quorum reached)
-            OrdererPrimary->>OrdererPrimary: Finalize block with ECDSA signatures
-            OrdererPrimary->>PeerAnchor: StreamBlocks (signed block)
-            OrdererPrimary->>PeerMainBank: StreamBlocks (signed block)
-            OrdererPrimary->>PeerSupplier: StreamBlocks (signed block)
-            PeerAnchor->>MongoAnchor: Save PBFT-signed blocks
-            PeerMainBank->>MongoMainBank: Save PBFT-signed blocks
-            PeerSupplier->>MongoSupplier: Save PBFT-signed blocks
-        end
-    end
-
-    %% 5. Bank xem tổng quan tokens
-    rect rgb(240, 255, 248)
-        Note over Bank,MongoDB: Bank monitoring
-        Bank->>Frontend: View issued tokens dashboard
-        Frontend->>Backend: GET /api/tokens/issued/{bankId}
-        Backend->>MSBlockchain: GET /token/issued/{bankId}
-        MSBlockchain->>MongoDB: Query tokens by issuer
-        MongoDB-->>MSBlockchain: Token list with current owners
-        MSBlockchain-->>Backend: Formatted token data
-        Backend-->>Frontend: Token overview
-        Frontend-->>Bank: Display token dashboard
-    end
-
-    %% 6. Ledger audit trail
-    rect rgb(248, 240, 255)
-        Note over Bank,MongoDB: Audit & compliance
-        Bank->>Frontend: View contract ledger
-        Frontend->>Backend: GET /api/contracts/{id}/ledger
-        Backend->>MSBlockchain: GET /contract/{id}/ledger
-        MSBlockchain->>MongoDB: Query blocks containing contract events
-        MongoDB-->>MSBlockchain: Block data with events
-        MSBlockchain-->>Backend: Immutable ledger data
-        Backend-->>Frontend: Audit trail
-        Frontend-->>Bank: Display blockchain ledger
-    end
-```
+    GW->>GW: Collect endorsements + Check Policy
+    GW->>ORD: Submit TX + endorsements
+    ORD->>LED: Commit Block
+    LED-->>GW: TX committed
+    GW-->>APIGW(Java): TX result
+    APIGW(Java)-->>User: Response
 
 ## Data Flow Architecture
 

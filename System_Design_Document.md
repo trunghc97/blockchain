@@ -1,10 +1,10 @@
-# Tài liệu Thiết kế Hệ thống Blockchain SCF với gRPC Direct Communication & PBFT Consensus
+# Tài liệu Thiết kế Hệ thống Blockchain SCF với Blockchain Gateway Architecture
 
 ## Mục lục
 1. [Tổng quan hệ thống](#tổng-quan-hệ-thống)
 2. [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
 3. [Blockchain Gateway](#blockchain-gateway)
-4. [gRPC Direct Communication](#grpc-direct-communication)
+4. [Endorsement Pattern](#endorsement-pattern)
 5. [PBFT Consensus](#pbft-consensus)
 6. [Luồng Use Case](#luồng-use-case)
 7. [Luồng Sequence Diagram](#luồng-sequence-diagram)
@@ -15,41 +15,46 @@
 ## Tổng quan hệ thống
 
 ### Mục đích
-Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho Supply Chain Finance là nền tảng phân quyền sử dụng kiến trúc microservices hiện đại. Hệ thống cho phép:
+Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architecture cho Supply Chain Finance là nền tảng phân quyền sử dụng kiến trúc microservices hiện đại. Hệ thống cho phép:
 
-- **🔗 Blockchain Gateway**: Transaction aggregator và gateway service chịu trách nhiệm tổng hợp và gửi transactions sang Orderer cluster
-- **📡 gRPC Direct Communication**: Real-time communication giữa Peer nodes và Orderer cluster, loại bỏ message broker
+- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster
+- **📡 Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
 - **🏛️ PBFT Consensus**: Practical Byzantine Fault Tolerance đảm bảo global transaction ordering
-- **⚡ High Throughput**: Direct gRPC streaming với load balancing và connection pooling
+- **⚡ High Throughput**: Proposal-Response pattern với endorsement aggregation
 - **🛡️ Fault Tolerance**: PBFT consensus với f=1 fault tolerance trong orderer cluster
 - **🔄 Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
-- **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
+- **🏗️ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 
 ### Phạm vi
-- **Direct Communication Architecture**: gRPC làm communication backbone cho tất cả blockchain operations
-- **Blockchain Gateway**: Business logic tích hợp trong từng peer service (endorsement layer), blockchain gateway chỉ tổng hợp và gửi transactions
-- **Real-time Processing**: Peers → Blockchain Gateway → Orderer → PBFT Consensus → Block Streaming
+- **Blockchain Gateway Architecture**: blockchain-gw đóng vai trò Fabric Client, tổng hợp endorsements từ peers và gửi transactions sang Orderer
+- **Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+- **Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, peers trả về endorsements
 - **PBFT Consensus**: Byzantine fault tolerant consensus với 3f+1 nodes (f=1)
-- **State Management**: Blockchain gateway quản lý tất cả contract và token state
+- **Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 - **Load Distribution**: Client-side load balancing và leader affinity routing
 - **Network Isolation**: Private networks cho peers, orderers, và blockchain gateway
 
 ## Kiến trúc hệ thống
 
-### 🆕 **Kiến trúc mới: Blockchain Gateway & gRPC Direct Communication**
+### 🆕 **Kiến trúc mới: Blockchain Gateway Architecture**
 
 #### Tổng quan kiến trúc mới
-Hệ thống đã được nâng cấp với **Blockchain Gateway** - transaction aggregator và gateway service:
+Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client:
 
-- **🔗 Blockchain Gateway**: Blockchain Gateway chạy trên port 9090 làm transaction aggregator
-- **📡 Peer Services**: REST API gateways với integrated chaincode + gRPC clients để invoke blockchain gateway methods
-- **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
-- **💾 State Management**: Blockchain gateway quản lý tất cả contract và token state
-- **⚡ Real-time Communication**: gRPC Direct Communication loại bỏ message broker
+- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client
+- **📡 Peer Services**: REST API gateways với endorsement logic, không gửi trực tiếp lên Orderer
+- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, blockchain-gw tổng hợp và gửi transactions
+- **💾 Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
+- **⚡ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, thu thập endorsements
 - **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
 
-#### Smart Contract Methods
+#### Endorsement Methods
 ```go
+// Proposal Request Methods
+ProposalRequest(contractID, operation, parameters)
+CollectEndorsements(proposalID, peerList)
+ValidateEndorsements(endorsements, policy)
+
 // Contract Management
 CreateContract(anchorID, suppliers[], totalAmount, fileHash)
 ApproveContract(contractID, supplierID)
@@ -62,13 +67,13 @@ SettleToken(tokenID, supplierID, bankID)
 ```
 
 #### gRPC Communication Protocol
-- **Protocol Buffers**: Định nghĩa RPC interfaces trong `share/smartcontract.proto`
+- **Protocol Buffers**: Định nghĩa RPC interfaces cho blockchain-gw và peers
 - **Generated Code**: Auto-generated gRPC clients/servers từ protobuf
-- **High Performance**: Binary serialization, bidirectional streaming
+- **High Performance**: Binary serialization, proposal-response pattern
 - **Connection Management**: Persistent connections với retry logic
 - **Error Handling**: Comprehensive error propagation và recovery
 
-### Mô hình kết nối với gRPC Direct Communication & Blockchain Gateway
+### Mô hình kết nối với Blockchain Gateway Architecture
 
 ```mermaid
 graph TB
@@ -80,11 +85,14 @@ graph TB
         JAVA[Java Spring Boot<br/>Port: 8080<br/>Smart Routing & Auth]
     end
 
-    subgraph "gRPC Communication Layer"
-        subgraph "Blockchain Gateway Service"
-            CHAINCODE[Blockchain Gateway<br/>Port: 9090<br/>Transaction Aggregator Service]
+    subgraph "Blockchain Gateway Architecture"
+        subgraph "blockchain-gw (Port 9090)"
+            GW[Blockchain Gateway<br/>Fabric Client<br/>Endorsement Aggregator]
+            PROPOSAL[ProposalRequest<br/>Gửi đến peers]
+            COLLECT[CollectEndorsements<br/>Thu thập từ peers]
+            SUBMIT[SubmitTx<br/>Gửi sang Orderer]
         end
-
+        
         subgraph "Orderer Service"
             ORD_SVC[gRPC OrdererService<br/>SubmitTx<br/>StreamBlocks<br/>PBFT Consensus]
         end
@@ -93,20 +101,20 @@ graph TB
     subgraph "Permissioned Peer Network"
         subgraph "Peer Main Bank"
             MB_API[REST API<br/>Port: 8082]
-            MB_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
-            MB_DB[(MongoDB<br/>blockchain_private)]
+            MB_ENDORSE[Endorsement Logic<br/>Chỉ endorsement]
+            MB_DB[(MongoDB<br/>Local State)]
         end
 
         subgraph "Peer Supplier"
             SUP_API[REST API<br/>Port: 8083]
-            SUP_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
-            SUP_DB[(MongoDB<br/>blockchain_private)]
+            SUP_ENDORSE[Endorsement Logic<br/>Chỉ endorsement]
+            SUP_DB[(MongoDB<br/>Local State)]
         end
 
         subgraph "Peer Anchor"
             ANC_API[REST API<br/>Port: 8084]
-            ANC_GRPC[gRPC Client<br/>Direct to Orderer & Chaincode]
-            ANC_DB[(MongoDB<br/>blockchain_private)]
+            ANC_ENDORSE[Endorsement Logic<br/>Chỉ endorsement]
+            ANC_DB[(MongoDB<br/>Local State)]
         end
     end
 
@@ -117,7 +125,7 @@ graph TB
     end
 
     subgraph "Shared Services"
-        SHARED_DB[(MongoDB Shared<br/>Dual Databases<br/>Private + Public)]
+        SHARED_DB[(MongoDB Shared<br/>World State<br/>Managed by blockchain-gw)]
     end
 
     subgraph "Network Topology"
@@ -132,33 +140,34 @@ graph TB
     JAVA -->|Smart Routing| SUP_API
     JAVA -->|Smart Routing| ANC_API
 
-    %% Peers invoke chaincode service for business logic
-    MB_API -->|gRPC| CHAINCODE
-    SUP_API -->|gRPC| CHAINCODE
-    ANC_API -->|gRPC| CHAINCODE
+    %% Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+    MB_API -->|ProposalRequest| GW
+    SUP_API -->|ProposalRequest| GW
+    ANC_API -->|ProposalRequest| GW
 
-    %% Peers submit transactions directly to orderer
-    MB_API --> MB_GRPC
-    SUP_API --> SUP_GRPC
-    ANC_API --> ANC_GRPC
+    %% blockchain-gw thu thập endorsements và gửi lên Orderer
+    GW -->|CollectEndorsements| MB_ENDORSE
+    GW -->|CollectEndorsements| SUP_ENDORSE
+    GW -->|CollectEndorsements| ANC_ENDORSE
 
-    MB_GRPC -->|SubmitTx| ORD_SVC
-    SUP_GRPC -->|SubmitTx| ORD_SVC
-    ANC_GRPC -->|SubmitTx| ORD_SVC
+    MB_ENDORSE -->|Endorsement| GW
+    SUP_ENDORSE -->|Endorsement| GW
+    ANC_ENDORSE -->|Endorsement| GW
 
+    GW -->|SubmitTx + Endorsements| ORD_SVC
     ORD_SVC -->|PBFT Consensus| ORD1
     ORD_SVC -->|PBFT Consensus| ORD2
     ORD_SVC -->|PBFT Consensus| ORD3
 
-    ORD1 -->|StreamBlocks| MB_GRPC
-    ORD1 -->|StreamBlocks| SUP_GRPC
-    ORD1 -->|StreamBlocks| ANC_GRPC
+    ORD1 -->|StreamBlocks| MB_API
+    ORD1 -->|StreamBlocks| SUP_API
+    ORD1 -->|StreamBlocks| ANC_API
 
-    MB_GRPC -->|Apply Blocks| MB_DB
-    SUP_GRPC -->|Apply Blocks| SUP_DB
-    ANC_GRPC -->|Apply Blocks| ANC_DB
+    MB_API -->|Apply Blocks| MB_DB
+    SUP_API -->|Apply Blocks| SUP_DB
+    ANC_API -->|Apply Blocks| ANC_DB
 
-    CHAINCODE -->|State Management| SHARED_DB
+    GW -->|State Management| SHARED_DB
     JAVA --> SHARED_DB
 
     ORD1 -.->|PBFT Replication| ORD2
@@ -167,9 +176,9 @@ graph TB
 
     PUBLIC_NW -.->|External Access| FE
     PUBLIC_NW -.->|External Access| JAVA
-    PRIVATE_NW -.->|Internal| MB_GRPC
-    PRIVATE_NW -.->|Internal| SUP_GRPC
-    PRIVATE_NW -.->|Internal| ANC_GRPC
+    PRIVATE_NW -.->|Internal| MB_ENDORSE
+    PRIVATE_NW -.->|Internal| SUP_ENDORSE
+    PRIVATE_NW -.->|Internal| ANC_ENDORSE
     ORDERER_NW -.->|PBFT Network| ORD1
     ORDERER_NW -.->|PBFT Network| ORD2
     ORDERER_NW -.->|PBFT Network| ORD3
@@ -178,33 +187,34 @@ graph TB
 ## Blockchain Gateway
 
 ### Tổng quan
-Blockchain Gateway là transaction aggregator và gateway service chịu trách nhiệm tổng hợp và gửi transactions sang Orderer cluster:
+blockchain-gw là Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements từ peers và gửi transactions sang Orderer cluster:
 
-- **🔗 Microservice Architecture**: Chạy độc lập trên port 9090
-- **📡 gRPC Server**: Protocol Buffers-based RPC interface
-- **💾 Transaction Aggregation**: Tổng hợp transactions từ peers
-- **🏗️ Gateway Service**: Submit transactions sang orderer cluster
-- **⚡ High Performance**: Transaction batching và validation
+- **🔗 Fabric Client**: Đóng vai trò Fabric Client trong kiến trúc blockchain
+- **📡 Proposal-Response Pattern**: Gửi ProposalRequest đến peers để lấy endorsements
+- **💾 Endorsement Aggregation**: Thu thập và tổng hợp endorsements từ peers
+- **🏗️ Transaction Submission**: Submit transactions + endorsements sang Orderer cluster
+- **⚡ High Performance**: Endorsement batching và validation
 
 ### Kiến trúc Blockchain Gateway
 
 ```mermaid
 graph TB
-    subgraph "Blockchain Gateway (Port 9090)"
+    subgraph "blockchain-gw (Port 9090)"
         subgraph "gRPC Server Layer"
             GRPC_SERVER[gRPC Server<br/>Protocol Buffers]
-            SERVICE[TransactionAggregatorService<br/>Interface Implementation]
+            SERVICE[BlockchainGatewayService<br/>Interface Implementation]
         end
 
-        subgraph "Transaction Aggregator Layer"
-            CONTRACT_MGMT[Contract Management<br/>Create, Approve, Finalize]
-            TOKEN_MGMT[Token Management<br/>Issue, Transfer, Settle]
-            VALIDATION[Transaction Processing Rules<br/>Validation Logic]
+        subgraph "Endorsement Aggregation Layer"
+            PROPOSAL[ProposalRequest<br/>Gửi đến peers]
+            COLLECT[CollectEndorsements<br/>Thu thập từ peers]
+            VALIDATE[ValidateEndorsements<br/>Kiểm tra policy]
+            SUBMIT[SubmitTx<br/>Gửi sang Orderer]
         end
 
         subgraph "State Management"
             IN_MEMORY[In-Memory State<br/>Fast Access]
-            PERSISTENCE[MongoDB Persistence<br/>Durability]
+            PERSISTENCE[MongoDB Persistence<br/>World State]
         end
 
         subgraph "Contract Models"
@@ -225,141 +235,91 @@ graph TB
     PERSISTENCE -.->|MongoDB| MONGO_SHARED[MongoDB Shared]
 ```
 
-### Smart Contract Methods
+### Endorsement Methods
 
-#### Contract Operations
+#### Proposal Request Operations
 
-##### CreateContract
+##### ProposalRequest
 ```protobuf
-message CreateContractRequest {
-  string anchorId = 1;
-  repeated string suppliers = 2;
-  double totalAmount = 3;
-  string fileHash = 4;
+message ProposalRequest {
+  string proposalId = 1;
+  string operation = 2;  // CREATE_CONTRACT, APPROVE_CONTRACT, etc.
+  bytes parameters = 3;
+  string contractId = 4;
 }
 
-message ContractResponse {
-  string contractId = 1;
+message ProposalResponse {
+  string proposalId = 1;
+  bytes rwset = 2;
+  bytes signature = 3;
+  string peerId = 4;
+  string status = 5;
+}
+```
+
+**Endorsement Flow:**
+1. blockchain-gw tạo ProposalRequest
+2. Gửi đến các peers cần thiết
+3. Peers thực thi chaincode logic
+4. Trả về endorsements với RWSet và signature
+5. blockchain-gw thu thập endorsements
+
+##### CollectEndorsements
+```protobuf
+message CollectEndorsementsRequest {
+  string proposalId = 1;
+  repeated string peerIds = 2;
+}
+
+message CollectEndorsementsResponse {
+  string proposalId = 1;
+  repeated Endorsement endorsements = 2;
+  bool policySatisfied = 3;
+}
+
+message Endorsement {
+  string peerId = 1;
+  bytes rwset = 2;
+  bytes signature = 3;
+  string timestamp = 4;
+}
+```
+
+**Endorsement Aggregation:**
+1. Thu thập endorsements từ peers
+2. Kiểm tra endorsement policy
+3. Validate signatures và RWSet
+4. Tổng hợp thành transaction
+
+##### SubmitTx
+```protobuf
+message SubmitTxRequest {
+  string transactionId = 1;
+  string proposalId = 2;
+  repeated Endorsement endorsements = 3;
+  bytes transactionData = 4;
+}
+
+message SubmitTxResponse {
+  string transactionId = 1;
   string status = 2;
   string message = 3;
 }
 ```
 
-**Transaction Aggregator:**
-1. Validate anchor permissions
-2. Generate unique contract ID
-3. Initialize contract with PENDING status
-4. Store contract metadata trong MongoDB
-5. Return contract ID
+**Transaction Submission:**
+1. Tạo transaction với endorsements
+2. Submit đến Orderer cluster
+3. Nhận confirmation từ Orderer
+4. Cập nhật world state
 
-##### ApproveContract
-```protobuf
-message ApproveContractRequest {
-  string contractId = 1;
-  string supplierId = 2;
-}
+### Endorsement Processing Rules Validation
 
-message ContractResponse {
-  string contractId = 1;
-  string status = 2;
-  string message = 3;
-}
-```
-
-**Transaction Aggregator:**
-1. Validate supplier permissions cho contract
-2. Update supplier approval status
-3. Check if all suppliers approved
-4. Update contract status accordingly
-
-##### FinalizeContract
-```protobuf
-message FinalizeContractRequest {
-  string contractId = 1;
-}
-
-message ContractResponse {
-  string contractId = 1;
-  string status = 2;
-  string message = 3;
-}
-```
-
-**Transaction Aggregator:**
-1. Validate all suppliers approved
-2. Distribute tokens proportionally
-3. Update contract status to EXECUTED
-4. Create token transfer records
-
-#### Token Operations
-
-##### IssueToken
-```protobuf
-message IssueTokenRequest {
-  string contractId = 1;
-  string issuer = 2;
-  double totalSupply = 3;
-}
-
-message TokenResponse {
-  string tokenId = 1;
-  string status = 2;
-  string message = 3;
-}
-```
-
-**Transaction Aggregator:**
-1. Validate contract is approved
-2. Generate unique token ID
-3. Initialize token với total supply
-4. Assign initial ownership to issuer
-5. Create balance records
-
-##### TransferToken
-```protobuf
-message TransferTokenRequest {
-  string tokenId = 1;
-  string from = 2;
-  string to = 3;
-  double amount = 4;
-}
-
-message TokenResponse {
-  string tokenId = 1;
-  string status = 2;
-  string message = 3;
-}
-```
-
-**Transaction Aggregator:**
-1. Validate sender balance sufficient
-2. Update sender balance (-amount)
-3. Update receiver balance (+amount)
-4. Create transfer record
-5. Validate total supply conservation
-
-##### SettleToken
-```protobuf
-message SettleTokenRequest {
-  string tokenId = 1;
-  string supplierId = 2;
-  string bankId = 3;
-}
-
-message TokenResponse {
-  string tokenId = 1;
-  string status = 2;
-  string message = 3;
-}
-```
-
-**Transaction Aggregator:**
-1. Validate supplier has balance
-2. Remove supplier balance
-3. Create settlement record
-4. Update token circulation
-
-### Transaction Processing Rules Validation
+#### Endorsement Policy Rules:
+- **Peer Authorization**: Chỉ authorized peers có thể thực hiện endorsement
+- **Endorsement Quorum**: Cần đủ endorsements theo policy để submit transaction
+- **Signature Validation**: Mỗi endorsement phải có signature hợp lệ
+- **RWSet Consistency**: Tất cả RWSet phải consistent với nhau
 
 #### Contract Rules:
 - **Anchor Authorization**: Chỉ anchors có thể tạo contracts
@@ -373,15 +333,15 @@ message TokenResponse {
 - **Transfer Validation**: Sufficient balance required
 - **Settlement Authorization**: Chỉ token holders có thể settle
 
-## gRPC Direct Communication
+## Endorsement Pattern
 
 ### Tổng quan
-gRPC Direct Communication loại bỏ hoàn toàn message broker trung gian, cho phép peers giao tiếp trực tiếp với orderer cluster:
+Endorsement Pattern cho phép blockchain-gw thu thập endorsements từ peers trước khi submit transaction lên Orderer:
 
-- **📡 Direct Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs
-- **⚡ Real-time Processing**: Persistent gRPC streams cho block delivery
-- **🔄 Connection Management**: Automatic reconnection với retry logic
-- **📊 Load Balancing**: Client-side load balancing across orderer nodes
+- **📡 Proposal-Response Pattern**: blockchain-gw gửi ProposalRequest đến peers
+- **⚡ Endorsement Collection**: Peers thực thi chaincode logic và trả về endorsements
+- **🔄 Real-time Processing**: Persistent gRPC connections cho endorsement collection
+- **📊 Load Balancing**: Client-side load balancing across peer nodes
 - **🛡️ Error Handling**: Comprehensive error propagation và recovery
 
 ### gRPC Communication Protocol
@@ -389,60 +349,65 @@ gRPC Direct Communication loại bỏ hoàn toàn message broker trung gian, cho
 #### Blockchain Gateway Interface
 ```protobuf
 service BlockchainGatewayService {
-  // Transaction Aggregation
-  rpc AggregateTransactions(AggregateTransactionsRequest) returns (AggregateTransactionsResponse);
-  rpc SubmitToOrderer(SubmitToOrdererRequest) returns (SubmitToOrdererResponse);
-  rpc ValidateTransactions(ValidateTransactionsRequest) returns (ValidateTransactionsResponse);
-  
   // Endorsement Management
-  rpc ManageEndorsements(ManageEndorsementsRequest) returns (ManageEndorsementsResponse);
+  rpc ProposalRequest(ProposalRequest) returns (ProposalResponse);
   rpc CollectEndorsements(CollectEndorsementsRequest) returns (CollectEndorsementsResponse);
+  rpc ValidateEndorsements(ValidateEndorsementsRequest) returns (ValidateEndorsementsResponse);
   
-  // Transaction Status
+  // Transaction Submission
+  rpc SubmitTx(SubmitTxRequest) returns (SubmitTxResponse);
   rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
-  rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
+  
+  // State Management
+  rpc GetContract(GetContractRequest) returns (GetContractResponse);
+  rpc GetToken(GetTokenRequest) returns (GetTokenResponse);
+  rpc GetBalances(GetBalancesRequest) returns (GetBalancesResponse);
 }
 ```
 
-#### Orderer Service Interface
+#### Peer Endorsement Interface
 ```protobuf
-service OrdererService {
-  // Submit transaction trực tiếp đến orderer cluster
-  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
-
-  // Streaming blocks từ orderer đến peer
-  rpc StreamBlocks(StreamBlocksRequest) returns (stream Block);
-
-  // Query block information
-  rpc GetBlockInfo(GetBlockInfoRequest) returns (GetBlockInfoResponse);
+service PeerEndorsementService {
+  // Endorsement Operations
+  rpc EndorseProposal(ProposalRequest) returns (ProposalResponse);
+  rpc GetEndorsementStatus(GetEndorsementStatusRequest) returns (GetEndorsementStatusResponse);
 }
 ```
 
-### Transaction Processing Flow
+### Endorsement Processing Flow
 
 ```mermaid
 sequenceDiagram
-    participant Peer as Peer Node
-    participant Gateway as Blockchain Gateway
-    participant Orderer as Orderer Cluster (Leader)
-    participant Followers as Orderer Followers
+    participant Client as Client
+    participant Gateway as blockchain-gw
+    participant PeerA as Peer Anchor
+    participant PeerB as Peer Bank
+    participant PeerS as Peer Supplier
+    participant Orderer as Orderer Cluster
 
-    Peer->>Gateway: Invoke smart contract method
-    Gateway->>Gateway: Execute business logic & state changes
-    Gateway->>Peer: Return transaction data
-
-    Peer->>Orderer: SubmitTransaction(tx)
-    Orderer->>Orderer: Validate transaction format & signatures
-    Orderer->>Followers: Replicate via PBFT consensus
-    Followers->>Orderer: Send prepare messages
-
-    Note over Orderer,Followers: PBFT Consensus
-    Orderer->>Orderer: Pre-Prepare → Prepare → Commit phases
-    Orderer->>Orderer: Create block when quorum reached
-    Orderer->>Peer: StreamBlocks (real-time)
-
-    Peer->>Peer: Validate and apply block to local state
-    Gateway->>Gateway: Persist state changes
+    Client->>Gateway: Submit Transaction Request
+    Gateway->>Gateway: Create ProposalRequest
+    
+    Gateway->>PeerA: ProposalRequest(operation, params)
+    Gateway->>PeerB: ProposalRequest(operation, params)
+    Gateway->>PeerS: ProposalRequest(operation, params)
+    
+    PeerA->>PeerA: Execute Chaincode Logic
+    PeerA->>Gateway: Endorsement + RWSet + Signature
+    PeerB->>PeerB: Execute Chaincode Logic
+    PeerB->>Gateway: Endorsement + RWSet + Signature
+    PeerS->>PeerS: Execute Chaincode Logic
+    PeerS->>Gateway: Endorsement + RWSet + Signature
+    
+    Gateway->>Gateway: Collect Endorsements
+    Gateway->>Gateway: Validate Endorsement Policy
+    Gateway->>Gateway: Check RWSet Consistency
+    
+    Gateway->>Orderer: SubmitTx(transaction + endorsements)
+    Orderer->>Orderer: PBFT Consensus
+    Orderer->>Gateway: Transaction Committed
+    
+    Gateway->>Client: Transaction Result
 ```
 
 ### Connection Management
@@ -1052,130 +1017,101 @@ func connectToOrderer(endpoint string) (*grpc.ClientConn, error) {
 
 ## Luồng Sequence Diagram
 
-### SD-001: Tạo và phê duyệt hợp đồng hoàn chỉnh với gRPC Direct Communication
+### SD-001: Flow chuẩn với Blockchain Gateway Architecture
 
 ```mermaid
 sequenceDiagram
-    participant A as Anchor
-    participant FE as Frontend
-    participant BE as Backend (Java)
-    participant PEER as Peer Service (Go)
-    participant GATEWAY as Blockchain Gateway (Go)
-    participant ORDERER as Orderer Cluster
-    participant DB as MongoDB
+    participant User(App/Web)
+    participant APIGW(Java)
+    participant GW as blockchain-gw
+    participant PeerA as Peer Anchor
+    participant PeerB as Peer Bank
+    participant PeerS as Peer Supplier
+    participant ORD as Orderer PBFT
+    participant LED as Ledger
 
-    %% Tạo hợp đồng
-    A->>FE: Nhập thông tin hợp đồng
-    FE->>BE: POST /api/contracts (contract data)
-    BE->>PEER: POST /contract/create
-    PEER->>GATEWAY: gRPC CreateContract() ✅
-    GATEWAY->>GATEWAY: Execute business logic & validation
-    GATEWAY->>DB: Insert contract state
-    GATEWAY-->>PEER: Return contractId + transaction data
-    PEER->>ORDERER: gRPC SubmitTx(Transaction) ✅
-    ORDERER-->>PEER: SubmitTxReply (immediate)
-    PEER-->>BE: Success response
-    BE-->>FE: Success response
-    FE-->>A: Hiển thị hợp đồng đã tạo
+    User->>APIGW(Java): Submit TX
+    APIGW(Java)->>GW: Forward Request
 
-    %% Bank phê duyệt
-    A->>FE: Yêu cầu bank phê duyệt
-    FE->>BE: POST /api/contracts/{id}/approve-bank
-    BE->>PEER: POST /contract/{id}/approve-bank
-    PEER->>GATEWAY: gRPC IssueToken() ✅
-    GATEWAY->>GATEWAY: Validate contract & bank auth
-    GATEWAY->>DB: Create token (issuer=SYSTEM, owner=Anchor)
-    GATEWAY->>DB: Create initial balance (Anchor=totalAmount)
-    GATEWAY->>DB: Update contract bankApproved=true
-    GATEWAY-->>PEER: Return tokenId + transaction data
-    PEER->>ORDERER: gRPC SubmitTx (bank approval transaction)
-    ORDERER-->>PEER: SubmitTxReply (immediate)
-    PEER-->>BE: Success + tokenId
-    BE-->>FE: Success + tokenId
-    FE-->>A: Hiển thị token đã tạo
+    GW->>PeerA: ProposalRequest
+    GW->>PeerB: ProposalRequest
+    GW->>PeerS: ProposalRequest
 
-    %% Suppliers phê duyệt
-    A->>FE: Thông báo suppliers phê duyệt
-    loop Mỗi supplier
-        FE->>BE: POST /api/contracts/{id}/approve (supplierId)
-        BE->>PEER: POST /contract/{id}/approve
-        PEER->>GATEWAY: gRPC ApproveContract() ✅
-        GATEWAY->>GATEWAY: Check contract status & supplier auth
-        GATEWAY->>DB: Update supplier approval status
-        alt Tất cả đã approve
-            GATEWAY->>GATEWAY: gRPC FinalizeContract()
-            GATEWAY->>DB: Update contract.approved = true
-            GATEWAY->>DB: Insert balances cho tất cả suppliers
-            GATEWAY->>DB: Delete anchor balance
-            GATEWAY-->>PEER: Return CONTRACT_FULLY_APPROVED + transaction data
-        else
-            GATEWAY-->>PEER: Return SUPPLIER_APPROVED + transaction data
-        end
-        PEER->>ORDERER: gRPC SubmitTx (approval transaction)
-        ORDERER-->>PEER: SubmitTxReply (immediate)
-        PEER-->>BE: Success
-        BE-->>FE: Success
-    end
-    FE-->>A: Hợp đồng hoàn tất
+    PeerA->>PeerA: Execute Chaincode logic
+    PeerA->>GW: Endorsement + RWSet
+    PeerB->>PeerB: Execute Chaincode logic
+    PeerB->>GW: Endorsement + RWSet
+    PeerS->>PeerS: Execute Chaincode logic
+    PeerS->>GW: Endorsement + RWSet
+
+    GW->>GW: Collect endorsements + Check Policy
+    GW->>ORD: Submit TX + endorsements
+    ORD->>LED: Commit Block
+    LED-->>GW: TX committed
+    GW-->>APIGW(Java): TX result
+    APIGW(Java)-->>User: Response
 ```
 
-### SD-002: Chuyển nhượng token với gRPC Direct Communication
+### SD-002: Chuyển nhượng token với Blockchain Gateway Architecture
 
 ```mermaid
 sequenceDiagram
     participant S1 as Supplier 1
     participant FE as Frontend
     participant BE as Backend (Java)
-    participant PEER as Peer Service (Go)
-    participant GATEWAY as Blockchain Gateway (Go)
-    participant ORDERER as Orderer Cluster
-    participant DB as MongoDB
+    participant GW as blockchain-gw
+    participant PeerS as Peer Supplier
+    participant ORD as Orderer Cluster
+    participant LED as Ledger
 
     S1->>FE: Chọn token & số lượng, chọn người nhận
-    FE->>BE: POST /api/v1/tokens/transfer
-    BE->>PEER: POST /token/transfer
-    PEER->>GATEWAY: gRPC TransferToken() ✅
-    GATEWAY->>GATEWAY: Validate sender balance & ownership
-    GATEWAY->>DB: Debit sender balance (-amount)
-    GATEWAY->>DB: Credit receiver balance (+amount)
-    GATEWAY->>GATEWAY: Check if anchor balance == 0
-    alt Anchor hết token
-        GATEWAY->>DB: Update contract status APPROVED
-    end
-    GATEWAY-->>PEER: Return transfer result + transaction data
-    PEER->>ORDERER: gRPC SubmitTx (token transfer transaction)
-    ORDERER-->>PEER: SubmitTxReply (immediate)
-    PEER-->>BE: Success
-    BE-->>FE: Success
-    FE-->>S1: Transfer thành công
+    FE->>BE: POST /api/tokens/transfer
+    BE->>GW: Forward Transfer Request
+    
+    GW->>PeerS: ProposalRequest(TRANSFER_TOKEN, params)
+    PeerS->>PeerS: Execute Chaincode Logic
+    PeerS->>GW: Endorsement + RWSet
+    
+    GW->>GW: Validate endorsements + Check Policy
+    GW->>ORD: SubmitTx(transfer transaction + endorsements)
+    ORD->>ORD: PBFT Consensus
+    ORD->>LED: Commit Block
+    LED-->>GW: TX committed
+    
+    GW-->>BE: Transfer successful
+    BE-->>FE: Success response
+    FE-->>S1: Transfer confirmed
 ```
 
-### SD-003: Tất toán token với gRPC Direct Communication
+### SD-003: Tất toán token với Blockchain Gateway Architecture
 
 ```mermaid
 sequenceDiagram
     participant S as Supplier
     participant FE as Frontend
     participant BE as Backend (Java)
-    participant PEER as Peer Service (Go)
-    participant GATEWAY as Blockchain Gateway (Go)
-    participant ORDERER as Orderer Cluster
-    participant DB as MongoDB
+    participant GW as blockchain-gw
+    participant PeerS as Peer Supplier
+    participant ORD as Orderer Cluster
+    participant LED as Ledger
 
     S->>FE: Click "Settle with Bank" cho token
-    FE->>BE: POST /api/v1/tokens/settle
-    BE->>PEER: POST /token/settle
-    PEER->>GATEWAY: gRPC SettleToken() ✅
-    GATEWAY->>GATEWAY: Validate supplier has balance
-    GATEWAY->>DB: Remove supplier balance
-    GATEWAY->>DB: Create settlement record
-    GATEWAY->>DB: Update token circulation
-    GATEWAY-->>PEER: Return settlement result + transaction data
-    PEER->>ORDERER: gRPC SubmitTx (settlement transaction)
-    ORDERER-->>PEER: SubmitTxReply (immediate)
-    PEER-->>BE: Success
-    BE-->>FE: Success
-    FE-->>S: Settlement thành công
+    FE->>BE: POST /api/tokens/settle
+    BE->>GW: Forward Settlement Request
+    
+    GW->>PeerS: ProposalRequest(SETTLE_TOKEN, params)
+    PeerS->>PeerS: Execute Chaincode Logic
+    PeerS->>GW: Endorsement + RWSet
+    
+    GW->>GW: Validate endorsements + Check Policy
+    GW->>ORD: SubmitTx(settlement transaction + endorsements)
+    ORD->>ORD: PBFT Consensus
+    ORD->>LED: Commit Block
+    LED-->>GW: TX committed
+    
+    GW-->>BE: Settlement successful
+    BE-->>FE: Success response
+    FE-->>S: Settlement confirmed
 ```
 
 ## Thiết kế API
