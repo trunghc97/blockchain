@@ -17,9 +17,9 @@ type ChaincodeClient struct {
 }
 
 func NewClient() *ChaincodeClient {
-	conn, err := grpc.Dial("scf-chaincode:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial("blockchain-gw:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("failed to connect to chaincode service: %v", err)
+		log.Fatalf("failed to connect to blockchain gateway: %v", err)
 	}
 
 	return &ChaincodeClient{

@@ -46,7 +46,7 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
 ```bash
 # Test successful - Blockchain Gateway Architecture ✅
-User Request → API GW → blockchain-gw → ProposalRequest to Peers → Endorsements → SubmitTx to Orderer → PBFT Consensus → Block Creation → Events Sync ✅
+User Request → API GW → blockchain-gw → ProposalRequest to Peers → Endorsements → SubmitTx to Orderer → PBFT Consensus → Block Creation → Block Distribution ✅
 
 # Complete test flow:
 ✅ CONTRACT_CREATED via blockchain-gw + peer endorsements + orderer submission
@@ -113,13 +113,13 @@ Sample PBFT consensus block with signatures:
 ### ✅ **Implemented APIs**
 
 **Peer Anchor (Port 8084) - Endorser Only:**
-- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/list` - Danh sách contracts từ local MongoDB
 - `GET /health` - Health check
 
 **Peer Main Bank (Port 8082) - Endorser Only:**
-- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
 - `GET /contract/list` - List contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
@@ -127,19 +127,20 @@ Sample PBFT consensus block with signatures:
 - `GET /tokens` - All tokens issued by bank từ local MongoDB
 
 **Peer Supplier (Port 8083) - Endorser Only:**
-- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
 - `GET /balances/account/{accountId}` - Account balances từ local MongoDB
 - `GET /health` - Health check
 
 **blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator:**
-- `ProposalRequest()` - Gửi proposal đến peers để lấy endorsements
+- `ProposalRequest()` - Gửi ProposalRequest đến peers để lấy endorsements
 - `CollectEndorsements()` - Thu thập endorsements từ peers
 - `ValidateEndorsements()` - Kiểm tra endorsement policy
 - `SubmitTx()` - Gửi transaction + endorsements sang orderer cluster
+- `DistributeBlocks()` - Nhận blocks từ Orderer và distribute đến peers
 
 **Orderer gRPC APIs (Ports 7050-7070):**
 - `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for PBFT consensus
-- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks to peers
+- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks to blockchain-gw
 - `Consensus(ConsensusMsg) → Ack` - PBFT consensus messages between orderers
 
 ```mermaid
@@ -248,6 +249,8 @@ graph TB
 - **Orderer**: Chỉ nhận transaction từ blockchain-gw, chỉ stream blocks về blockchain-gw
 - **Block Distribution**: blockchain-gw nhận blocks từ Orderer và distribute đến peers
 - **Databases**: Peers lưu local state, blockchain-gw quản lý world state
+- **Endorsement Pattern**: Peers chỉ thực hiện EvaluateProposal, không submit transaction
+- **Fabric Client Role**: blockchain-gw đóng vai trò Fabric Client trong Private Blockchain Network
 
 ## Luồng nghiệp vụ chi tiết
 
@@ -277,8 +280,10 @@ sequenceDiagram
 
     GW->>GW: Collect endorsements + Check Policy
     GW->>ORD: Submit TX + endorsements
+    ORD->>ORD: PBFT Consensus (Pre-Prepare, Prepare, Commit, Finalize)
     ORD->>LED: Commit Block
-    LED-->>GW: Block committed
+    LED-->>ORD: Block committed
+    ORD->>GW: StreamBlocks (finalized block)
     GW->>PeerA: Distribute Block
     GW->>PeerB: Distribute Block
     GW->>PeerS: Distribute Block

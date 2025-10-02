@@ -22,7 +22,7 @@ services:
       - SPRING_DATA_MONGODB_USERNAME=root
       - SPRING_DATA_MONGODB_PASSWORD=example
       # Blockchain Gateway URL
-      - BLOCKCHAIN_GATEWAY_URL=http://blockchain-gw:8080
+      - BLOCKCHAIN_GATEWAY_URL=http://blockchain-gw:9090
     depends_on:
       - mongo-shared
       - blockchain-gw
@@ -37,7 +37,6 @@ services:
       dockerfile: ./blockchain-gw/Dockerfile
     ports:
       - "9090:9090"
-      - "8081:8080"
     depends_on:
       - peer-anchor
       - peer-main-bank
@@ -121,11 +120,11 @@ services:
       - PEER_NODE_ID=main-bank-peer-1
       - PEER_PORT=8082
       - PEER_GRPC_PORT=9095
-      - ORDERER_ADDR=orderer-ord1:7050
+      - BLOCKCHAIN_GW_URL=blockchain-gw:9090
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - orderer-ord1
+      - blockchain-gw
     networks:
       - peer-network
       - public-network
@@ -142,11 +141,11 @@ services:
       - PEER_NODE_ID=supplier-peer-1
       - PEER_PORT=8083
       - PEER_GRPC_PORT=9093
-      - ORDERER_ADDR=orderer-ord1:7050
+      - BLOCKCHAIN_GW_URL=blockchain-gw:9090
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - orderer-ord1
+      - blockchain-gw
     networks:
       - peer-network
       - public-network
@@ -163,11 +162,11 @@ services:
       - PEER_NODE_ID=anchor-peer-1
       - PEER_PORT=8084
       - PEER_GRPC_PORT=9094
-      - ORDERER_ADDR=orderer-ord1:7050
+      - BLOCKCHAIN_GW_URL=blockchain-gw:9090
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
       - mongo-shared
-      - orderer-ord1
+      - blockchain-gw
     volumes:
       # Cache Go modules for faster rebuilds
       - go-mod-cache:/go/pkg/mod
