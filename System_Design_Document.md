@@ -1,44 +1,52 @@
-# Tài liệu Thiết kế Hệ thống Blockchain SCF deep tier
+# Tài liệu Thiết kế Hệ thống Blockchain SCF với gRPC Direct Communication & PBFT Consensus
 
 ## Mục lục
 1. [Tổng quan hệ thống](#tổng-quan-hệ-thống)
 2. [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
-3. [Luồng Use Case](#luồng-use-case)
-4. [Luồng Sequence Diagram](#luồng-sequence-diagram)
-5. [Thiết kế API](#thiết-kế-api)
-6. [Thiết kế Database](#thiết-kế-database)
-7. [Luồng Xử lý Nghiệp vụ](#luồng-xử-lý-nghiệp-vụ)
+3. [Blockchain Gateway](#blockchain-gateway)
+4. [gRPC Direct Communication](#grpc-direct-communication)
+5. [PBFT Consensus](#pbft-consensus)
+6. [Luồng Use Case](#luồng-use-case)
+7. [Luồng Sequence Diagram](#luồng-sequence-diagram)
+8. [Thiết kế API](#thiết-kế-api)
+9. [Thiết kế Database](#thiết-kế-database)
+10. [Luồng Xử lý Nghiệp vụ](#luồng-xử-lý-nghiệp-vụ)
 
 ## Tổng quan hệ thống
 
 ### Mục đích
-Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho Supply Chain Finance là nền tảng phân quyền sử dụng hybrid architecture. Hệ thống cho phép:
-- **gRPC Direct Communication**: Real-time communication giữa Peer nodes và Orderer cluster
-- **PBFT Consensus**: Practical Byzantine Fault Tolerance đảm bảo global transaction ordering
-- **SCF Chaincode Service**: Smart contract engine chứa toàn bộ business logic
-- **High Throughput**: Direct gRPC streaming với load balancing và connection pooling
-- **Fault Tolerance**: PBFT consensus với f=1 fault tolerance trong orderer cluster
-- **Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
+Hệ thống Blockchain Permissioned Network với gRPC Direct Communication cho Supply Chain Finance là nền tảng phân quyền sử dụng kiến trúc microservices hiện đại. Hệ thống cho phép:
+
+- **🔗 Blockchain Gateway**: Transaction aggregator và gateway service chịu trách nhiệm tổng hợp và gửi transactions sang Orderer cluster
+- **📡 gRPC Direct Communication**: Real-time communication giữa Peer nodes và Orderer cluster, loại bỏ message broker
+- **🏛️ PBFT Consensus**: Practical Byzantine Fault Tolerance đảm bảo global transaction ordering
+- **⚡ High Throughput**: Direct gRPC streaming với load balancing và connection pooling
+- **🛡️ Fault Tolerance**: PBFT consensus với f=1 fault tolerance trong orderer cluster
+- **🔄 Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
+- **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
 
 ### Phạm vi
 - **Direct Communication Architecture**: gRPC làm communication backbone cho tất cả blockchain operations
-- **Chaincode Decoupling**: Business logic tách riêng trong SCF Chaincode Service
-- **Real-time Processing**: Peers submit transactions và nhận blocks qua persistent gRPC streams
+- **Blockchain Gateway**: Business logic tích hợp trong từng peer service (endorsement layer), blockchain gateway chỉ tổng hợp và gửi transactions
+- **Real-time Processing**: Peers → Blockchain Gateway → Orderer → PBFT Consensus → Block Streaming
 - **PBFT Consensus**: Byzantine fault tolerant consensus với 3f+1 nodes (f=1)
+- **State Management**: Blockchain gateway quản lý tất cả contract và token state
 - **Load Distribution**: Client-side load balancing và leader affinity routing
-- **Network Isolation**: Private networks cho peers, orderers, và chaincode service
+- **Network Isolation**: Private networks cho peers, orderers, và blockchain gateway
 
 ## Kiến trúc hệ thống
 
-### 🆕 **Chaincode Service Integration**
+### 🆕 **Kiến trúc mới: Blockchain Gateway & gRPC Direct Communication**
 
 #### Tổng quan kiến trúc mới
-Hệ thống đã được nâng cấp với **SCF Chaincode Service** - microservice riêng biệt chứa toàn bộ business logic smart contracts:
+Hệ thống đã được nâng cấp với **Blockchain Gateway** - transaction aggregator và gateway service:
 
-- **SCF Chaincode Service**: Smart Contract Engine chạy trên port 9090
-- **Peer Services**: REST API gateways sử dụng gRPC clients để invoke chaincode methods
-- **Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
-- **State Management**: Chaincode service quản lý tất cả contract và token state
+- **🔗 Blockchain Gateway**: Blockchain Gateway chạy trên port 9090 làm transaction aggregator
+- **📡 Peer Services**: REST API gateways với integrated chaincode + gRPC clients để invoke blockchain gateway methods
+- **🏗️ Decoupled Architecture**: Business logic tách biệt, dễ maintain và scale
+- **💾 State Management**: Blockchain gateway quản lý tất cả contract và token state
+- **⚡ Real-time Communication**: gRPC Direct Communication loại bỏ message broker
+- **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
 
 #### Smart Contract Methods
 ```go
@@ -57,8 +65,10 @@ SettleToken(tokenID, supplierID, bankID)
 - **Protocol Buffers**: Định nghĩa RPC interfaces trong `share/smartcontract.proto`
 - **Generated Code**: Auto-generated gRPC clients/servers từ protobuf
 - **High Performance**: Binary serialization, bidirectional streaming
+- **Connection Management**: Persistent connections với retry logic
+- **Error Handling**: Comprehensive error propagation và recovery
 
-### Mô hình kết nối với gRPC Direct Communication & Chaincode Service
+### Mô hình kết nối với gRPC Direct Communication & Blockchain Gateway
 
 ```mermaid
 graph TB
@@ -71,8 +81,8 @@ graph TB
     end
 
     subgraph "gRPC Communication Layer"
-        subgraph "SCF Chaincode Service"
-            CHAINCODE[Smart Contract Engine<br/>Port: 9090<br/>Business Logic Service]
+        subgraph "Blockchain Gateway Service"
+            CHAINCODE[Blockchain Gateway<br/>Port: 9090<br/>Transaction Aggregator Service]
         end
 
         subgraph "Orderer Service"
@@ -165,6 +175,418 @@ graph TB
     ORDERER_NW -.->|PBFT Network| ORD3
 ```
 
+## Blockchain Gateway
+
+### Tổng quan
+Blockchain Gateway là transaction aggregator và gateway service chịu trách nhiệm tổng hợp và gửi transactions sang Orderer cluster:
+
+- **🔗 Microservice Architecture**: Chạy độc lập trên port 9090
+- **📡 gRPC Server**: Protocol Buffers-based RPC interface
+- **💾 Transaction Aggregation**: Tổng hợp transactions từ peers
+- **🏗️ Gateway Service**: Submit transactions sang orderer cluster
+- **⚡ High Performance**: Transaction batching và validation
+
+### Kiến trúc Blockchain Gateway
+
+```mermaid
+graph TB
+    subgraph "Blockchain Gateway (Port 9090)"
+        subgraph "gRPC Server Layer"
+            GRPC_SERVER[gRPC Server<br/>Protocol Buffers]
+            SERVICE[TransactionAggregatorService<br/>Interface Implementation]
+        end
+
+        subgraph "Transaction Aggregator Layer"
+            CONTRACT_MGMT[Contract Management<br/>Create, Approve, Finalize]
+            TOKEN_MGMT[Token Management<br/>Issue, Transfer, Settle]
+            VALIDATION[Transaction Processing Rules<br/>Validation Logic]
+        end
+
+        subgraph "State Management"
+            IN_MEMORY[In-Memory State<br/>Fast Access]
+            PERSISTENCE[MongoDB Persistence<br/>Durability]
+        end
+
+        subgraph "Contract Models"
+            CONTRACT[Contract Struct<br/>ID, Status, Suppliers]
+            APPROVAL[Approval Logic<br/>Supplier Validation]
+            FINALIZE[Finalization Logic<br/>Token Distribution]
+        end
+
+        subgraph "Token Models"
+            TOKEN[Token Struct<br/>ID, Balances, Supply]
+            TRANSFER[Transfer Logic<br/>Balance Updates]
+            SETTLE[Settlement Logic<br/>Bank Clearing]
+        end
+    end
+
+    %% External connections
+    SERVICE -.->|gRPC| PEERS[Peer Services]
+    PERSISTENCE -.->|MongoDB| MONGO_SHARED[MongoDB Shared]
+```
+
+### Smart Contract Methods
+
+#### Contract Operations
+
+##### CreateContract
+```protobuf
+message CreateContractRequest {
+  string anchorId = 1;
+  repeated string suppliers = 2;
+  double totalAmount = 3;
+  string fileHash = 4;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate anchor permissions
+2. Generate unique contract ID
+3. Initialize contract with PENDING status
+4. Store contract metadata trong MongoDB
+5. Return contract ID
+
+##### ApproveContract
+```protobuf
+message ApproveContractRequest {
+  string contractId = 1;
+  string supplierId = 2;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate supplier permissions cho contract
+2. Update supplier approval status
+3. Check if all suppliers approved
+4. Update contract status accordingly
+
+##### FinalizeContract
+```protobuf
+message FinalizeContractRequest {
+  string contractId = 1;
+}
+
+message ContractResponse {
+  string contractId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate all suppliers approved
+2. Distribute tokens proportionally
+3. Update contract status to EXECUTED
+4. Create token transfer records
+
+#### Token Operations
+
+##### IssueToken
+```protobuf
+message IssueTokenRequest {
+  string contractId = 1;
+  string issuer = 2;
+  double totalSupply = 3;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate contract is approved
+2. Generate unique token ID
+3. Initialize token với total supply
+4. Assign initial ownership to issuer
+5. Create balance records
+
+##### TransferToken
+```protobuf
+message TransferTokenRequest {
+  string tokenId = 1;
+  string from = 2;
+  string to = 3;
+  double amount = 4;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate sender balance sufficient
+2. Update sender balance (-amount)
+3. Update receiver balance (+amount)
+4. Create transfer record
+5. Validate total supply conservation
+
+##### SettleToken
+```protobuf
+message SettleTokenRequest {
+  string tokenId = 1;
+  string supplierId = 2;
+  string bankId = 3;
+}
+
+message TokenResponse {
+  string tokenId = 1;
+  string status = 2;
+  string message = 3;
+}
+```
+
+**Transaction Aggregator:**
+1. Validate supplier has balance
+2. Remove supplier balance
+3. Create settlement record
+4. Update token circulation
+
+### Transaction Processing Rules Validation
+
+#### Contract Rules:
+- **Anchor Authorization**: Chỉ anchors có thể tạo contracts
+- **Supplier Validation**: Chỉ assigned suppliers có thể approve
+- **Approval Quorum**: Tất cả suppliers phải approve trước khi execution
+- **Status Transitions**: PENDING → APPROVED → EXECUTED
+
+#### Token Rules:
+- **Single Issuance**: Mỗi contract tạo ra exactly một token
+- **Supply Conservation**: Total balance luôn bằng total supply
+- **Transfer Validation**: Sufficient balance required
+- **Settlement Authorization**: Chỉ token holders có thể settle
+
+## gRPC Direct Communication
+
+### Tổng quan
+gRPC Direct Communication loại bỏ hoàn toàn message broker trung gian, cho phép peers giao tiếp trực tiếp với orderer cluster:
+
+- **📡 Direct Communication**: Peers ↔ Orderers giao tiếp qua gRPC APIs
+- **⚡ Real-time Processing**: Persistent gRPC streams cho block delivery
+- **🔄 Connection Management**: Automatic reconnection với retry logic
+- **📊 Load Balancing**: Client-side load balancing across orderer nodes
+- **🛡️ Error Handling**: Comprehensive error propagation và recovery
+
+### gRPC Communication Protocol
+
+#### Blockchain Gateway Interface
+```protobuf
+service BlockchainGatewayService {
+  // Transaction Aggregation
+  rpc AggregateTransactions(AggregateTransactionsRequest) returns (AggregateTransactionsResponse);
+  rpc SubmitToOrderer(SubmitToOrdererRequest) returns (SubmitToOrdererResponse);
+  rpc ValidateTransactions(ValidateTransactionsRequest) returns (ValidateTransactionsResponse);
+  
+  // Endorsement Management
+  rpc ManageEndorsements(ManageEndorsementsRequest) returns (ManageEndorsementsResponse);
+  rpc CollectEndorsements(CollectEndorsementsRequest) returns (CollectEndorsementsResponse);
+  
+  // Transaction Status
+  rpc GetTransactionStatus(GetTransactionStatusRequest) returns (GetTransactionStatusResponse);
+  rpc GetTransactionHistory(GetTransactionHistoryRequest) returns (GetTransactionHistoryResponse);
+}
+```
+
+#### Orderer Service Interface
+```protobuf
+service OrdererService {
+  // Submit transaction trực tiếp đến orderer cluster
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+
+  // Streaming blocks từ orderer đến peer
+  rpc StreamBlocks(StreamBlocksRequest) returns (stream Block);
+
+  // Query block information
+  rpc GetBlockInfo(GetBlockInfoRequest) returns (GetBlockInfoResponse);
+}
+```
+
+### Transaction Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant Peer as Peer Node
+    participant Gateway as Blockchain Gateway
+    participant Orderer as Orderer Cluster (Leader)
+    participant Followers as Orderer Followers
+
+    Peer->>Gateway: Invoke smart contract method
+    Gateway->>Gateway: Execute business logic & state changes
+    Gateway->>Peer: Return transaction data
+
+    Peer->>Orderer: SubmitTransaction(tx)
+    Orderer->>Orderer: Validate transaction format & signatures
+    Orderer->>Followers: Replicate via PBFT consensus
+    Followers->>Orderer: Send prepare messages
+
+    Note over Orderer,Followers: PBFT Consensus
+    Orderer->>Orderer: Pre-Prepare → Prepare → Commit phases
+    Orderer->>Orderer: Create block when quorum reached
+    Orderer->>Peer: StreamBlocks (real-time)
+
+    Peer->>Peer: Validate and apply block to local state
+    Gateway->>Gateway: Persist state changes
+```
+
+### Connection Management
+
+```go
+// gRPC Connection với retry logic
+func connectToOrderer(endpoint string) (*grpc.ClientConn, error) {
+    return grpc.Dial(endpoint,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithConnectParams(grpc.ConnectParams{
+            Backoff:           backoff.DefaultConfig,
+            MinConnectTimeout: 5 * time.Second,
+        }),
+        grpc.WithKeepaliveParams(keepalive.ClientParameters{
+            Time:                10 * time.Second,
+            Timeout:             5 * time.Second,
+            PermitWithoutStream: true,
+        }),
+    )
+}
+```
+
+### Error Handling
+
+#### gRPC Error Codes:
+- `INVALID_ARGUMENT`: Transaction data không đúng format
+- `PERMISSION_DENIED`: Peer không có quyền submit
+- `NOT_FOUND`: Transaction ID không tìm thấy
+- `UNAVAILABLE`: Orderer cluster không thể truy cập
+- `DEADLINE_EXCEEDED`: gRPC timeout
+- `INTERNAL`: Lỗi internal của orderer
+
+#### Recovery Mechanisms:
+- **Transaction Resubmission**: Failed transactions có thể resubmit với exponential backoff
+- **Block Synchronization**: Peers có thể gọi `GetBlocks()` để sync missing blocks
+- **Stream Reconnection**: gRPC streams tự động reconnect với resume capability
+- **State Validation**: Peers validate blockchain state consistency
+
+## PBFT Consensus
+
+### Tổng quan
+Practical Byzantine Fault Tolerance (PBFT) consensus đảm bảo transaction ordering và fault tolerance trong orderer cluster:
+
+- **🏛️ Byzantine Fault Tolerance**: Chịu được f=1 faulty nodes trong 3-node cluster
+- **⚡ Fast Consensus**: Pre-Prepare → Prepare → Commit phases
+- **🔐 Cryptographic Signatures**: ECDSA signatures cho block validation
+- **📊 Quorum Requirements**: 2f+1 signatures để commit blocks
+- **🔄 Leader Election**: Automatic leader election khi leader fails
+
+### PBFT Consensus Process
+
+```mermaid
+graph TD
+    A[Peer Submits Tx via gRPC] --> B[Blockchain Gateway]
+    B --> C[Execute Transaction Aggregator]
+    C --> D[Return Tx Data to Peer]
+
+    D --> E[Leader Orderer]
+    E --> F[Validate Tx & Signatures]
+    F --> G[Pre-Prepare Phase]
+    G --> H[Broadcast to Followers]
+
+    H --> I[Prepare Phase]
+    I --> J{2f+1 Prepare Msgs?}
+    J -->|Yes| K[Commit Phase]
+    J -->|No| L[Wait/Retry]
+
+    K --> M{2f+1 Commit Msgs?}
+    M -->|Yes| N[Create Block]
+    M -->|No| L
+
+    N --> O[Calculate Merkle Root]
+    O --> P[Generate Block Hash]
+    P --> Q[ECDSA Sign Block]
+    Q --> R[Stream Block to Peers]
+    R --> S[Peers Validate & Apply]
+```
+
+### PBFT Phases
+
+#### 1. Pre-Prepare Phase
+- Leader orderer nhận transaction từ peer
+- Validate transaction format và signatures
+- Broadcast Pre-Prepare message đến followers
+- Include proposed block với transaction
+
+#### 2. Prepare Phase
+- Followers nhận Pre-Prepare message
+- Validate proposed block
+- Send Prepare message đến leader
+- Quorum 2f+1 Prepare messages required
+
+#### 3. Commit Phase
+- Leader nhận Prepare messages
+- Broadcast Commit message đến followers
+- Followers send Commit message đến leader
+- Quorum 2f+1 Commit messages required
+
+#### 4. Finalize Phase
+- Block được finalized với ECDSA signatures
+- Calculate Merkle root và block hash
+- Stream finalized block đến peers
+- Peers validate và apply block
+
+### PBFT Configuration
+
+```yaml
+pbft_config:
+  fault_tolerance: 1       # f=1
+  total_nodes: 3           # 3f+1 = 4 nodes minimum, we use 3
+  consensus_timeout: 3000ms
+  block_creation:
+    min_transactions: 5      # Create block với ít nhất 5 tx
+    max_wait_time: 5000ms    # Hoặc sau 5 giây
+    max_block_size: 100      # Tối đa 100 tx per block
+```
+
+### Cryptographic Signatures
+
+#### ECDSA Signature Process:
+1. **Key Generation**: Mỗi orderer có ECDSA key pair
+2. **Block Signing**: Orderer ký block với private key
+3. **Signature Verification**: Peers verify signatures với public keys
+4. **Quorum Validation**: 2f+1 signatures required để validate block
+
+#### Block Hash Calculation:
+```
+blockHash = SHA256(prevBlockHash + merkleRoot + blockTimestamp)
+```
+
+### Fault Tolerance
+
+#### Byzantine Fault Tolerance:
+- **f=1**: Hệ thống chịu được 1 faulty node
+- **3f+1 nodes**: Tối thiểu 4 nodes, chúng ta dùng 3 nodes
+- **Quorum**: 2f+1 = 3 signatures required
+- **Leader Election**: Automatic khi leader fails
+
+#### Failure Scenarios:
+1. **Leader Failure**: Automatic leader election
+2. **Follower Failure**: Consensus continues với remaining nodes
+3. **Network Partition**: Consensus stops until network recovery
+4. **Byzantine Behavior**: Malicious nodes detected và isolated
+
 ### Kiến trúc Microservices với Multi-peer Network
 
 ```
@@ -191,7 +613,7 @@ graph TB
 │  └─────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
                                      │
-                  Smart HTTP Routing (Business Logic Based)
+                  Smart HTTP Routing (Transaction Aggregator Based)
                                      │
 ┌─────────────────────────────────────────────────────────────────────┐
 │                   Permissioned Peer Network                          │
@@ -233,14 +655,14 @@ graph TB
 #### 1. Transaction Submission Flow
 
 Khi một peer node cần thực hiện một blockchain operation, nó sẽ:
-1. Invoke SCF Chaincode Service để xử lý business logic
+1. Invoke Blockchain Gateway để tổng hợp transactions
 2. Submit transaction trực tiếp lên orderer cluster thông qua gRPC
 3. Nhận block stream từ orderer và apply state changes
 
 ```mermaid
 sequenceDiagram
     participant Peer as Peer Node
-    participant Chaincode as SCF Chaincode Service
+    participant Chaincode as Blockchain Gateway
     participant Orderer as Orderer Cluster (Leader)
     participant Followers as Orderer Followers
 
@@ -265,7 +687,7 @@ sequenceDiagram
 **Các bước chi tiết:**
 
 1. **Chaincode Invocation**
-   - Peer gọi gRPC methods của SCF Chaincode Service
+   - Peer gọi gRPC methods của Blockchain Gateway
    - Chaincode thực thi business logic và tạo transaction data
    - State changes được persist trong MongoDB
 
@@ -287,10 +709,10 @@ sequenceDiagram
 
 #### 2. gRPC Communication Protocol
 
-**SCF Chaincode Service Interface:**
+**Blockchain Gateway Service Interface:**
 
 ```protobuf
-service SCFChaincodeService {
+service BlockchainGatewayService {
   // Contract Management
   rpc CreateContract(CreateContractRequest) returns (CreateContractResponse);
   rpc ApproveContract(ApproveContractRequest) returns (ApproveContractResponse);
@@ -421,7 +843,7 @@ transaction_processing:
 ```mermaid
 graph TD
     A[Peer Submits Tx via gRPC] --> B[Chaincode Service]
-    B --> C[Execute Business Logic]
+    B --> C[Execute Transaction Aggregator]
     C --> D[Return Tx Data to Peer]
 
     D --> E[Leader Orderer]
@@ -630,7 +1052,7 @@ func connectToOrderer(endpoint string) (*grpc.ClientConn, error) {
 
 ## Luồng Sequence Diagram
 
-### SD-001: Tạo và phê duyệt hợp đồng hoàn chỉnh
+### SD-001: Tạo và phê duyệt hợp đồng hoàn chỉnh với gRPC Direct Communication
 
 ```mermaid
 sequenceDiagram
@@ -638,18 +1060,20 @@ sequenceDiagram
     participant FE as Frontend
     participant BE as Backend (Java)
     participant PEER as Peer Service (Go)
-    participant CHAIN as SCF Chaincode (Go)
+    participant GATEWAY as Blockchain Gateway (Go)
+    participant ORDERER as Orderer Cluster
     participant DB as MongoDB
 
     %% Tạo hợp đồng
     A->>FE: Nhập thông tin hợp đồng
     FE->>BE: POST /api/contracts (contract data)
     BE->>PEER: POST /contract/create
-    PEER->>CHAIN: gRPC CreateContract()
-    CHAIN->>DB: Insert contract
-    CHAIN->>DB: Insert event CONTRACT_CREATED
-    CHAIN->>DB: Insert block
-    CHAIN-->>PEER: ContractResponse
+    PEER->>GATEWAY: gRPC CreateContract() ✅
+    GATEWAY->>GATEWAY: Execute business logic & validation
+    GATEWAY->>DB: Insert contract state
+    GATEWAY-->>PEER: Return contractId + transaction data
+    PEER->>ORDERER: gRPC SubmitTx(Transaction) ✅
+    ORDERER-->>PEER: SubmitTxReply (immediate)
     PEER-->>BE: Success response
     BE-->>FE: Success response
     FE-->>A: Hiển thị hợp đồng đã tạo
@@ -658,12 +1082,14 @@ sequenceDiagram
     A->>FE: Yêu cầu bank phê duyệt
     FE->>BE: POST /api/contracts/{id}/approve-bank
     BE->>PEER: POST /contract/{id}/approve-bank
-    PEER->>CHAIN: gRPC IssueToken()
-    CHAIN->>DB: Insert token (issuer=SYSTEM)
-    CHAIN->>DB: Insert balance (anchor)
-    CHAIN->>DB: Insert event BANK_APPROVED
-    CHAIN->>DB: Insert block
-    CHAIN-->>PEER: TokenResponse
+    PEER->>GATEWAY: gRPC IssueToken() ✅
+    GATEWAY->>GATEWAY: Validate contract & bank auth
+    GATEWAY->>DB: Create token (issuer=SYSTEM, owner=Anchor)
+    GATEWAY->>DB: Create initial balance (Anchor=totalAmount)
+    GATEWAY->>DB: Update contract bankApproved=true
+    GATEWAY-->>PEER: Return tokenId + transaction data
+    PEER->>ORDERER: gRPC SubmitTx (bank approval transaction)
+    ORDERER-->>PEER: SubmitTxReply (immediate)
     PEER-->>BE: Success + tokenId
     BE-->>FE: Success + tokenId
     FE-->>A: Hiển thị token đã tạo
@@ -673,27 +1099,27 @@ sequenceDiagram
     loop Mỗi supplier
         FE->>BE: POST /api/contracts/{id}/approve (supplierId)
         BE->>PEER: POST /contract/{id}/approve
-        PEER->>CHAIN: gRPC ApproveContract()
-        CHAIN->>DB: Update supplier status
-        CHAIN->>DB: Check all suppliers approved
+        PEER->>GATEWAY: gRPC ApproveContract() ✅
+        GATEWAY->>GATEWAY: Check contract status & supplier auth
+        GATEWAY->>DB: Update supplier approval status
         alt Tất cả đã approve
-            CHAIN->>CHAIN: gRPC FinalizeContract()
-            CHAIN->>DB: Update contract approved=true
-            CHAIN->>DB: Insert balances cho tất cả suppliers
-            CHAIN->>DB: Delete anchor balance
-            CHAIN->>DB: Insert event CONTRACT_FULLY_APPROVED
+            GATEWAY->>GATEWAY: gRPC FinalizeContract()
+            GATEWAY->>DB: Update contract.approved = true
+            GATEWAY->>DB: Insert balances cho tất cả suppliers
+            GATEWAY->>DB: Delete anchor balance
+            GATEWAY-->>PEER: Return CONTRACT_FULLY_APPROVED + transaction data
         else
-            CHAIN->>DB: Insert event SUPPLIER_APPROVED
+            GATEWAY-->>PEER: Return SUPPLIER_APPROVED + transaction data
         end
-        CHAIN->>DB: Insert block
-        CHAIN-->>PEER: ContractResponse
+        PEER->>ORDERER: gRPC SubmitTx (approval transaction)
+        ORDERER-->>PEER: SubmitTxReply (immediate)
         PEER-->>BE: Success
         BE-->>FE: Success
     end
     FE-->>A: Hợp đồng hoàn tất
 ```
 
-### SD-002: Chuyển nhượng token
+### SD-002: Chuyển nhượng token với gRPC Direct Communication
 
 ```mermaid
 sequenceDiagram
@@ -701,30 +1127,30 @@ sequenceDiagram
     participant FE as Frontend
     participant BE as Backend (Java)
     participant PEER as Peer Service (Go)
-    participant CHAIN as SCF Chaincode (Go)
+    participant GATEWAY as Blockchain Gateway (Go)
+    participant ORDERER as Orderer Cluster
     participant DB as MongoDB
 
     S1->>FE: Chọn token & số lượng, chọn người nhận
     FE->>BE: POST /api/v1/tokens/transfer
     BE->>PEER: POST /token/transfer
-    PEER->>CHAIN: gRPC TransferToken()
-    CHAIN->>DB: Get sender balance
-    CHAIN->>DB: Validate balance >= amount
-    CHAIN->>DB: Update sender balance (-amount)
-    CHAIN->>DB: Get/Update receiver balance (+amount)
-    CHAIN->>DB: Insert event TOKEN_TRANSFERRED
-    CHAIN->>DB: Insert block
-    CHAIN->>DB: Check if anchor balance == 0
+    PEER->>GATEWAY: gRPC TransferToken() ✅
+    GATEWAY->>GATEWAY: Validate sender balance & ownership
+    GATEWAY->>DB: Debit sender balance (-amount)
+    GATEWAY->>DB: Credit receiver balance (+amount)
+    GATEWAY->>GATEWAY: Check if anchor balance == 0
     alt Anchor hết token
-        CHAIN->>DB: Update contract status APPROVED
+        GATEWAY->>DB: Update contract status APPROVED
     end
-    CHAIN-->>PEER: TokenResponse
+    GATEWAY-->>PEER: Return transfer result + transaction data
+    PEER->>ORDERER: gRPC SubmitTx (token transfer transaction)
+    ORDERER-->>PEER: SubmitTxReply (immediate)
     PEER-->>BE: Success
     BE-->>FE: Success
     FE-->>S1: Transfer thành công
 ```
 
-### SD-003: Tất toán token
+### SD-003: Tất toán token với gRPC Direct Communication
 
 ```mermaid
 sequenceDiagram
@@ -732,19 +1158,21 @@ sequenceDiagram
     participant FE as Frontend
     participant BE as Backend (Java)
     participant PEER as Peer Service (Go)
-    participant CHAIN as SCF Chaincode (Go)
+    participant GATEWAY as Blockchain Gateway (Go)
+    participant ORDERER as Orderer Cluster
     participant DB as MongoDB
 
     S->>FE: Click "Settle with Bank" cho token
     FE->>BE: POST /api/v1/tokens/settle
     BE->>PEER: POST /token/settle
-    PEER->>CHAIN: gRPC SettleToken()
-    CHAIN->>DB: Get supplier balance
-    CHAIN->>DB: Validate balance exists
-    CHAIN->>DB: Delete supplier balance
-    CHAIN->>DB: Insert event TOKEN_SETTLED
-    CHAIN->>DB: Insert block
-    CHAIN-->>PEER: TokenResponse
+    PEER->>GATEWAY: gRPC SettleToken() ✅
+    GATEWAY->>GATEWAY: Validate supplier has balance
+    GATEWAY->>DB: Remove supplier balance
+    GATEWAY->>DB: Create settlement record
+    GATEWAY->>DB: Update token circulation
+    GATEWAY-->>PEER: Return settlement result + transaction data
+    PEER->>ORDERER: gRPC SubmitTx (settlement transaction)
+    ORDERER-->>PEER: SubmitTxReply (immediate)
     PEER-->>BE: Success
     BE-->>FE: Success
     FE-->>S: Settlement thành công
@@ -866,7 +1294,7 @@ flowchart TD
     L -->|No| M[Return 422 Unprocessable Entity]
     L -->|Yes| N[Generate contract ID]
     N --> O[Save contract to database]
-    O --> P[Call SCF Chaincode CreateContract]
+    O --> P[Call Blockchain Gateway CreateContract]
     P --> Q[Generate token ID]
     Q --> R[Return contractId & tokenId]
     R --> S[Return 200 OK]
@@ -1034,7 +1462,7 @@ flowchart TD
     J -->|Yes| L{Check contract status}
     L --> M{Already approved?}
     M -->|Yes| N[Return 409 Conflict]
-    M -->|No| O[Call SCF Chaincode IssueToken]
+    M -->|No| O[Call Blockchain Gateway IssueToken]
     O --> P[Update contract bankApproved=true]
     P --> Q[Create blockchain event]
     Q --> R[Submit to PBFT consensus]
@@ -1096,11 +1524,11 @@ flowchart TD
     M -->|No| N[Return 409 Conflict]
     M -->|Yes| O{Check supplier already approved?}
     O -->|Yes| P[Return 409 Conflict]
-    O -->|No| Q[Call SCF Chaincode ApproveContract]
+    O -->|No| Q[Call Blockchain Gateway ApproveContract]
     Q --> R[Update supplier approval status]
     R --> S{Check all suppliers approved?}
     S -->|No| T[Return supplier approval success]
-    S -->|Yes| U[Call SCF Chaincode FinalizeContract]
+    S -->|Yes| U[Call Blockchain Gateway FinalizeContract]
     U --> V[Distribute tokens to suppliers]
     V --> W[Create blockchain event]
     W --> X[Submit to PBFT consensus]
@@ -1257,7 +1685,7 @@ flowchart TD
     I -->|Yes| K[Check sender balance]
     K --> L{Sufficient balance?}
     L -->|No| M[Return 409 Conflict]
-    L -->|Yes| N[Call SCF Chaincode TransferToken]
+    L -->|Yes| N[Call Blockchain Gateway TransferToken]
     N --> O[Update sender balance -amount]
     O --> P[Update receiver balance +amount]
     P --> Q[Create blockchain event]
@@ -1317,7 +1745,7 @@ flowchart TD
     I -->|Yes| K[Check supplier balance]
     K --> L{Has balance to settle?}
     L -->|No| M[Return 409 Conflict]
-    L -->|Yes| N[Call SCF Chaincode SettleToken]
+    L -->|Yes| N[Call Blockchain Gateway SettleToken]
     N --> O[Set supplier balance to 0]
     O --> P[Create blockchain event]
     P --> Q[Submit to PBFT consensus]
@@ -1503,7 +1931,7 @@ flowchart TD
 
 **Mã lỗi**:
 - 400: Invalid contract data
-- 500: Internal server error (SCF Chaincode or Orderer failure)
+- 500: Internal server error (Blockchain Gateway or Orderer failure)
 
 ##### GET /contract/{id} - Get Contract Details
 **Mô tả**: Lấy chi tiết contract từ local database
@@ -1559,7 +1987,7 @@ flowchart TD
 
 **Output**: Same as Java API
 
-### SCF Chaincode Service APIs (Go - Port 9090)
+### Blockchain Gateway APIs (Go - Port 9090)
 
 #### Smart Contract Methods
 
@@ -1686,7 +2114,7 @@ flowchart TD
 Peer services are the endorsing peers in the blockchain network that provide REST API endpoints for different business roles (Anchor, Bank, Supplier). Each peer service:
 
 - **Runs as a standalone Go microservice**
-- **Connects to SCF Chaincode Service via gRPC**
+- **Connects to Blockchain Gateway via gRPC**
 - **Maintains isolated MongoDB database**
 - **Implements role-based business logic**
 - **Handles transaction submission to Orderer**
@@ -1711,12 +2139,12 @@ type Handler struct {
 **Key Responsibilities:**
 - Route request validation
 - Business logic orchestration
-- SCF Chaincode invocation
+- Blockchain Gateway invocation
 - Response formatting
 - Event logging and block creation
 
 #### 3. **Chaincode Client Layer**
-- **gRPC Connection**: Direct connection to SCF Chaincode Service
+- **gRPC Connection**: Direct connection to Blockchain Gateway
 - **Protocol Buffers**: Type-safe RPC communication
 - **Error Handling**: Comprehensive error propagation
 - **Connection Management**: Graceful reconnection on failures
@@ -1746,7 +2174,7 @@ graph TB
         end
 
         subgraph "Chaincode Client"
-            GRPC_CLIENT[gRPC Client<br/>Direct to SCF Chaincode]
+            GRPC_CLIENT[gRPC Client<br/>Direct to Blockchain Gateway]
             CONTRACT_METHODS[Contract Operations<br/>Create, Approve, Finalize]
             TOKEN_METHODS[Token Operations<br/>Issue, Transfer, Settle]
         end
@@ -1769,7 +2197,7 @@ graph TB
     H_CREATE --> EVENT_LOG
 
     %% External connections
-    GRPC_CLIENT -.->|gRPC| SCF_CHAINCODE[SCF Chaincode Service]
+    GRPC_CLIENT -.->|gRPC| SCF_CHAINCODE[Blockchain Gateway]
     MONGO -.->|MongoDB| MONGO_SHARED[MongoDB Shared]
 ```
 
@@ -1781,7 +2209,7 @@ sequenceDiagram
     participant Client
     participant HTTP as HTTP Server
     participant Handler
-    participant Chaincode as SCF Chaincode
+    participant Chaincode as Blockchain Gateway
     participant DB as MongoDB
     participant Orderer
 
@@ -1806,30 +2234,30 @@ sequenceDiagram
 - **Conflicts**: 409 for business logic conflicts
 - **Server Errors**: 500 for internal errors
 
-### SCF Chaincode Service Design
+### Blockchain Gateway Design
 
 #### Overview
-SCF Chaincode Service is the smart contract engine that contains all business logic for Supply Chain Finance operations:
+Blockchain Gateway là transaction aggregator và gateway service chứa toàn bộ business logic cho Supply Chain Finance operations:
 
 - **gRPC Server**: Runs on port 9090
 - **Protocol Buffers**: Type-safe RPC interfaces
-- **Business Logic**: Contract and token management
+- **Transaction Aggregator**: Contract and token management
 - **State Management**: In-memory state with MongoDB persistence
 
-#### SCF Chaincode Architecture
+#### Blockchain Gateway Architecture
 
 ```mermaid
 graph TB
-    subgraph "SCF Chaincode Service (Port 9090)"
+    subgraph "Blockchain Gateway (Port 9090)"
         subgraph "gRPC Server Layer"
             GRPC_SERVER[gRPC Server<br/>Protocol Buffers]
-            SERVICE[SmartContractService<br/>Interface Implementation]
+            SERVICE[TransactionAggregatorService<br/>Interface Implementation]
         end
 
-        subgraph "Business Logic Layer"
+        subgraph "Transaction Aggregator Layer"
             CONTRACT_MGMT[Contract Management<br/>Create, Approve, Finalize]
             TOKEN_MGMT[Token Management<br/>Issue, Transfer, Settle]
-            VALIDATION[Business Rules<br/>Validation Logic]
+            VALIDATION[Transaction Processing Rules<br/>Validation Logic]
         end
 
         subgraph "State Management"
@@ -1875,7 +2303,7 @@ message ContractResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate anchor permissions
 2. Generate unique contract ID
 3. Initialize contract with PENDING status
@@ -1896,7 +2324,7 @@ message ContractResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate supplier permissions for contract
 2. Update supplier approval status
 3. Check if all suppliers approved
@@ -1915,7 +2343,7 @@ message ContractResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate all suppliers approved
 2. Distribute tokens proportionally
 3. Update contract status to EXECUTED
@@ -1938,7 +2366,7 @@ message TokenResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate contract is approved
 2. Generate unique token ID
 3. Initialize token with total supply
@@ -1961,7 +2389,7 @@ message TokenResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate sender balance sufficient
 2. Update sender balance (-amount)
 3. Update receiver balance (+amount)
@@ -1983,13 +2411,13 @@ message TokenResponse {
 }
 ```
 
-**Business Logic:**
+**Transaction Aggregator:**
 1. Validate supplier has balance
 2. Remove supplier balance
 3. Create settlement record
 4. Update token circulation
 
-#### SCF Chaincode Data Models
+#### Blockchain Gateway Data Models
 
 ##### Contract Model
 ```go
@@ -2019,7 +2447,7 @@ type Token struct {
 }
 ```
 
-#### Business Rules Validation
+#### Transaction Processing Rules Validation
 
 ##### Contract Rules:
 - **Anchor Authorization**: Only anchors can create contracts
@@ -2033,13 +2461,13 @@ type Token struct {
 - **Transfer Validation**: Sufficient balance required
 - **Settlement Authorization**: Only token holders can settle
 
-#### SCF Chaincode Integration Patterns
+#### Blockchain Gateway Integration Patterns
 
 ##### With Peer Services:
 ```mermaid
 sequenceDiagram
     participant Peer as Peer Service
-    participant Chaincode as SCF Chaincode
+    participant Chaincode as Blockchain Gateway
     participant DB as MongoDB
 
     Peer->>Chaincode: CreateContract(anchorId, suppliers, amount)
@@ -2064,7 +2492,7 @@ sequenceDiagram
 - **Kubernetes**: Helm charts for production
 - **Load Balancing**: Nginx ingress for API gateway
 
-#### SCF Chaincode Deployment:
+#### Blockchain Gateway Deployment:
 - **Microservice**: Independent scaling
 - **Horizontal Scaling**: Multiple instances behind load balancer
 - **Database Sharding**: MongoDB sharding for high availability
