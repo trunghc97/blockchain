@@ -29,10 +29,10 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 - **Frontend (Angular 17)**: SPA, hiển thị UI cho Anchor, Bank, Supplier với role-based components
 - **API Gateway (Spring Boot 3.1.5)**: Entry point cho user/app, thực hiện auth (JWT), smart routing, public-facing
 - **blockchain-gw (Port 9090)**: Đặt trong Private Blockchain Network, vai trò Fabric Client Service
-- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser Only, có gRPC endpoint EvaluateProposal
+- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser Only, thực thi chaincode logic, ký RW set, trả endorsement cho blockchain-gw
 - **Orderer Cluster (PBFT, 3f+1 nodes)**: Nhận TX từ blockchain-gw, thực hiện consensus
 - **Databases**: MongoDB private ở từng peer + MongoDB shared (world state public) do blockchain-gw quản lý
-- **Network Isolation**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + orderer)
+- **Network phân lớp**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + ledgers) vs Orderer Network (cụm PBFT orderers)
 
 ## Kiến trúc hệ thống
 
@@ -42,17 +42,17 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client trong Private Blockchain Network:
 
 - **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator trong Private Blockchain Network
-- **📡 API Gateway**: Spring Boot 3.1.5 nhận request từ frontend, auth, routing → forward sang blockchain-gw qua private channel
-- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement qua gRPC EvaluateProposal, không gửi trực tiếp lên Orderer
+- **📡 API Gateway**: Spring Boot 3.1.5 nhận request từ frontend, auth, routing → forward sang blockchain-gw
+- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, thực thi chaincode logic, ký RW set, trả endorsement cho blockchain-gw
 - **💾 Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 - **⚡ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, thu thập endorsements
 - **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
-- **🔒 Network Separation**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + orderer)
+- **🔒 Network phân lớp**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + ledgers) vs Orderer Network (cụm PBFT orderers)
 
 #### Endorsement Methods
 ```go
-// Peer gRPC Endorsement Methods
-EvaluateProposal(proposal) → Endorsement
+// Peer Endorsement Methods
+ProposalRequest(proposal) → Endorsement
 
 // blockchain-gw Fabric Client Methods
 ProposalRequest(contractID, operation, parameters)
@@ -390,20 +390,17 @@ sequenceDiagram
     participant PeerB as Peer Bank
     participant PeerS as Peer Supplier
     participant ORD as Orderer PBFT
-    participant LED as Ledger (MongoDB)
+    participant LED as Ledger
 
     User->>APIGW(Java): Submit TX
-    APIGW(Java)->>GW: Forward Request (Private)
+    APIGW(Java)->>GW: Forward Request
 
     GW->>PeerA: ProposalRequest
     GW->>PeerB: ProposalRequest
     GW->>PeerS: ProposalRequest
 
-    PeerA->>PeerA: Execute Chaincode
     PeerA->>GW: Endorsement + RWSet
-    PeerB->>PeerB: Execute Chaincode
     PeerB->>GW: Endorsement + RWSet
-    PeerS->>PeerS: Execute Chaincode
     PeerS->>GW: Endorsement + RWSet
 
     GW->>GW: Collect endorsements + Check Policy
