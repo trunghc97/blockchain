@@ -57,10 +57,10 @@ public class PeerRoutingService {
     }
 
     /**
-     * Route bank approval to Main Bank peer
+     * Route bank approval to Anchor peer (for token creation)
      */
     public Map<String, Object> approveContractByBank(String contractId, Map<String, Object> approvalData) {
-        return callPeer(mainBankPeerUrl, "/contract/" + contractId + "/approve-bank", HttpMethod.POST, approvalData);
+        return callPeer(anchorPeerUrl, "/contract/" + contractId + "/approve-bank", HttpMethod.POST, approvalData);
     }
 
     /**

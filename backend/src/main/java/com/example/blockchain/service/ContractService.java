@@ -455,6 +455,14 @@ public class ContractService {
             String blockNumber = blockchainGatewayService.approveContract(contractId, bankId);
 
             if (blockNumber != null && !blockNumber.isEmpty()) {
+                // Issue token after bank approval
+                String tokenId = "token_" + contractId;
+                String tokenBlockNumber = blockchainGatewayService.issueToken(contractId, bankId, String.valueOf(contract.getTotalAmount()));
+                
+                if (tokenBlockNumber != null && !tokenBlockNumber.isEmpty()) {
+                    logger.info("Token created successfully: {} for contract: {}", tokenId, contractId);
+                }
+
                 // Update local contract status
                 contract.setBankApproved(true);
                 contract.setStatus("BANK_APPROVED");
