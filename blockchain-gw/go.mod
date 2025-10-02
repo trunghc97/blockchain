@@ -1,4 +1,4 @@
-module share
+module blockchain-gw
 
 go 1.23.0
 

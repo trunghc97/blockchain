@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package blockchain_gateway;
+
+option go_package = "blockchain-gw/proto";
+
+// Blockchain Gateway Service
+service BlockchainGateway {
+  // Submit transaction proposal to peers for endorsement
+  rpc SubmitTransaction(TransactionProposal) returns (TransactionResponse);
+  
+  // Get transaction status
+  rpc GetTransactionStatus(TransactionStatusRequest) returns (TransactionStatusResponse);
+}
+
+// Transaction Proposal from API Gateway
+message TransactionProposal {
+  string transaction_id = 1;
+  string function_name = 2;
+  repeated string args = 3;
+  string channel_id = 4;
+  string chaincode_name = 5;
+}
+
+// Endorsement from Peer
+message Endorsement {
+  string peer_id = 1;
+  bytes signature = 2;
+  ReadWriteSet rw_set = 3;
+  int32 response_status = 4;
+  string response_message = 5;
+}
+
+// Read-Write Set
+message ReadWriteSet {
+  repeated string read_keys = 1;
+  map<string, string> write_set = 2;
+}
+
+// Transaction Response
+message TransactionResponse {
+  string transaction_id = 1;
+  bool success = 2;
+  string message = 3;
+  string block_number = 4;
+  repeated Endorsement endorsements = 5;
+}
+
+// Transaction Status Request
+message TransactionStatusRequest {
+  string transaction_id = 1;
+}
+
+// Transaction Status Response
+message TransactionStatusResponse {
+  string transaction_id = 1;
+  string status = 2; // PENDING, COMMITTED, FAILED
+  string block_number = 3;
+  string error_message = 4;
+}
+
+// Peer Endorsement Service
+service PeerEndorsement {
+  // Evaluate proposal and return endorsement
+  rpc EvaluateProposal(ProposalRequest) returns (ProposalResponse);
+}
+
+// Proposal Request to Peer
+message ProposalRequest {
+  string transaction_id = 1;
+  string function_name = 2;
+  repeated string args = 3;
+  string channel_id = 4;
+  string chaincode_name = 5;
+}
+
+// Proposal Response from Peer
+message ProposalResponse {
+  string transaction_id = 1;
+  int32 status = 2;
+  string message = 3;
+  ReadWriteSet rw_set = 4;
+  bytes signature = 5;
+  string peer_id = 6;
+}

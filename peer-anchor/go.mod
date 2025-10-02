@@ -11,6 +11,8 @@ require (
 	share v0.0.0
 )
 
+replace share => ../share
+
 require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/klauspost/compress v1.17.4 // indirect
@@ -26,5 +28,3 @@ require (
 	golang.org/x/text v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7 // indirect
 )
-
-replace share => ../share

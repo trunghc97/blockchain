@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -11,8 +12,11 @@ import (
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"google.golang.org/grpc"
 
+	"peer-supplier/endorsement"
 	"peer-supplier/handlers"
+	pb "peer-supplier/proto"
 )
 
 func main() {
@@ -118,6 +122,23 @@ func main() {
 		})
 	}
 
-	log.Printf("Supplier Peer listening on port %s", port)
+	// Start gRPC server for endorsement
+	go func() {
+		lis, err := net.Listen("tcp", ":9093")
+		if err != nil {
+			log.Fatalf("failed to listen on gRPC port: %v", err)
+		}
+
+		grpcServer := grpc.NewServer()
+		endorsementService := endorsement.NewEndorsementService("peer-supplier")
+		pb.RegisterPeerEndorsementServer(grpcServer, endorsementService)
+
+		log.Printf("Supplier Peer gRPC server running on port 9093")
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve gRPC: %v", err)
+		}
+	}()
+
+	log.Printf("Supplier Peer HTTP server listening on port %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, corsHandler(router)))
 }

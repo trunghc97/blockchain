@@ -1,6 +1,63 @@
 # 🔗 Blockchain Supply Chain Finance (SCF) System
 
-Hệ thống blockchain permissioned cho Supply Chain Finance với PBFT Consensus và Events Sync Architecture.
+Hệ thống blockchain permissioned cho Supply Chain Finance với kiến trúc Blockchain Gateway và PBFT Consensus.
+
+## 🏗️ Kiến trúc hệ thống
+
+### Thành phần chính:
+
+- **API Gateway (Java Spring Boot)** - Entry point nhận request từ client/web/app
+- **Blockchain Gateway** - Fabric Client, thu thập endorsements và submit transaction
+- **Peers (Endorsers)** - peer-anchor, peer-main-bank, peer-supplier với gRPC endpoints
+- **Orderer PBFT** - Consensus và commit block vào shared ledger
+
+### Flow xử lý:
+
+1. User/App → API Gateway (Java)
+2. API Gateway → Blockchain Gateway (forward request)
+3. Blockchain Gateway → gửi Proposal song song đến các peers
+4. Mỗi peer → thực thi logic trực tiếp → ký RW set → trả endorsement
+5. Blockchain Gateway → collect endorsements → check policy
+6. Blockchain Gateway → gửi transaction + endorsements đến Orderer PBFT
+7. Orderer → commit block → update ledger
+8. Blockchain Gateway → trả kết quả về API Gateway → user/app
+
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant User(App/Web)
+    participant APIGW(Java)
+    participant Blockchain-GW
+    participant Peer-Anchor
+    participant Peer-Bank
+    participant Peer-Supplier
+    participant SCF-Chaincode(Engine)
+    participant Orderer(PBFT)
+    participant Ledger
+
+    User(App/Web)->>APIGW(Java): Submit TX
+    APIGW(Java)->>Blockchain-GW: Forward Request
+
+    Blockchain-GW->>Peer-Anchor: Proposal Request
+    Blockchain-GW->>Peer-Bank: Proposal Request
+    Blockchain-GW->>Peer-Supplier: Proposal Request
+
+    Peer-Anchor->>Peer-Anchor: Execute Logic Directly
+    Peer-Anchor->>Blockchain-GW: Endorsement + RWSet
+    Peer-Bank->>Peer-Bank: Execute Logic Directly
+    Peer-Bank->>Blockchain-GW: Endorsement + RWSet
+    Peer-Supplier->>Peer-Supplier: Execute Logic Directly
+    Peer-Supplier->>Blockchain-GW: Endorsement + RWSet
+
+    Blockchain-GW->>Blockchain-GW: Collect endorsements + Check Policy
+    Blockchain-GW->>Orderer(PBFT): Submit TX + endorsements
+
+    Orderer(PBFT)->>Ledger: Commit Block
+    Ledger-->>Blockchain-GW: TX committed
+    Blockchain-GW-->>APIGW(Java): TX result
+    APIGW(Java)-->>User(App/Web): Response
+```
 
 ## 📋 Yêu cầu hệ thống
 
@@ -33,11 +90,11 @@ docker-compose up -d --build
 docker-compose ps
 
 # Health endpoints
-curl http://localhost:9090/health  # SCF Chaincode (Smart Contract Engine)
-curl http://localhost:8082/health  # Main Bank
-curl http://localhost:8083/health  # Supplier
-curl http://localhost:8084/health  # Anchor
-curl http://localhost:8080/actuator/health  # Backend
+curl http://localhost:8080/actuator/health  # API Gateway (Backend)
+curl http://localhost:9090/health  # Blockchain Gateway
+curl http://localhost:8082/health  # Main Bank Peer
+curl http://localhost:8083/health  # Supplier Peer
+curl http://localhost:8084/health  # Anchor Peer
 ```
 
 ### Logs
@@ -374,11 +431,11 @@ Hệ thống đã được cập nhật để tách biệt business logic vào *
 - High-performance internal communication
 
 ### Service Ports:
-- **SCF Chaincode**: `:9090` (gRPC)
-- **Peer Main Bank**: `:8082` (REST)
-- **Peer Supplier**: `:8083` (REST)
-- **Peer Anchor**: `:8084` (REST)
-- **Backend API**: `:8080` (REST)
+- **API Gateway (Backend)**: `:8080` (REST)
+- **Blockchain Gateway**: `:9090` (gRPC)
+- **Peer Main Bank**: `:8082` (REST) + `:9095` (gRPC Endorsement)
+- **Peer Supplier**: `:8083` (REST) + `:9093` (gRPC Endorsement)
+- **Peer Anchor**: `:8084` (REST) + `:9094` (gRPC Endorsement)
 - **Frontend**: `:4200` (HTTP)
 
 ## 📚 Tài liệu chi tiết

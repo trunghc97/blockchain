@@ -9,21 +9,7 @@ services:
     networks:
       - public-network
 
-  # SCF Chaincode Service - Smart Contract Engine
-  scf-chaincode:
-    build:
-      context: .
-      dockerfile: ./scf-chaincode/Dockerfile
-    ports:
-      - "9090:9090"
-    depends_on:
-      - mongo-shared
-    networks:
-      - peer-network
-    environment:
-      - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
-
-  # API Gateway (updated with peer routing)
+  # API Gateway (Java Spring Boot) - Entry point
   backend:
     build: ./backend
     ports:
@@ -35,22 +21,34 @@ services:
       - SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE=admin
       - SPRING_DATA_MONGODB_USERNAME=root
       - SPRING_DATA_MONGODB_PASSWORD=example
-      # Peer routing configuration
-      - PEER_MAIN_BANK_URL=http://peer-main-bank:8082
-      - PEER_SUPPLIER_URL=http://peer-supplier:8083
-      - PEER_ANCHOR_URL=http://peer-anchor:8084
-      # Blockchain service URL (use anchor peer as default)
-      - BLOCKCHAIN_URL=http://peer-anchor:8084
+      # Blockchain Gateway URL
+      - BLOCKCHAIN_GATEWAY_URL=http://blockchain-gw:8080
     depends_on:
       - mongo-shared
-      - scf-chaincode
-      - peer-main-bank
-      - peer-supplier
-      - peer-anchor
+      - blockchain-gw
     networks:
       - public-network
       - peer-network
 
+  # Blockchain Gateway - Fabric Client
+  blockchain-gw:
+    build:
+      context: .
+      dockerfile: ./blockchain-gw/Dockerfile
+    ports:
+      - "9090:9090"
+      - "8081:8080"
+    depends_on:
+      - peer-anchor
+      - peer-main-bank
+      - peer-supplier
+    networks:
+      - peer-network
+    environment:
+      - PEER_ANCHOR_URL=peer-anchor:9094
+      - PEER_MAIN_BANK_URL=peer-main-bank:9095
+      - PEER_SUPPLIER_URL=peer-supplier:9093
+      - ORDERER_URL=orderer-ord1:7050
 
   # Orderer Cluster (3 nodes) - PBFT consensus
   orderer-ord1:
@@ -110,19 +108,19 @@ services:
       - orderer-network
       - public-network
 
-  # Peer Nodes - now submit tx to Orderer via gRPC
+  # Peer Nodes - Endorsers with gRPC endpoints
   peer-main-bank:
     build:
       context: .
       dockerfile: ./peer-main-bank/Dockerfile
     ports:
-      - "8082:8082"
-      - "9095:9092"
+      - "8082:8082"  # HTTP REST API
+      - "9095:9095"  # gRPC Endorsement
     environment:
       - PEER_NODE_TYPE=main-bank
       - PEER_NODE_ID=main-bank-peer-1
       - PEER_PORT=8082
-      - PEER_GRPC_PORT=9092
+      - PEER_GRPC_PORT=9095
       - ORDERER_ADDR=orderer-ord1:7050
       - MONGO_URI=mongodb://root:example@mongo-shared:27017/blockchain_private?authSource=admin
     depends_on:
@@ -137,8 +135,8 @@ services:
       context: .
       dockerfile: ./peer-supplier/Dockerfile
     ports:
-      - "8083:8083"
-      - "9093:9093"
+      - "8083:8083"  # HTTP REST API
+      - "9093:9093"  # gRPC Endorsement
     environment:
       - PEER_NODE_TYPE=supplier
       - PEER_NODE_ID=supplier-peer-1
@@ -158,8 +156,8 @@ services:
       context: .
       dockerfile: ./peer-anchor/Dockerfile
     ports:
-      - "8084:8084"
-      - "9094:9094"
+      - "8084:8084"  # HTTP REST API
+      - "9094:9094"  # gRPC Endorsement
     environment:
       - PEER_NODE_TYPE=anchor
       - PEER_NODE_ID=anchor-peer-1

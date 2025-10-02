@@ -3,16 +3,20 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
+	"google.golang.org/grpc"
 
 	"peer-anchor/blockchain"
 	"peer-anchor/config"
 	"peer-anchor/db"
+	"peer-anchor/endorsement"
 	"peer-anchor/handlers"
+	pb "peer-anchor/proto"
 )
 
 func main() {
@@ -65,7 +69,24 @@ func main() {
 		AllowedHeaders: []string{"*"},
 	})
 
-	// Start server
+	// Start gRPC server for endorsement
+	go func() {
+		lis, err := net.Listen("tcp", ":9094")
+		if err != nil {
+			log.Fatalf("failed to listen on gRPC port: %v", err)
+		}
+
+		grpcServer := grpc.NewServer()
+		endorsementService := endorsement.NewEndorsementService("peer-anchor")
+		pb.RegisterPeerEndorsementServer(grpcServer, endorsementService)
+
+		log.Printf("Anchor Peer gRPC server running on port 9094")
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve gRPC: %v", err)
+		}
+	}()
+
+	// Start HTTP server
 	srv := &http.Server{
 		Handler:      c.Handler(router),
 		Addr:         ":8084",
@@ -73,6 +94,6 @@ func main() {
 		ReadTimeout:  15 * time.Second,
 	}
 
-	log.Printf("Anchor Peer is running on port 8084")
+	log.Printf("Anchor Peer HTTP server running on port 8084")
 	log.Fatal(srv.ListenAndServe())
 }
