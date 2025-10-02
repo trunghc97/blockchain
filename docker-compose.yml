@@ -22,7 +22,7 @@ services:
       - SPRING_DATA_MONGODB_USERNAME=root
       - SPRING_DATA_MONGODB_PASSWORD=example
       # Blockchain Gateway URL
-      - BLOCKCHAIN_GATEWAY_URL=http://blockchain-gw:9090
+      - BLOCKCHAIN_GATEWAY_URL=http://blockchain-gw:8080
     depends_on:
       - mongo-shared
       - blockchain-gw
@@ -37,10 +37,9 @@ services:
       dockerfile: ./blockchain-gw/Dockerfile
     ports:
       - "9090:9090"
+      - "8081:8080"
     depends_on:
-      - peer-anchor
-      - peer-main-bank
-      - peer-supplier
+      - mongo-shared
     networks:
       - peer-network
     environment:
