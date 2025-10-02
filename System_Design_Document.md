@@ -26,34 +26,39 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 - **🏗️ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 
 ### Phạm vi
-- **Frontend (Angular 17)**: entrypoint của user
-- **API Gateway (Spring Boot)**: nhận request từ frontend, auth, routing → forward sang blockchain-gw
-- **blockchain-gw (Port 9090)**: Fabric Client + Endorsement Aggregator
-- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser, không gửi Orderer trực tiếp
+- **Frontend (Angular 17)**: SPA, hiển thị UI cho Anchor, Bank, Supplier với role-based components
+- **API Gateway (Spring Boot 3.1.5)**: Entry point cho user/app, thực hiện auth (JWT), smart routing, public-facing
+- **blockchain-gw (Port 9090)**: Đặt trong Private Blockchain Network, vai trò Fabric Client Service
+- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser Only, có gRPC endpoint EvaluateProposal
 - **Orderer Cluster (PBFT, 3f+1 nodes)**: Nhận TX từ blockchain-gw, thực hiện consensus
 - **Databases**: MongoDB private ở từng peer + MongoDB shared (world state public) do blockchain-gw quản lý
-- **Network Isolation**: Private networks cho peers, orderers, và blockchain gateway
+- **Network Isolation**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + orderer)
 
 ## Kiến trúc hệ thống
 
 ### 🆕 **Kiến trúc mới: Blockchain Gateway Architecture**
 
 #### Tổng quan kiến trúc mới
-Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client:
+Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client trong Private Blockchain Network:
 
-- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator
-- **📡 API Gateway**: Spring Boot nhận request từ frontend, auth, routing → forward sang blockchain-gw
-- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator trong Private Blockchain Network
+- **📡 API Gateway**: Spring Boot 3.1.5 nhận request từ frontend, auth, routing → forward sang blockchain-gw qua private channel
+- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement qua gRPC EvaluateProposal, không gửi trực tiếp lên Orderer
 - **💾 Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 - **⚡ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, thu thập endorsements
 - **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
+- **🔒 Network Separation**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + orderer)
 
 #### Endorsement Methods
 ```go
-// Proposal Request Methods
+// Peer gRPC Endorsement Methods
+EvaluateProposal(proposal) → Endorsement
+
+// blockchain-gw Fabric Client Methods
 ProposalRequest(contractID, operation, parameters)
-CollectEndorsements(proposalID, peerList)
-ValidateEndorsements(endorsements, policy)
+CollectEndorsements(endorsements) → ValidationResult
+ValidateEndorsements(endorsements) → PolicyCheck
+SubmitTx(transaction, endorsements) → SubmitResult
 
 // Contract Management
 CreateContract(anchorID, suppliers[], totalAmount, fileHash)
@@ -378,36 +383,35 @@ service PeerEndorsementService {
 
 ```mermaid
 sequenceDiagram
-    participant Client as Client
-    participant Gateway as blockchain-gw
+    participant User(App/Web)
+    participant APIGW(Java)
+    participant GW as blockchain-gw (Private)
     participant PeerA as Peer Anchor
     participant PeerB as Peer Bank
     participant PeerS as Peer Supplier
-    participant Orderer as Orderer Cluster
+    participant ORD as Orderer PBFT
+    participant LED as Ledger (MongoDB)
 
-    Client->>Gateway: Submit Transaction Request
-    Gateway->>Gateway: Create ProposalRequest
-    
-    Gateway->>PeerA: ProposalRequest(operation, params)
-    Gateway->>PeerB: ProposalRequest(operation, params)
-    Gateway->>PeerS: ProposalRequest(operation, params)
-    
-    PeerA->>PeerA: Execute Chaincode Logic
-    PeerA->>Gateway: Endorsement + RWSet + Signature
-    PeerB->>PeerB: Execute Chaincode Logic
-    PeerB->>Gateway: Endorsement + RWSet + Signature
-    PeerS->>PeerS: Execute Chaincode Logic
-    PeerS->>Gateway: Endorsement + RWSet + Signature
-    
-    Gateway->>Gateway: Collect Endorsements
-    Gateway->>Gateway: Validate Endorsement Policy
-    Gateway->>Gateway: Check RWSet Consistency
-    
-    Gateway->>Orderer: SubmitTx(transaction + endorsements)
-    Orderer->>Orderer: PBFT Consensus
-    Orderer->>Gateway: Transaction Committed
-    
-    Gateway->>Client: Transaction Result
+    User->>APIGW(Java): Submit TX
+    APIGW(Java)->>GW: Forward Request (Private)
+
+    GW->>PeerA: ProposalRequest
+    GW->>PeerB: ProposalRequest
+    GW->>PeerS: ProposalRequest
+
+    PeerA->>PeerA: Execute Chaincode
+    PeerA->>GW: Endorsement + RWSet
+    PeerB->>PeerB: Execute Chaincode
+    PeerB->>GW: Endorsement + RWSet
+    PeerS->>PeerS: Execute Chaincode
+    PeerS->>GW: Endorsement + RWSet
+
+    GW->>GW: Collect endorsements + Check Policy
+    GW->>ORD: Submit TX + endorsements
+    ORD->>LED: Commit Block
+    LED-->>GW: TX committed
+    GW-->>APIGW(Java): TX result
+    APIGW(Java)-->>User: Response
 ```
 
 ### Connection Management
