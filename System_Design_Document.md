@@ -52,13 +52,14 @@ Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gate
 #### Endorsement Methods
 ```go
 // Peer Endorsement Methods (Nhận proposal từ blockchain-gw)
-ProposalRequest(proposal) → Endorsement + RWSet
+EvaluateProposal(proposal) → Endorsement + RWSet
 
 // blockchain-gw Fabric Client Methods (Gửi proposal đến peers)
 ProposalRequest(contractID, operation, parameters) → Send to Peers
 CollectEndorsements(endorsements) → ValidationResult
 ValidateEndorsements(endorsements) → PolicyCheck
 SubmitTx(transaction, endorsements) → SubmitResult
+DistributeBlocks(block) → Send to Peers
 
 // Contract Management (Thực thi trong chaincode)
 CreateContract(anchorID, suppliers[], totalAmount, fileHash)
@@ -372,10 +373,13 @@ service PeerEndorsementService {
 #### Nguyên tắc quan trọng:
 - **API Gateway**: Chỉ forward request, không gửi trực tiếp đến peers
 - **blockchain-gw**: Fabric Client duy nhất, tổng hợp endorsements và submit transaction
-- **Peers**: Chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+- **Peers**: Chỉ thực hiện endorsement (EvaluateProposal), không gửi trực tiếp lên Orderer
 - **Orderer**: Chỉ nhận transaction từ blockchain-gw, chỉ stream blocks về blockchain-gw
 - **Block Distribution**: blockchain-gw nhận blocks từ Orderer và distribute đến peers
 - **Databases**: Peers lưu local state, blockchain-gw quản lý world state
+- **Endorsement Pattern**: Peers chỉ thực hiện EvaluateProposal, không submit transaction
+- **Fabric Client Role**: blockchain-gw đóng vai trò Fabric Client trong Private Blockchain Network
+- **Peer REST API**: Chỉ có GET endpoints để query data, không có POST endpoints để submit transactions
 
 ### Endorsement Processing Flow
 
@@ -403,8 +407,10 @@ sequenceDiagram
 
     GW->>GW: Collect endorsements + Check Policy
     GW->>ORD: Submit TX + endorsements
+    ORD->>ORD: PBFT Consensus (Pre-Prepare, Prepare, Commit, Finalize)
     ORD->>LED: Commit Block
-    LED-->>GW: Block committed
+    LED-->>ORD: Block committed
+    ORD->>GW: StreamBlocks (finalized block)
     GW->>PeerA: Distribute Block
     GW->>PeerB: Distribute Block
     GW->>PeerS: Distribute Block
@@ -621,58 +627,83 @@ blockHash = SHA256(prevBlockHash + merkleRoot + blockTimestamp)
 
 #### 1. Transaction Submission Flow
 
-Khi một peer node cần thực hiện một blockchain operation, nó sẽ:
-1. Invoke Blockchain Gateway để tổng hợp transactions
-2. Submit transaction trực tiếp lên orderer cluster thông qua gRPC
-3. Nhận block stream từ orderer và apply state changes
+Khi một user cần thực hiện một blockchain operation, flow sẽ như sau:
+1. User gửi request qua API Gateway
+2. API Gateway forward request đến blockchain-gw
+3. blockchain-gw gửi ProposalRequest đến peers để lấy endorsements
+4. Peers thực thi chaincode logic và trả về endorsements
+5. blockchain-gw submit transaction + endorsements lên orderer cluster
+6. Orderer thực hiện PBFT consensus và commit block
+7. Orderer stream block về blockchain-gw
+8. blockchain-gw distribute block đến peers
 
 ```mermaid
 sequenceDiagram
-    participant Peer as Peer Node
-    participant Chaincode as Blockchain Gateway
-    participant Orderer as Orderer Cluster (Leader)
-    participant Followers as Orderer Followers
+    participant User(App/Web)
+    participant APIGW(Java)
+    participant GW as blockchain-gw (Private)
+    participant PeerA as Peer Anchor
+    participant PeerB as Peer Bank
+    participant PeerS as Peer Supplier
+    participant ORD as Orderer PBFT
+    participant LED as Ledger
 
-    Peer->>Chaincode: Invoke smart contract method
-    Chaincode->>Chaincode: Execute business logic & state changes
-    Chaincode->>Peer: Return transaction data
+    User->>APIGW(Java): Submit TX
+    APIGW(Java)->>GW: Forward Request (HTTP)
 
-    Peer->>Orderer: SubmitTransaction(tx)
-    Orderer->>Orderer: Validate transaction format & signatures
-    Orderer->>Followers: Replicate via PBFT consensus
-    Followers->>Orderer: Send prepare messages
+    GW->>PeerA: ProposalRequest (gRPC EvaluateProposal)
+    GW->>PeerB: ProposalRequest (gRPC EvaluateProposal)
+    GW->>PeerS: ProposalRequest (gRPC EvaluateProposal)
 
-    Note over Orderer,Followers: PBFT Consensus
-    Orderer->>Orderer: Pre-Prepare → Prepare → Commit phases
-    Orderer->>Orderer: Create block when quorum reached
-    Orderer->>Peer: StreamBlocks (real-time)
+    PeerA->>PeerA: Execute Chaincode logic
+    PeerA->>GW: Endorsement + RWSet (gRPC)
+    PeerB->>PeerB: Execute Chaincode logic
+    PeerB->>GW: Endorsement + RWSet (gRPC)
+    PeerS->>PeerS: Execute Chaincode logic
+    PeerS->>GW: Endorsement + RWSet (gRPC)
 
-    Peer->>Peer: Validate and apply block to local state
-    Chaincode->>Chaincode: Persist state changes
+    GW->>GW: Collect endorsements + Check Policy
+    GW->>ORD: Submit TX + endorsements (gRPC)
+    ORD->>ORD: PBFT Consensus (Pre-Prepare, Prepare, Commit, Finalize)
+    ORD->>LED: Commit Block
+    LED-->>ORD: Block committed
+    ORD->>GW: StreamBlocks (finalized block)
+    GW->>PeerA: Distribute Block (gRPC)
+    GW->>PeerB: Distribute Block (gRPC)
+    GW->>PeerS: Distribute Block (gRPC)
+    GW-->>APIGW(Java): TX result (HTTP)
+    APIGW(Java)-->>User: Response
 ```
 
 **Các bước chi tiết:**
 
-1. **Chaincode Invocation**
-   - Peer gọi gRPC methods của Blockchain Gateway
-   - Chaincode thực thi business logic và tạo transaction data
-   - State changes được persist trong MongoDB
+1. **User Request**
+   - User gửi request qua Frontend Angular
+   - API Gateway nhận request và validate JWT
+   - API Gateway forward request đến blockchain-gw
 
-2. **Direct gRPC Submission**
-   - Peer submit transaction trực tiếp đến orderer leader qua gRPC
-   - Orderer validate transaction format và digital signatures
-   - Không còn channel-based permissions
+2. **Endorsement Collection**
+   - blockchain-gw tạo ProposalRequest
+   - Gửi ProposalRequest đến các peers cần thiết
+   - Peers thực thi chaincode logic và trả về endorsements
+   - blockchain-gw thu thập endorsements và kiểm tra policy
 
-3. **PBFT Consensus**
+3. **Transaction Submission**
+   - blockchain-gw submit transaction + endorsements đến orderer cluster
+   - Orderer validate transaction format và signatures
+   - Orderer thực hiện PBFT consensus với followers
+
+4. **PBFT Consensus**
    - Leader orderer broadcast Pre-Prepare message
    - Followers gửi Prepare messages
    - Quorum 2f+1 signatures để commit block
    - f=1 fault tolerance với 3 nodes
 
-4. **Real-time Block Streaming**
-   - Orderer stream finalized blocks trực tiếp đến peers
+5. **Block Distribution**
+   - Orderer stream finalized blocks về blockchain-gw
+   - blockchain-gw distribute blocks đến peers
    - Peers validate blocks và apply state changes
-   - Persistent gRPC connections đảm bảo real-time delivery
+   - blockchain-gw cập nhật world state
 
 #### 2. gRPC Communication Protocol
 
@@ -2049,13 +2080,14 @@ flowchart TD
 ## Peer Services Architecture
 
 ### Overview
-Peer services are the endorsing peers in the blockchain network that provide REST API endpoints for different business roles (Anchor, Bank, Supplier). Each peer service:
+Peer services are the endorsing peers in the blockchain network that provide REST API endpoints for querying data and gRPC endpoints for endorsement. Each peer service:
 
 - **Runs as a standalone Go microservice**
-- **Connects to Blockchain Gateway via gRPC**
+- **Receives ProposalRequest from Blockchain Gateway via gRPC**
 - **Maintains isolated MongoDB database**
-- **Implements role-based business logic**
-- **Handles transaction submission to Orderer**
+- **Implements role-based endorsement logic**
+- **Only provides GET endpoints for data querying**
+- **Does NOT submit transactions directly to Orderer**
 
 ### Peer Service Components
 
@@ -2075,17 +2107,17 @@ type Handler struct {
 ```
 
 **Key Responsibilities:**
-- Route request validation
-- Business logic orchestration
-- Blockchain Gateway invocation
-- Response formatting
-- Event logging and block creation
+- Route request validation for GET endpoints only
+- Data querying from local MongoDB
+- Response formatting for data queries
+- gRPC EvaluateProposal endpoint for endorsement
+- Event logging and local state management
 
-#### 3. **Chaincode Client Layer**
-- **gRPC Connection**: Direct connection to Blockchain Gateway
+#### 3. **gRPC Endorsement Layer**
+- **gRPC Server**: Receives ProposalRequest from Blockchain Gateway
 - **Protocol Buffers**: Type-safe RPC communication
-- **Error Handling**: Comprehensive error propagation
-- **Connection Management**: Graceful reconnection on failures
+- **Endorsement Logic**: Execute chaincode logic and return RWSet + signature
+- **Connection Management**: Graceful handling of endorsement requests
 
 #### 4. **Database Layer**
 - **MongoDB Integration**: Isolated per-peer databases
@@ -2147,29 +2179,33 @@ sequenceDiagram
     participant Client
     participant HTTP as HTTP Server
     participant Handler
-    participant Chaincode as Blockchain Gateway
+    participant GW as Blockchain Gateway
     participant DB as MongoDB
     participant Orderer
 
-    Client->>HTTP: POST /api/v1/contracts
+    Client->>HTTP: GET /api/v1/contracts
     HTTP->>Handler: Route to handler
     Handler->>Handler: Validate request
-    Handler->>Chaincode: Invoke smart contract
-    Chaincode->>Chaincode: Execute business logic
-    Chaincode->>Handler: Return result
-    Handler->>DB: Log event & create block
-    Handler->>Orderer: Submit transaction
-    Orderer->>Handler: Transaction accepted
+    Handler->>DB: Query local data
+    DB->>Handler: Return data
     Handler->>HTTP: Return response
     HTTP->>Client: 200 OK with data
+
+    Note over GW,Orderer: Endorsement Flow (separate from REST API)
+    GW->>Handler: ProposalRequest (gRPC)
+    Handler->>Handler: Execute chaincode logic
+    Handler->>GW: Endorsement + RWSet
+    GW->>Orderer: SubmitTx + endorsements
+    Orderer->>GW: StreamBlocks
+    GW->>Handler: Distribute Block
 ```
 
 #### **Error Handling:**
-- **Input Validation**: 400 Bad Request for invalid data
-- **Authentication**: 401 Unauthorized for invalid JWT
+- **Input Validation**: 400 Bad Request for invalid query parameters
+- **Authentication**: 401 Unauthorized for invalid JWT (if applicable)
 - **Authorization**: 403 Forbidden for insufficient permissions
 - **Not Found**: 404 for missing resources
-- **Conflicts**: 409 for business logic conflicts
+- **Method Not Allowed**: 405 for POST endpoints (peers only support GET)
 - **Server Errors**: 500 for internal errors
 
 ### Blockchain Gateway Design

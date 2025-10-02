@@ -114,8 +114,15 @@ Sample PBFT consensus block with signatures:
 
 **Peer Anchor (Port 8084) - Endorser Only:**
 - `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
+- `GET /contracts` - Danh sách contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
-- `GET /contract/list` - Danh sách contracts từ local MongoDB
+- `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
+- `GET /token/{id}` - Token details từ local MongoDB
+- `GET /token/issued/{bankId}` - Tokens issued by bank từ local MongoDB
+- `GET /tokens` - All tokens từ local MongoDB
+- `GET /balances/account/{accountId}` - Account balances từ local MongoDB
+- `GET /balances/token/{tokenId}` - Token balances từ local MongoDB
+- `GET /suppliers` - Supplier list từ local MongoDB
 - `GET /health` - Health check
 
 **Peer Main Bank (Port 8082) - Endorser Only:**
@@ -123,12 +130,27 @@ Sample PBFT consensus block with signatures:
 - `GET /contract/list` - List contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
+- `GET /token/{id}` - Token details từ local MongoDB
 - `GET /token/issued/{bankId}` - Tokens issued by bank từ local MongoDB
 - `GET /tokens` - All tokens issued by bank từ local MongoDB
+- `GET /users` - User list từ local MongoDB
+- `GET /suppliers` - Supplier list từ local MongoDB
+- `GET /balances/account/{accountId}` - Account balances từ local MongoDB
+- `GET /balances/token/{tokenId}` - Token balances từ local MongoDB
+- `GET /health` - Health check
 
 **Peer Supplier (Port 8083) - Endorser Only:**
 - `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
+- `GET /contract/list` - List contracts từ local MongoDB
+- `GET /contract/{id}` - Contract details từ local MongoDB
+- `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
+- `GET /token/{id}` - Token details từ local MongoDB
+- `GET /token/issued/{bankId}` - Tokens issued by bank từ local MongoDB
+- `GET /tokens` - All tokens từ local MongoDB
+- `GET /users` - User list từ local MongoDB
+- `GET /suppliers` - Supplier list từ local MongoDB
 - `GET /balances/account/{accountId}` - Account balances từ local MongoDB
+- `GET /balances/token/{tokenId}` - Token balances từ local MongoDB
 - `GET /health` - Health check
 
 **blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator:**

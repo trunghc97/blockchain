@@ -30,9 +30,6 @@ func main() {
 	if os.Getenv("PEER_PORT") == "" {
 		os.Setenv("PEER_PORT", "8083")
 	}
-	if os.Getenv("ORDERER_ADDR") == "" {
-		os.Setenv("ORDERER_ADDR", "orderer-ord1:7050")
-	}
 
 	port := os.Getenv("PEER_PORT")
 	mongoURI := os.Getenv("MONGO_URI")
@@ -82,29 +79,21 @@ func main() {
 		fmt.Fprintf(w, `{"status": "ok", "peer": "supplier", "message": "Peer is running"}`)
 	}).Methods("GET")
 
-	// Contract routes
-	router.HandleFunc("/contract/create", h.CreateContract).Methods("POST")
+	// Contract routes - Only GET endpoints for querying
 	router.HandleFunc("/contract/list", h.GetContracts).Methods("GET")
 	router.HandleFunc("/contract/{id}", h.GetContract).Methods("GET")
-	router.HandleFunc("/contract/{id}/approve", h.ApproveContract).Methods("POST")
-	router.HandleFunc("/contract/{id}/approve-bank", h.ApproveContractByBank).Methods("POST")
 	router.HandleFunc("/contract/{id}/ledger", h.GetContractLedger).Methods("GET")
 
-	// Token routes
+	// Token routes - Only GET endpoints for querying
 	router.HandleFunc("/token/{id}", h.GetToken).Methods("GET")
-	router.HandleFunc("/token/transfer", h.TransferToken).Methods("POST")
 	router.HandleFunc("/token/issued/{bankId}", h.GetTokensIssuedByBank).Methods("GET")
-	router.HandleFunc("/token/settle", h.SettleToken).Methods("POST")
 
-	// User/Balance routes
+	// User/Balance routes - Only GET endpoints for querying
 	router.HandleFunc("/users", h.GetSuppliers).Methods("GET")
 	router.HandleFunc("/suppliers", h.GetSuppliers).Methods("GET")
 	router.HandleFunc("/tokens", h.GetAllTokens).Methods("GET")
 	router.HandleFunc("/balances/account/{accountId}", h.GetBalancesByAccount).Methods("GET")
 	router.HandleFunc("/balances/token/{tokenId}", h.GetBalancesByToken).Methods("GET")
-
-	// Admin routes
-	router.HandleFunc("/admin/update-hashes", h.UpdateBlockHashes).Methods("POST")
 
 	// CORS middleware
 	corsHandler := func(next http.Handler) http.Handler {

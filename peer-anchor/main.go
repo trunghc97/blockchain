@@ -39,28 +39,20 @@ func main() {
 	// Initialize router
 	router := mux.NewRouter()
 
-	// Contract endpoints
-	router.HandleFunc("/contract/create", handler.CreateContract).Methods("POST")
-	router.HandleFunc("/contract/{id}/approve", handler.ApproveContract).Methods("POST")
-	router.HandleFunc("/contract/{id}/approve-bank", handler.ApproveContractByBank).Methods("POST")
+	// Contract endpoints - Only GET endpoints for querying
 	router.HandleFunc("/contracts", handler.GetContracts).Methods("GET")
 	router.HandleFunc("/contract/{id}", handler.GetContract).Methods("GET")
 	router.HandleFunc("/contract/{id}/ledger", handler.GetContractLedger).Methods("GET")
 
-	// Token endpoints
+	// Token endpoints - Only GET endpoints for querying
 	router.HandleFunc("/token/{id}", handler.GetToken).Methods("GET")
-	router.HandleFunc("/token/transfer", handler.TransferToken).Methods("POST")
-	router.HandleFunc("/token/settle", handler.SettleToken).Methods("POST")
 	router.HandleFunc("/token/issued/{bankId}", handler.GetTokensIssuedByBank).Methods("GET")
 	router.HandleFunc("/tokens", handler.GetAllTokens).Methods("GET")
 	router.HandleFunc("/balances/account/{accountId}", handler.GetBalancesByAccount).Methods("GET")
 	router.HandleFunc("/balances/token/{tokenId}", handler.GetBalancesByToken).Methods("GET")
 
-	// Supplier endpoints
+	// Supplier endpoints - Only GET endpoints for querying
 	router.HandleFunc("/suppliers", handler.GetSuppliers).Methods("GET")
-
-	// Utility endpoints
-	router.HandleFunc("/blocks/hash/update", handler.UpdateBlockHashes).Methods("POST")
 
 	// Configure CORS
 	c := cors.New(cors.Options{

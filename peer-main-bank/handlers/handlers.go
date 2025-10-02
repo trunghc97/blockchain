@@ -15,14 +15,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
-	"peer-main-bank/chaincodeclient"
 )
 
 type Handler struct {
-	db              *mongo.Database
-	chaincodeClient *chaincodeclient.ChaincodeClient
-	peerID          string
+	db     *mongo.Database
+	peerID string
 }
 
 func generateEventID() string {
@@ -34,110 +31,31 @@ func generateEventID() string {
 func NewHandler(db *mongo.Database) *Handler {
 	peerID := os.Getenv("PEER_NODE_ID")
 	if peerID == "" {
-		peerID = "peer-anchor"
+		peerID = "peer-main-bank"
 	}
-
-	chaincodeClient := chaincodeclient.NewClient()
 
 	return &Handler{
-		db:              db,
-		chaincodeClient: chaincodeClient,
-		peerID:          peerID,
+		db:     db,
+		peerID: peerID,
 	}
 }
 
-// CreateContract creates a new contract (Anchor) - Using Chaincode Service
+// CreateContract - This method should not exist in peer handlers
+// Contract creation should be handled by blockchain-gw via ProposalRequest
 func (h *Handler) CreateContract(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Description string   `json:"description"`
-		AnchorId    string   `json:"anchorId"`
-		BankId      string   `json:"bankId"`
-		Amount      float64  `json:"amount"`
-		Suppliers   []string `json:"suppliers"`
-		FileHash    string   `json:"fileHash"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Call chaincode service
-	resp, err := h.chaincodeClient.InvokeCreateContract(
-		req.AnchorId,
-		req.Suppliers,
-		req.Amount,
-		req.FileHash,
-	)
-	if err != nil {
-		fmt.Printf("Failed to create contract: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-
-	// Log event locally
-	h.logEvent("CONTRACT_CREATED", resp.ContractId, req.AnchorId, nil)
+	http.Error(w, "This endpoint is not available. Use blockchain-gw for transaction processing.", http.StatusMethodNotAllowed)
 }
 
-// ApproveContract allows suppliers to approve contracts
+// ApproveContract - This method should not exist in peer handlers
+// Approval should be handled by blockchain-gw via ProposalRequest
 func (h *Handler) ApproveContract(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	contractId := vars["id"]
-
-	var req struct {
-		SupplierId string `json:"supplierId"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	resp, err := h.chaincodeClient.InvokeApproveContract(contractId, req.SupplierId)
-	if err != nil {
-		fmt.Printf("Failed to approve contract: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-
-	h.logEvent("CONTRACT_APPROVED", contractId, req.SupplierId, nil)
+	http.Error(w, "This endpoint is not available. Use blockchain-gw for transaction processing.", http.StatusMethodNotAllowed)
 }
 
-// ApproveContractByBank handles bank approval of contracts
+// ApproveContractByBank - This method should not exist in peer handlers
+// Bank approval should be handled by blockchain-gw via ProposalRequest
 func (h *Handler) ApproveContractByBank(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	contractId := vars["id"]
-
-	var req struct {
-		BankId string `json:"bankId"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Call chaincode to issue token
-	resp, err := h.chaincodeClient.InvokeIssueToken(contractId, req.BankId, 50000.0)
-	if err != nil {
-		fmt.Printf("Failed to issue token: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
-
-	h.logEvent("BANK_APPROVED_TOKEN_GENERATED", contractId, req.BankId, map[string]interface{}{
-		"tokenId": resp.TokenId,
-		"amount":  50000.0,
-	})
+	http.Error(w, "This endpoint is not available. Use blockchain-gw for transaction processing.", http.StatusMethodNotAllowed)
 }
 
 // Placeholder methods
@@ -174,67 +92,16 @@ func (h *Handler) GetToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(token)
 }
 
+// TransferToken - This method should not exist in peer handlers
+// Token transfer should be handled by blockchain-gw via ProposalRequest
 func (h *Handler) TransferToken(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TokenId string  `json:"tokenId"`
-		From    string  `json:"from"`
-		To      string  `json:"to"`
-		Amount  float64 `json:"amount"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-		return
-	}
-
-	// Mock token transfer logic (since chaincode service is not available)
-	fmt.Printf("Mock token transfer: %s from %s to %s amount %f\n", req.TokenId, req.From, req.To, req.Amount)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "success",
-		"message": "Token transferred successfully",
-		"tokenId": req.TokenId,
-		"from":    req.From,
-		"to":      req.To,
-		"amount":  req.Amount,
-	})
-
-	h.logEvent("TOKEN_TRANSFERRED", req.TokenId, req.From, map[string]interface{}{
-		"to":     req.To,
-		"amount": req.Amount,
-	})
+	http.Error(w, "This endpoint is not available. Use blockchain-gw for transaction processing.", http.StatusMethodNotAllowed)
 }
 
+// SettleToken - This method should not exist in peer handlers
+// Token settlement should be handled by blockchain-gw via ProposalRequest
 func (h *Handler) SettleToken(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		TokenId    string `json:"tokenId"`
-		SupplierId string `json:"supplierId"`
-		BankId     string `json:"bankId"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Mock token settlement logic (since chaincode service is not available)
-	fmt.Printf("Mock token settlement: %s supplier %s bank %s\n", req.TokenId, req.SupplierId, req.BankId)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":     "success",
-		"message":    "Token settled successfully",
-		"tokenId":    req.TokenId,
-		"supplierId": req.SupplierId,
-		"bankId":     req.BankId,
-	})
-
-	h.logEvent("TOKEN_SETTLED", req.TokenId, req.SupplierId, map[string]interface{}{
-		"bankId": req.BankId,
-	})
+	http.Error(w, "This endpoint is not available. Use blockchain-gw for transaction processing.", http.StatusMethodNotAllowed)
 }
 
 func (h *Handler) GetTokensIssuedByBank(w http.ResponseWriter, r *http.Request) {
