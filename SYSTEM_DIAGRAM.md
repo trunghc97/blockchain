@@ -16,13 +16,13 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
 ### **Core Architecture Principles:**
 
-- **✅ Blockchain Gateway Architecture**: blockchain-gw đóng vai trò Fabric Client, tổng hợp endorsements từ peers và gửi transactions sang Orderer
+- **✅ Blockchain Gateway Architecture**: blockchain-gw đóng vai trò Fabric Client + Endorsement Aggregator
 - **✅ Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
-- **✅ PBFT Consensus**: 3-node orderer cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit phases
-- **✅ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, peers trả về endorsements
-- **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
-- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers qua persistent gRPC streams
+- **✅ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers → peers chạy chaincode → trả endorsement
+- **✅ PBFT Consensus**: 3-node orderer cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit → Finalize phases
 - **✅ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
+- **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
+- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers và blockchain-gw
 
 ## Trạng thái triển khai hiện tại ✅
 
@@ -30,7 +30,7 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **blockchain-gw** | 9090 | ✅ Running | Blockchain Gateway - Fabric Client, tổng hợp endorsements và gửi transactions sang orderer |
+| **blockchain-gw** | 9090 | ✅ Running | Fabric Client + Endorsement Aggregator - tổng hợp endorsements và gửi transactions sang orderer |
 | **peer-main-bank** | 8082 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
 | **peer-supplier** | 8083 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
 | **peer-anchor** | 8084 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
@@ -38,14 +38,14 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 | **orderer-ord2** | 7060 | ✅ Running | PBFT follower, consensus participant |
 | **orderer-ord3** | 7070 | ✅ Running | PBFT follower, consensus participant |
 | **mongo-shared** | 27017 | ✅ Running | World state database cho blockchain-gw |
-| **backend** | 8080 | ✅ Running | Spring Boot API gateway |
+| **backend** | 8080 | ✅ Running | Spring Boot API gateway - auth + routing |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
 ### ✅ **Blockchain Gateway Architecture End-to-End Test**
 
 ```bash
 # Test successful - Blockchain Gateway Architecture ✅
-Peer Request → blockchain-gw → ProposalRequest to Peers → Endorsements → SubmitTx to Orderer → PBFT Consensus → Block Creation → Events Sync ✅
+User Request → API GW → blockchain-gw → ProposalRequest to Peers → Endorsements → SubmitTx to Orderer → PBFT Consensus → Block Creation → Events Sync ✅
 
 # Complete test flow:
 ✅ CONTRACT_CREATED via blockchain-gw + peer endorsements + orderer submission
@@ -65,6 +65,16 @@ Sample blockchain-gw transaction submission:
       "peer_id": "peer-anchor",
       "rwset": "...",
       "signature": "ecdsa_sig_1..."
+    },
+    {
+      "peer_id": "peer-main-bank", 
+      "rwset": "...",
+      "signature": "ecdsa_sig_2..."
+    },
+    {
+      "peer_id": "peer-supplier",
+      "rwset": "...",
+      "signature": "ecdsa_sig_3..."
     }
   ],
   "timestamp": "2025-10-01T16:00:48Z"
@@ -101,13 +111,13 @@ Sample PBFT consensus block with signatures:
 
 ### ✅ **Implemented APIs**
 
-**Peer Anchor (Port 8084) - Endorsement Only:**
+**Peer Anchor (Port 8084) - Endorser Only:**
 - `POST /contract/create` - Anchor tạo contract → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
-- `GET /contract/{id}` - Contract details from blockchain-gw
+- `GET /contract/{id}` - Contract details từ blockchain-gw
 - `GET /contract/list` - Danh sách contracts từ blockchain-gw
 - `GET /health` - Health check
 
-**Peer Main Bank (Port 8082) - Endorsement Only:**
+**Peer Main Bank (Port 8082) - Endorser Only:**
 - `POST /contract/{id}/approve-bank` - Bank phê duyệt → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
 - `GET /contract/list` - List tất cả contracts từ blockchain-gw
 - `GET /contract/{id}` - Contract details từ blockchain-gw
@@ -115,18 +125,18 @@ Sample PBFT consensus block with signatures:
 - `GET /token/issued/{bankId}` - Tokens issued by bank từ blockchain-gw
 - `GET /tokens` - All tokens issued by bank từ blockchain-gw
 
-**Peer Supplier (Port 8083) - Endorsement Only:**
+**Peer Supplier (Port 8083) - Endorser Only:**
 - `POST /contract/{id}/approve` - Supplier phê duyệt contract → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
 - `POST /token/transfer` - Token transfer giữa suppliers → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
 - `POST /token/settle` - Supplier settle token với bank → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
 - `GET /balances/account/{accountId}` - Account balances của supplier từ blockchain-gw
 - `GET /health` - Health check
 
-**blockchain-gw (Port 9090) - Blockchain Gateway:**
+**blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator:**
 - `ProposalRequest()` - Gửi proposal đến peers để lấy endorsements
 - `CollectEndorsements()` - Thu thập endorsements từ peers
-- `SubmitTx()` - Gửi transaction + endorsements sang orderer cluster
 - `ValidateEndorsements()` - Kiểm tra endorsement policy
+- `SubmitTx()` - Gửi transaction + endorsements sang orderer cluster
 
 **Orderer gRPC APIs (Ports 7050-7070):**
 - `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for PBFT consensus
@@ -135,7 +145,7 @@ Sample PBFT consensus block with signatures:
 
 ```mermaid
 graph TB
-    subgraph "Frontend (Angular 17)"
+    subgraph "Frontend Layer (Angular 17)"
         subgraph "Role-based Components"
             ANC[Anchor Components<br/>Contract Form, Token Mgmt]
             BNK[Bank Components<br/>Token Overview, Ledger]
@@ -148,95 +158,96 @@ graph TB
         end
     end
 
-    subgraph "API Gateway (Spring Boot 3.1.5)"
-        AR[API Router<br/>Port 8080<br/>Smart Routing Logic]
+    subgraph "API Gateway Layer (Spring Boot 3.1.5)"
+        AR[API Router<br/>Port 8080<br/>Auth + Routing]
         AUTH_S[Authentication Service<br/>JWT Tokens]
-        PR[Peer Routing Service<br/>Business Logic Routing]
+        PR[Peer Routing Service<br/>Forward to blockchain-gw]
     end
 
-    subgraph "Blockchain Gateway Architecture"
-        subgraph "blockchain-gw (Port 9090)"
-            GW[Blockchain Gateway<br/>Fabric Client<br/>✅ Running<br/>Endorsement Aggregator]
+    subgraph "Blockchain Gateway Layer (Port 9090)"
+        subgraph "blockchain-gw - Fabric Client + Endorsement Aggregator"
+            GW[Blockchain Gateway<br/>✅ Running<br/>Fabric Client]
             PROPOSAL[ProposalRequest<br/>Gửi đến peers]
             COLLECT[CollectEndorsements<br/>Thu thập từ peers]
             SUBMIT[SubmitTx<br/>Gửi sang Orderer]
             POLICY[Endorsement Policy<br/>Kiểm tra quorum]
         end
-        
-        subgraph "Orderer Cluster (PBFT 3f+1 = 4 nodes, f=1)"
-            ORD1[Orderer Leader<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine + Block Streaming]
-            ORD2[Orderer Follower<br/>Port 7060<br/>✅ PBFT Follower<br/>Consensus Participant]
-            ORD3[Orderer Follower<br/>Port 7070<br/>✅ PBFT Follower<br/>Consensus Participant]
-            subgraph "PBFT Consensus Phases"
-                PREP[Pre-Prepare<br/>Leader broadcasts<br/>proposed block]
-                PREPARE[Prepare<br/>Followers validate<br/>send prepare msgs]
-                COMMIT[Commit<br/>Quorum reached<br/>2f+1 signatures]
-                FINAL[Finalize<br/>Block committed<br/>Stream to peers]
+    end
+
+    subgraph "Peer Network - Endorsers Only"
+        subgraph "Peer Main Bank (Port 8082)"
+            MB_API[REST API<br/>✅ Running]
+            MB_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
+            subgraph "Bank Chaincode Logic"
+                MB_CON[Contract Approval<br/>Bank Validation]
+                MB_TOK[Token Issuance<br/>Bank Authority]
+                MB_LED[Ledger Management<br/>Bank Oversight]
             end
+            MB_DB[(MongoDB Private<br/>Local State)]
+        end
+
+        subgraph "Peer Supplier (Port 8083)"
+            SUP_API[REST API<br/>✅ Running]
+            SUP_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
+            subgraph "Supplier Chaincode Logic"
+                SUP_APP[Contract Approval<br/>Supplier Validation]
+                SUP_TOK[Token Transfer<br/>P2P Circulation]
+                SUP_BAL[Balance Management<br/>Token Holdings]
+            end
+            SUP_DB[(MongoDB Private<br/>Local State)]
+        end
+
+        subgraph "Peer Anchor (Port 8084)"
+            ANC_API[REST API<br/>✅ Running]
+            ANC_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
+            subgraph "Anchor Chaincode Logic"
+                ANC_CON[Contract Creation<br/>Anchor Authority]
+                ANC_TOK[Token Reception<br/>Initial Ownership]
+                ANC_LED[Contract Ledger<br/>Anchor Tracking]
+            end
+            ANC_DB[(MongoDB Private<br/>Local State)]
         end
     end
 
-    subgraph "Peer Main Bank (✅ IMPLEMENTED - Endorser Only)"
-        MB_API[REST API<br/>Port 8082<br/>✅ Running]
-        MB_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
-        subgraph "Main Bank Logic ✅"
-            MB_CON[Contract Approval<br/>Bank Validation ✅]
-            MB_TOK[Token Issuance<br/>Bank Authority ✅]
-            MB_LED[Ledger Management<br/>Bank Oversight ✅]
+    subgraph "Orderer Cluster (PBFT 3f+1 nodes, f=1)"
+        ORD1[Orderer Leader<br/>Port 7050<br/>✅ PBFT Leader<br/>Consensus Engine]
+        ORD2[Orderer Follower<br/>Port 7060<br/>✅ PBFT Follower<br/>Consensus Participant]
+        ORD3[Orderer Follower<br/>Port 7070<br/>✅ PBFT Follower<br/>Consensus Participant]
+        subgraph "PBFT Consensus Phases"
+            PREP[Pre-Prepare<br/>Leader broadcasts<br/>proposed block]
+            PREPARE[Prepare<br/>Followers validate<br/>send prepare msgs]
+            COMMIT[Commit<br/>Quorum reached<br/>2f+1 signatures]
+            FINAL[Finalize<br/>Block committed<br/>Stream to peers]
         end
-        MB_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
     end
 
-    subgraph "Peer Supplier (✅ IMPLEMENTED - Endorser Only)"
-        SUP_API[REST API<br/>Port 8083<br/>✅ Running]
-        SUP_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
-        subgraph "Supplier Logic ✅"
-            SUP_APP[Contract Approval<br/>Supplier Validation ✅]
-            SUP_TOK[Token Transfer<br/>P2P Circulation ✅]
-            SUP_BAL[Balance Management<br/>Token Holdings ✅]
-        end
-        SUP_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
+    subgraph "Database Layer"
+        SHARED_DB[(MongoDB Shared<br/>World State Public<br/>Managed by blockchain-gw)]
     end
 
-    subgraph "Peer Anchor (✅ IMPLEMENTED - Endorser Only)"
-        ANC_API[REST API<br/>Port 8084<br/>✅ Running]
-        ANC_ENDORSE[Endorsement Logic<br/>✅ Active<br/>Chỉ endorsement]
-        subgraph "Anchor Logic ✅"
-            ANC_CON[Contract Creation<br/>Anchor Authority ✅]
-            ANC_TOK[Token Reception<br/>Initial Ownership ✅]
-            ANC_LED[Contract Ledger<br/>Anchor Tracking ✅]
-        end
-        ANC_DB[(MongoDB ✅<br/>Local State<br/>blockchain_private)]
-    end
-
-    subgraph "Centralized Database Architecture ✅"
-        SHARED_DB[(MongoDB Shared ✅<br/>World State<br/>blockchain_public<br/>Managed by blockchain-gw)]
-    end
-
-    %% Transaction Flow: Frontend → API Gateway → Peer → blockchain-gw → ProposalRequest → Endorsements → SubmitTx → Orderer PBFT → Block Streaming
+    %% Flow chuẩn: User → API GW → blockchain-gw → ProposalRequest → Peers → Endorsements → blockchain-gw → SubmitTx → Orderer → PBFT → Block → Response
     ANC --> AR
     BNK --> AR
     SUP --> AR
 
     AR --> PR
-    PR --> MB_API
-    PR --> SUP_API
-    PR --> ANC_API
+    PR -->|Forward Request| GW
 
-    %% Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
-    MB_API -->|ProposalRequest| GW
-    SUP_API -->|ProposalRequest| GW
-    ANC_API -->|ProposalRequest| GW
+    %% blockchain-gw gửi ProposalRequest đến peers
+    GW -->|ProposalRequest| MB_API
+    GW -->|ProposalRequest| SUP_API
+    GW -->|ProposalRequest| ANC_API
 
-    %% blockchain-gw thu thập endorsements và gửi lên Orderer
-    GW -->|CollectEndorsements| MB_ENDORSE
-    GW -->|CollectEndorsements| SUP_ENDORSE
-    GW -->|CollectEndorsements| ANC_ENDORSE
+    %% Peers chạy chaincode logic và trả endorsement
+    MB_API --> MB_ENDORSE
+    SUP_API --> SUP_ENDORSE
+    ANC_API --> ANC_ENDORSE
 
-    MB_ENDORSE -->|Endorsement| GW
-    SUP_ENDORSE -->|Endorsement| GW
-    ANC_ENDORSE -->|Endorsement| GW
+    MB_ENDORSE -->|Endorsement + RWSet| GW
+    SUP_ENDORSE -->|Endorsement + RWSet| GW
+    ANC_ENDORSE -->|Endorsement + RWSet| GW
 
+    %% blockchain-gw collect endorsements và submit lên Orderer
     GW -->|SubmitTx + Endorsements| ORD1
 
     %% PBFT Consensus Process
@@ -248,10 +259,11 @@ graph TB
     PREPARE --> COMMIT
     COMMIT --> FINAL
 
-    %% Orderers stream finalized blocks về peers
+    %% Orderers stream finalized blocks về peers và blockchain-gw
     FINAL -->|StreamBlocks| MB_API
     FINAL -->|StreamBlocks| SUP_API
     FINAL -->|StreamBlocks| ANC_API
+    FINAL -->|StreamBlocks| GW
 
     %% Database connections
     MB_API --> MB_DB
@@ -260,12 +272,12 @@ graph TB
     GW --> SHARED_DB
     FINAL --> SHARED_DB
 
-    %% PBFT cryptographic services
-    ORD1 --> POLICY
-    ORD2 --> POLICY
-    ORD3 --> POLICY
-    PREP --> POLICY
-    COMMIT --> POLICY
+    %% Response flow
+    GW -->|Transaction Result| PR
+    PR -->|Response| AR
+    AR --> ANC
+    AR --> BNK
+    AR --> SUP
 ```
 
 ## Luồng nghiệp vụ chi tiết

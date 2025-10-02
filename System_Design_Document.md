@@ -26,12 +26,12 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 - **🏗️ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 
 ### Phạm vi
-- **Blockchain Gateway Architecture**: blockchain-gw đóng vai trò Fabric Client, tổng hợp endorsements từ peers và gửi transactions sang Orderer
-- **Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
-- **Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, peers trả về endorsements
-- **PBFT Consensus**: Byzantine fault tolerant consensus với 3f+1 nodes (f=1)
-- **Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
-- **Load Distribution**: Client-side load balancing và leader affinity routing
+- **Frontend (Angular 17)**: entrypoint của user
+- **API Gateway (Spring Boot)**: nhận request từ frontend, auth, routing → forward sang blockchain-gw
+- **blockchain-gw (Port 9090)**: Fabric Client + Endorsement Aggregator
+- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser, không gửi Orderer trực tiếp
+- **Orderer Cluster (PBFT, 3f+1 nodes)**: Nhận TX từ blockchain-gw, thực hiện consensus
+- **Databases**: MongoDB private ở từng peer + MongoDB shared (world state public) do blockchain-gw quản lý
 - **Network Isolation**: Private networks cho peers, orderers, và blockchain gateway
 
 ## Kiến trúc hệ thống
@@ -41,9 +41,9 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 #### Tổng quan kiến trúc mới
 Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client:
 
-- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client
-- **📡 Peer Services**: REST API gateways với endorsement logic, không gửi trực tiếp lên Orderer
-- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, blockchain-gw tổng hợp và gửi transactions
+- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator
+- **📡 API Gateway**: Spring Boot nhận request từ frontend, auth, routing → forward sang blockchain-gw
+- **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
 - **💾 Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
 - **⚡ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, thu thập endorsements
 - **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
