@@ -1,6 +1,7 @@
 package com.example.blockchain.service;
 
 import com.example.blockchain.model.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,7 @@ import java.util.Map;
 public class PeerRoutingService {
 
     private final RestTemplate restTemplate;
+    private final BlockchainGatewayService blockchainGatewayService;
 
     // Peer node URLs from application.yml
     @Value("${peer.main-bank.url:http://peer-main-bank:8082}")
@@ -26,8 +28,11 @@ public class PeerRoutingService {
     @Value("${peer.anchor.url:http://peer-anchor:8084}")
     private String anchorPeerUrl;
 
-    public PeerRoutingService(RestTemplate restTemplate) {
+    public PeerRoutingService(RestTemplate restTemplate, BlockchainGatewayService blockchainGatewayService) {
+        System.out.println("PeerRoutingService constructor called");
         this.restTemplate = restTemplate;
+        this.blockchainGatewayService = blockchainGatewayService;
+        System.out.println("PeerRoutingService initialized with blockchainGatewayService: " + blockchainGatewayService);
     }
 
     /**
@@ -64,17 +69,66 @@ public class PeerRoutingService {
     }
 
     /**
-     * Route token transfer to Supplier peer (since suppliers handle token circulation)
+     * Route token transfer through blockchain-gw (Fabric Client)
      */
     public Map<String, Object> transferToken(Map<String, Object> transferData) {
-        return callPeer(supplierPeerUrl, "/token/transfer", HttpMethod.POST, transferData);
+        try {
+            System.out.println("PeerRoutingService.transferToken called with: " + transferData);
+            System.out.println("blockchainGatewayService is null: " + (blockchainGatewayService == null));
+            
+            if (blockchainGatewayService == null) {
+                System.out.println("ERROR: blockchainGatewayService is null!");
+                Map<String, Object> result = new HashMap<>();
+                result.put("status", "error");
+                result.put("message", "BlockchainGatewayService not available");
+                return result;
+            }
+            
+            String tokenId = (String) transferData.get("tokenId");
+            String from = (String) transferData.get("from");
+            String to = (String) transferData.get("to");
+            Double amount = (Double) transferData.get("amount");
+            
+            System.out.println("Calling blockchainGatewayService.transferToken with: " + tokenId + ", " + from + ", " + to + ", " + amount);
+            String blockNumber = blockchainGatewayService.transferToken(tokenId, from, to, amount.toString());
+            System.out.println("Received block number: " + blockNumber);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "success");
+            result.put("block_number", blockNumber);
+            result.put("message", "Token transfer successful");
+            return result;
+        } catch (Exception e) {
+            System.out.println("Exception in transferToken: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "error");
+            result.put("message", "Token transfer failed: " + e.getMessage());
+            return result;
+        }
     }
 
     /**
-     * Route token settlement to Main Bank peer
+     * Route token settlement through blockchain-gw (Fabric Client)
      */
     public Map<String, Object> settleToken(Map<String, Object> settleData) {
-        return callPeer(mainBankPeerUrl, "/token/settle", HttpMethod.POST, settleData);
+        try {
+            String tokenId = (String) settleData.get("tokenId");
+            String supplierId = (String) settleData.get("supplierId");
+            
+            String blockNumber = blockchainGatewayService.settleToken(tokenId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "success");
+            result.put("block_number", blockNumber);
+            result.put("message", "Token settlement successful");
+            return result;
+        } catch (Exception e) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "error");
+            result.put("message", "Token settlement failed: " + e.getMessage());
+            return result;
+        }
     }
 
     /**

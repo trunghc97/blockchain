@@ -17,7 +17,9 @@ public class TokenController {
     private final PeerRoutingService peerRoutingService;
 
     public TokenController(PeerRoutingService peerRoutingService) {
+        System.out.println("TokenController constructor called with peerRoutingService: " + peerRoutingService);
         this.peerRoutingService = peerRoutingService;
+        System.out.println("TokenController initialized");
     }
 
     @GetMapping("/{tokenId}")
@@ -43,10 +45,14 @@ public class TokenController {
     public ResponseEntity<?> transferToken(@RequestBody Map<String, Object> transferData) {
         try {
             logger.info("Transferring token: {}", transferData);
+            System.out.println("TokenController.transferToken called with: " + transferData);
             Map<String, Object> result = peerRoutingService.transferToken(transferData);
+            System.out.println("TokenController.transferToken result: " + result);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             logger.error("Error transferring token", e);
+            System.out.println("TokenController.transferToken exception: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.internalServerError().body("Error transferring token: " + e.getMessage());
         }
     }

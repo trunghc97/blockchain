@@ -73,8 +73,8 @@ public class BlockchainGatewayService {
         return submitTransaction("IssueToken", contractId, bankId, amount);
     }
 
-    public String transferToken(String tokenId, String fromAccount, String toAccount) {
-        return submitTransaction("TransferToken", tokenId, fromAccount, toAccount);
+    public String transferToken(String tokenId, String fromAccount, String toAccount, String amount) {
+        return submitTransaction("TransferToken", tokenId, fromAccount, toAccount, amount);
     }
 
     public String settleToken(String tokenId) {
@@ -108,4 +108,3 @@ public class BlockchainGatewayService {
         }
     }
 }
-
