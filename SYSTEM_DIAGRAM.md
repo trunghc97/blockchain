@@ -113,22 +113,22 @@ Sample PBFT consensus block with signatures:
 ### ✅ **Implemented APIs**
 
 **Peer Anchor (Port 8084) - Endorser Only:**
-- `ProposalRequest()` - Anchor endorsement → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
-- `GET /contract/{id}` - Contract details từ blockchain-gw
-- `GET /contract/list` - Danh sách contracts từ blockchain-gw
+- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `GET /contract/{id}` - Contract details từ local MongoDB
+- `GET /contract/list` - Danh sách contracts từ local MongoDB
 - `GET /health` - Health check
 
 **Peer Main Bank (Port 8082) - Endorser Only:**
-- `ProposalRequest()` - Bank endorsement → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
-- `GET /contract/list` - List tất cả contracts từ blockchain-gw
-- `GET /contract/{id}` - Contract details từ blockchain-gw
-- `GET /contract/{id}/ledger` - Contract audit trail từ blockchain-gw
-- `GET /token/issued/{bankId}` - Tokens issued by bank từ blockchain-gw
-- `GET /tokens` - All tokens issued by bank từ blockchain-gw
+- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `GET /contract/list` - List contracts từ local MongoDB
+- `GET /contract/{id}` - Contract details từ local MongoDB
+- `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
+- `GET /token/issued/{bankId}` - Tokens issued by bank từ local MongoDB
+- `GET /tokens` - All tokens issued by bank từ local MongoDB
 
 **Peer Supplier (Port 8083) - Endorser Only:**
-- `ProposalRequest()` - Supplier endorsement → blockchain-gw → ProposalRequest → Endorsement → blockchain-gw SubmitTx
-- `GET /balances/account/{accountId}` - Account balances của supplier từ blockchain-gw
+- `ProposalRequest()` - Nhận proposal từ blockchain-gw → thực thi chaincode → trả endorsement
+- `GET /balances/account/{accountId}` - Account balances từ local MongoDB
 - `GET /health` - Health check
 
 **blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator:**
@@ -145,11 +145,11 @@ Sample PBFT consensus block with signatures:
 ```mermaid
 graph TB
     subgraph "Client Layer"
-        FE[Angular Frontend<br/>SPA Port:4200]
+        FE[Angular Frontend<br/>Port: 4200<br/>SPA]
     end
 
     subgraph "API Gateway Layer"
-        JAVA[Java Spring Boot<br/>Port:8080<br/>Auth & Routing]
+        JAVA[Java Spring Boot<br/>Port: 8080<br/>Auth & Routing]
     end
 
     subgraph "Private Blockchain Network"
@@ -161,55 +161,93 @@ graph TB
         end
 
         subgraph "Peers (Endorsers)"
-            MB[Peer Main Bank<br/>REST:8082]
-            SUP[Peer Supplier<br/>REST:8083]
-            ANC[Peer Anchor<br/>REST:8084]
-        end
+            subgraph "Peer Main Bank"
+                MB_API[Peer API<br/>Port: 8082]
+                MB_ENDORSE[Endorsement Logic]
+                MB_DB[(MongoDB<br/>Private Ledger)]
+            end
 
-        subgraph "Databases"
-            MB_DB[(MongoDB Bank<br/>Private Ledger)]
-            SUP_DB[(MongoDB Supplier<br/>Private Ledger)]
-            ANC_DB[(MongoDB Anchor<br/>Private Ledger)]
-            SHARED_DB[(MongoDB Shared<br/>World State)]
+            subgraph "Peer Supplier"
+                SUP_API[Peer API<br/>Port: 8083]
+                SUP_ENDORSE[Endorsement Logic]
+                SUP_DB[(MongoDB<br/>Private Ledger)]
+            end
+
+            subgraph "Peer Anchor"
+                ANC_API[Peer API<br/>Port: 8084]
+                ANC_ENDORSE[Endorsement Logic]
+                ANC_DB[(MongoDB<br/>Private Ledger)]
+            end
         end
     end
 
     subgraph "Orderer Cluster (PBFT)"
-        ORD1[Orderer Leader<br/>Port:7050]
-        ORD2[Orderer Follower<br/>Port:7060]
-        ORD3[Orderer Follower<br/>Port:7070]
+        ORD1[Orderer Leader<br/>Port: 7050]
+        ORD2[Orderer Follower<br/>Port: 7060]
+        ORD3[Orderer Follower<br/>Port: 7070]
+    end
+
+    subgraph "Shared Services"
+        SHARED_DB[(MongoDB Shared<br/>World State<br/>Managed by blockchain-gw)]
     end
 
     subgraph "Network Topology"
         PUBLIC_NW[Public Network: FE + API GW]
-        PRIVATE_NW[Private Blockchain Network]
-        ORDERER_NW[Orderer Network]
+        PRIVATE_NW[Private Blockchain Network: GW + Peers]
+        ORDERER_NW[Orderer Network: PBFT]
     end
 
+    %% Communication Flow
     FE -->|HTTP| JAVA
     JAVA -->|Forward Request| GW
 
-    GW -->|ProposalRequest| MB
-    GW -->|ProposalRequest| SUP
-    GW -->|ProposalRequest| ANC
+    GW -->|ProposalRequest| MB_API
+    GW -->|ProposalRequest| SUP_API
+    GW -->|ProposalRequest| ANC_API
 
-    MB -->|Endorsement| GW
-    SUP -->|Endorsement| GW
-    ANC -->|Endorsement| GW
+    MB_API --> MB_ENDORSE -->|Endorsement| GW
+    SUP_API --> SUP_ENDORSE -->|Endorsement| GW
+    ANC_API --> ANC_ENDORSE -->|Endorsement| GW
 
     GW -->|SubmitTx + Endorsements| ORD1
+    GW --> SHARED_DB
+
     ORD1 -->|PBFT Consensus| ORD2
     ORD1 -->|PBFT Consensus| ORD3
+    ORD2 -->|Prepare/Commit| ORD1
+    ORD3 -->|Prepare/Commit| ORD1
 
-    ORD1 -->|StreamBlocks| MB
-    ORD1 -->|StreamBlocks| SUP
-    ORD1 -->|StreamBlocks| ANC
+    ORD1 -->|StreamBlocks| GW
+    GW -->|Distribute Blocks| MB_API
+    GW -->|Distribute Blocks| SUP_API
+    GW -->|Distribute Blocks| ANC_API
 
-    MB --> MB_DB
-    SUP --> SUP_DB
-    ANC --> ANC_DB
-    GW --> SHARED_DB
+    MB_API --> MB_DB
+    SUP_API --> SUP_DB
+    ANC_API --> ANC_DB
 ```
+
+## Flow chuẩn Fabric
+
+### Luồng xử lý transaction theo chuẩn Fabric:
+
+1. **User Request**: Frontend Angular → API Gateway (public-facing)
+2. **API Gateway**: Auth + routing → forward sang blockchain-gw (private)
+3. **blockchain-gw**: Sinh ProposalRequest → gửi song song đến peers
+4. **Peers**: Nhận proposal → thực thi chaincode logic → ký RW set → trả endorsement cho blockchain-gw
+5. **blockchain-gw**: Collect endorsements → check endorsement policy
+6. **blockchain-gw**: SubmitTx + endorsements → Orderer PBFT
+7. **Orderer**: Consensus (Pre-Prepare, Prepare, Commit, Finalize) → commit block → stream về blockchain-gw
+8. **blockchain-gw**: Nhận block từ Orderer → distribute đến peers → cập nhật world state
+9. **Response**: blockchain-gw → API Gateway → User
+
+### Nguyên tắc quan trọng:
+- **API Gateway**: Chỉ forward request, không gửi trực tiếp đến peers
+- **blockchain-gw**: Fabric Client duy nhất, tổng hợp endorsements và submit transaction
+- **Peers**: Chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
+- **Orderer**: Chỉ nhận transaction từ blockchain-gw, chỉ stream blocks về blockchain-gw
+- **Block Distribution**: blockchain-gw nhận blocks từ Orderer và distribute đến peers
+- **Databases**: Peers lưu local state, blockchain-gw quản lý world state
 
 ## Luồng nghiệp vụ chi tiết
 
@@ -240,7 +278,10 @@ sequenceDiagram
     GW->>GW: Collect endorsements + Check Policy
     GW->>ORD: Submit TX + endorsements
     ORD->>LED: Commit Block
-    LED-->>GW: TX committed
+    LED-->>GW: Block committed
+    GW->>PeerA: Distribute Block
+    GW->>PeerB: Distribute Block
+    GW->>PeerS: Distribute Block
     GW-->>APIGW(Java): TX result
     APIGW(Java)-->>User: Response
 
