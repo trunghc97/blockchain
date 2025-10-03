@@ -17,21 +17,21 @@
 ### Mục đích
 Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architecture cho Supply Chain Finance là nền tảng phân quyền sử dụng kiến trúc microservices hiện đại. Hệ thống cho phép:
 
-- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster
+- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster, subscribe block events để update Application World State
 - **📡 Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
 - **🏛️ PBFT Consensus**: Practical Byzantine Fault Tolerance đảm bảo global transaction ordering
 - **⚡ High Throughput**: Proposal-Response pattern với endorsement aggregation
 - **🛡️ Fault Tolerance**: PBFT consensus với f=1 fault tolerance trong orderer cluster
-- **🔄 Real-time Sync**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
-- **🏗️ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
+- **🔄 Direct Block Streaming**: Orderer stream blocks trực tiếp đến peers, blockchain-gw subscribe events để update read model
+- **🏗️ Application World State Management**: blockchain-gw quản lý read model trong MongoDB shared để phục vụ query nhanh
 
 ### Phạm vi
 - **Frontend (Angular 17)**: SPA, hiển thị UI cho Anchor, Bank, Supplier với role-based components
 - **API Gateway (Spring Boot 3.1.5)**: Entry point cho user/app, thực hiện auth (JWT), smart routing, public-facing
-- **blockchain-gw (Port 9090)**: Đặt trong Private Blockchain Network, vai trò Fabric Client Service
-- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser Only, thực thi chaincode logic, ký RW set, trả endorsement cho blockchain-gw
-- **Orderer Cluster (PBFT, 3f+1 nodes)**: Nhận TX từ blockchain-gw, thực hiện consensus
-- **Databases**: MongoDB private ở từng peer + MongoDB shared (world state public) do blockchain-gw quản lý
+- **blockchain-gw (Port 9090)**: Đặt trong Private Blockchain Network, vai trò Fabric Client Service + Event Subscriber
+- **Peers (Anchor, Bank, Supplier)**: Vai trò Endorser + Committer, thực thi chaincode logic, ký RW set, trả endorsement cho blockchain-gw, commit blocks từ Orderer
+- **Orderer Cluster (PBFT, 3f+1 nodes)**: Nhận TX từ blockchain-gw, thực hiện consensus, stream blocks trực tiếp đến peers
+- **Databases**: MongoDB private ở từng peer + MongoDB shared (Application World State - read model) do blockchain-gw quản lý
 - **Network phân lớp**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + ledgers) vs Orderer Network (cụm PBFT orderers)
 
 ## Kiến trúc hệ thống
@@ -41,10 +41,10 @@ Hệ thống Blockchain Permissioned Network với Blockchain Gateway Architectu
 #### Tổng quan kiến trúc mới
 Hệ thống đã được nâng cấp với **blockchain-gw** - Blockchain Gateway làm Fabric Client trong Private Blockchain Network:
 
-- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator trong Private Blockchain Network
+- **🔗 blockchain-gw**: Blockchain Gateway chạy trên port 9090 làm Fabric Client + Endorsement Aggregator + Event Subscriber trong Private Blockchain Network
 - **📡 API Gateway**: Spring Boot 3.1.5 nhận request từ frontend, auth, routing → forward sang blockchain-gw
 - **🏗️ Endorsement Pattern**: Peers chỉ thực hiện endorsement, thực thi chaincode logic, ký RW set, trả endorsement cho blockchain-gw
-- **💾 Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
+- **💾 Application World State Management**: blockchain-gw quản lý read model trong MongoDB shared để phục vụ query nhanh
 - **⚡ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers, thu thập endorsements
 - **🏛️ PBFT Consensus**: Byzantine fault tolerant consensus với 3-node cluster
 - **🔒 Network phân lớp**: Public Network (Frontend + API Gateway) vs Private Blockchain Network (blockchain-gw + peers + ledgers) vs Orderer Network (cụm PBFT orderers)
@@ -59,7 +59,7 @@ ProposalRequest(contractID, operation, parameters) → Send to Peers
 CollectEndorsements(endorsements) → ValidationResult
 ValidateEndorsements(endorsements) → PolicyCheck
 SubmitTx(transaction, endorsements) → SubmitResult
-DistributeBlocks(block) → Send to Peers
+SubscribeBlockEvents() → Update Application World State
 
 // Contract Management (Thực thi trong chaincode)
 CreateContract(anchorID, suppliers[], totalAmount, fileHash)
@@ -93,13 +93,13 @@ graph TB
 
     subgraph "Private Blockchain Network"
         subgraph "blockchain-gw (Port 9090)"
-            GW[Blockchain Gateway<br/>Fabric Client<br/>Endorsement Aggregator]
+            GW[Blockchain Gateway<br/>Fabric Client<br/>Endorsement Aggregator<br/>Event Subscriber]
             PROPOSAL[ProposalRequest → Peers]
             COLLECT[Collect Endorsements]
             SUBMIT[SubmitTx → Orderer]
         end
 
-        subgraph "Peers (Endorsers)"
+        subgraph "Peers (Endorsers + Committers)"
             subgraph "Peer Main Bank"
                 MB_API[Peer API<br/>Port: 8082]
                 MB_ENDORSE[Endorsement Logic]
@@ -126,8 +126,8 @@ graph TB
         ORD3[Orderer Follower<br/>Port: 7070]
     end
 
-    subgraph "Shared Services"
-        SHARED_DB[(MongoDB Shared<br/>World State<br/>Managed by blockchain-gw)]
+    subgraph "Application World State (read model)"
+        SHARED_DB[(MongoDB Shared<br/>Application World State<br/>Read Model - Managed by blockchain-gw)]
     end
 
     subgraph "Network Topology"
@@ -156,10 +156,10 @@ graph TB
     ORD2 -->|Prepare/Commit| ORD1
     ORD3 -->|Prepare/Commit| ORD1
 
-    ORD1 -->|StreamBlocks| GW
-    GW -->|Distribute Blocks| MB_API
-    GW -->|Distribute Blocks| SUP_API
-    GW -->|Distribute Blocks| ANC_API
+    ORD1 -->|StreamBlocks| MB_API
+    ORD1 -->|StreamBlocks| SUP_API
+    ORD1 -->|StreamBlocks| ANC_API
+    GW -.->|Subscribe Events| ORD1
 
     MB_API --> MB_DB
     SUP_API --> SUP_DB
@@ -366,18 +366,20 @@ service PeerEndorsementService {
 4. **Peers**: Nhận proposal → thực thi chaincode logic → ký RW set → trả endorsement cho blockchain-gw
 5. **blockchain-gw**: Collect endorsements → check endorsement policy
 6. **blockchain-gw**: SubmitTx + endorsements → Orderer PBFT
-7. **Orderer**: Consensus (Pre-Prepare, Prepare, Commit, Finalize) → commit block → stream về blockchain-gw
-8. **blockchain-gw**: Nhận block từ Orderer → distribute đến peers → cập nhật world state
-9. **Response**: blockchain-gw → API Gateway → User
+7. **Orderer**: Consensus (Pre-Prepare, Prepare, Commit, Finalize) → commit block → stream trực tiếp đến peers
+8. **Peers**: Nhận block từ Orderer → commit vào private ledger
+9. **blockchain-gw**: Subscribe block events từ Orderer → cập nhật Application World State (read model)
+10. **Response**: blockchain-gw → API Gateway → User
 
 #### Nguyên tắc quan trọng:
 - **API Gateway**: Chỉ forward request, không gửi trực tiếp đến peers
 - **blockchain-gw**: Fabric Client duy nhất, tổng hợp endorsements và submit transaction
 - **Peers**: Chỉ thực hiện endorsement (EvaluateProposal), không gửi trực tiếp lên Orderer
-- **Orderer**: Chỉ nhận transaction từ blockchain-gw, chỉ stream blocks về blockchain-gw
-- **Block Distribution**: blockchain-gw nhận blocks từ Orderer và distribute đến peers
-- **Databases**: Peers lưu local state, blockchain-gw quản lý world state
+- **Orderer**: Chỉ nhận transaction từ blockchain-gw, stream blocks trực tiếp đến peers
+- **Direct Block Streaming**: Orderer stream blocks trực tiếp đến peers, blockchain-gw chỉ subscribe events
+- **Databases**: Peers lưu private ledger, blockchain-gw quản lý Application World State (read model)
 - **Endorsement Pattern**: Peers chỉ thực hiện EvaluateProposal, không submit transaction
+- **Event Subscription**: blockchain-gw subscribe block events để update read model, không relay blocks
 - **Fabric Client Role**: blockchain-gw đóng vai trò Fabric Client trong Private Blockchain Network
 - **Peer REST API**: Chỉ có GET endpoints để query data, không có POST endpoints để submit transactions
 
@@ -667,10 +669,10 @@ sequenceDiagram
     ORD->>ORD: PBFT Consensus (Pre-Prepare, Prepare, Commit, Finalize)
     ORD->>LED: Commit Block
     LED-->>ORD: Block committed
-    ORD->>GW: StreamBlocks (finalized block)
-    GW->>PeerA: Distribute Block (gRPC)
-    GW->>PeerB: Distribute Block (gRPC)
-    GW->>PeerS: Distribute Block (gRPC)
+    ORD->>PeerA: StreamBlocks (finalized block)
+    ORD->>PeerB: StreamBlocks (finalized block)
+    ORD->>PeerS: StreamBlocks (finalized block)
+    GW-.->>ORD: Subscribe Block Events
     GW-->>APIGW(Java): TX result (HTTP)
     APIGW(Java)-->>User: Response
 ```
@@ -699,9 +701,10 @@ sequenceDiagram
    - Quorum 2f+1 signatures để commit block
    - f=1 fault tolerance với 3 nodes
 
-5. **Block Distribution**
-   - Orderer stream finalized blocks về blockchain-gw
-   - blockchain-gw distribute blocks đến peers
+5. **Direct Block Streaming**
+   - Orderer stream finalized blocks trực tiếp đến peers
+   - Peers commit blocks vào private ledger
+   - blockchain-gw subscribe block events để update Application World State
    - Peers validate blocks và apply state changes
    - blockchain-gw cập nhật world state
 
@@ -2080,12 +2083,14 @@ flowchart TD
 ## Peer Services Architecture
 
 ### Overview
-Peer services are the endorsing peers in the blockchain network that provide REST API endpoints for querying data and gRPC endpoints for endorsement. Each peer service:
+Peer services are the endorsing peers + committers in the blockchain network that provide REST API endpoints for querying data and gRPC endpoints for endorsement. Each peer service:
 
 - **Runs as a standalone Go microservice**
 - **Receives ProposalRequest from Blockchain Gateway via gRPC**
+- **Receives blocks from Orderer via gRPC streaming**
 - **Maintains isolated MongoDB database**
 - **Implements role-based endorsement logic**
+- **Commits blocks to private ledger**
 - **Only provides GET endpoints for data querying**
 - **Does NOT submit transactions directly to Orderer**
 
@@ -2111,13 +2116,16 @@ type Handler struct {
 - Data querying from local MongoDB
 - Response formatting for data queries
 - gRPC EvaluateProposal endpoint for endorsement
+- gRPC CommitBlock endpoint for block commitment
 - Event logging and local state management
 
-#### 3. **gRPC Endorsement Layer**
+#### 3. **gRPC Endorsement + Block Commitment Layer**
 - **gRPC Server**: Receives ProposalRequest from Blockchain Gateway
+- **gRPC Client**: Receives blocks from Orderer via streaming
 - **Protocol Buffers**: Type-safe RPC communication
 - **Endorsement Logic**: Execute chaincode logic and return RWSet + signature
-- **Connection Management**: Graceful handling of endorsement requests
+- **Block Commitment**: Commit blocks to private ledger
+- **Connection Management**: Graceful handling of endorsement requests and block streaming
 
 #### 4. **Database Layer**
 - **MongoDB Integration**: Isolated per-peer databases
@@ -2196,8 +2204,8 @@ sequenceDiagram
     Handler->>Handler: Execute chaincode logic
     Handler->>GW: Endorsement + RWSet
     GW->>Orderer: SubmitTx + endorsements
-    Orderer->>GW: StreamBlocks
-    GW->>Handler: Distribute Block
+    Orderer->>Handler: StreamBlocks (direct)
+    Handler->>Handler: Commit Block to private ledger
 ```
 
 #### **Error Handling:**

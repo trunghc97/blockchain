@@ -5,12 +5,12 @@
 ### 🆕 **Kiến trúc mới: Blockchain Gateway Architecture**
 Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
-- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster trên port 9090
+- **🔗 blockchain-gw**: Blockchain Gateway - Fabric Client chịu trách nhiệm tổng hợp endorsements và gửi transactions sang Orderer cluster trên port 9090, subscribe block events để update Application World State
 - **📡 gRPC Direct Communication**: Peer services giao tiếp với blockchain-gw qua gRPC APIs để thực hiện endorsement
 - **🏗️ Endorsement Layer**: Peers chỉ đóng vai trò Endorser, chạy chaincode logic và trả về endorsements
-- **💾 State Persistence**: blockchain-gw quản lý world state trong MongoDB shared
+- **💾 Application World State**: blockchain-gw quản lý read model trong MongoDB shared để phục vụ query nhanh
 - **🏛️ PBFT Consensus**: Practical Byzantine Fault Tolerance với 3-node orderer cluster (f=1 fault tolerance)
-- **⚡ Real-time Processing**: gRPC streaming đảm bảo peers nhận blocks ngay lập tức
+- **⚡ Real-time Processing**: Orderer stream blocks trực tiếp đến peers, blockchain-gw subscribe events để update read model
 
 ## Kiến trúc Blockchain Gateway & PBFT Consensus
 
@@ -21,9 +21,9 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 - **✅ Endorsement Pattern**: Peers chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
 - **✅ Proposal-Response Flow**: blockchain-gw gửi ProposalRequest đến peers → peers chạy chaincode → trả endorsement
 - **✅ PBFT Consensus**: 3-node orderer cluster với f=1 fault tolerance, Pre-Prepare → Prepare → Commit → Finalize phases
-- **✅ Centralized State Management**: blockchain-gw quản lý world state trong MongoDB shared
+- **✅ Application World State Management**: blockchain-gw quản lý read model trong MongoDB shared để phục vụ query nhanh
 - **✅ Cryptographic Signatures**: Mỗi orderer ký blocks với ECDSA, quorum 2f+1 signatures
-- **✅ Real-time Block Streaming**: Orderers stream finalized blocks về peers và blockchain-gw
+- **✅ Direct Block Streaming**: Orderers stream finalized blocks trực tiếp đến peers, blockchain-gw subscribe events để update read model
 
 ## Trạng thái triển khai hiện tại ✅
 
@@ -31,14 +31,14 @@ Hệ thống blockchain permissioned với kiến trúc hoàn toàn mới:
 
 | Service | Port | Status | Implementation |
 |---------|------|--------|----------------|
-| **blockchain-gw** | 9090 | ✅ Running | Fabric Client + Endorsement Aggregator - trong Private Blockchain Network |
-| **peer-main-bank** | 8082 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
-| **peer-supplier** | 8083 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
-| **peer-anchor** | 8084 | ✅ Running | Endorser Peer - REST API + endorsement logic, không gửi trực tiếp lên orderer |
-| **orderer-ord1** | 7050 | ✅ Running | PBFT leader, consensus engine, block ordering |
-| **orderer-ord2** | 7060 | ✅ Running | PBFT follower, consensus participant |
-| **orderer-ord3** | 7070 | ✅ Running | PBFT follower, consensus participant |
-| **mongo-shared** | 27017 | ✅ Running | World state database cho blockchain-gw |
+| **blockchain-gw** | 9090 | ✅ Running | Fabric Client + Endorsement Aggregator + Event Subscriber - trong Private Blockchain Network |
+| **peer-main-bank** | 8082 | ✅ Running | Endorser Peer + Committer - REST API + endorsement logic + commit blocks từ Orderer |
+| **peer-supplier** | 8083 | ✅ Running | Endorser Peer + Committer - REST API + endorsement logic + commit blocks từ Orderer |
+| **peer-anchor** | 8084 | ✅ Running | Endorser Peer + Committer - REST API + endorsement logic + commit blocks từ Orderer |
+| **orderer-ord1** | 7050 | ✅ Running | PBFT leader, consensus engine, block ordering + streaming |
+| **orderer-ord2** | 7060 | ✅ Running | PBFT follower, consensus participant + streaming |
+| **orderer-ord3** | 7070 | ✅ Running | PBFT follower, consensus participant + streaming |
+| **mongo-shared** | 27017 | ✅ Running | Application World State (read model) cho blockchain-gw |
 | **backend** | 8080 | ✅ Running | Spring Boot API gateway - public-facing entry point |
 | **frontend** | 4200 | ✅ Running | Angular 17 UI |
 
@@ -112,8 +112,9 @@ Sample PBFT consensus block with signatures:
 
 ### ✅ **Implemented APIs**
 
-**Peer Anchor (Port 8084) - Endorser Only:**
+**Peer Anchor (Port 8084) - Endorser + Committer:**
 - `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
+- `CommitBlock()` - Nhận blocks từ Orderer → commit vào private ledger
 - `GET /contracts` - Danh sách contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
@@ -125,8 +126,9 @@ Sample PBFT consensus block with signatures:
 - `GET /suppliers` - Supplier list từ local MongoDB
 - `GET /health` - Health check
 
-**Peer Main Bank (Port 8082) - Endorser Only:**
+**Peer Main Bank (Port 8082) - Endorser + Committer:**
 - `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
+- `CommitBlock()` - Nhận blocks từ Orderer → commit vào private ledger
 - `GET /contract/list` - List contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
@@ -139,8 +141,9 @@ Sample PBFT consensus block with signatures:
 - `GET /balances/token/{tokenId}` - Token balances từ local MongoDB
 - `GET /health` - Health check
 
-**Peer Supplier (Port 8083) - Endorser Only:**
+**Peer Supplier (Port 8083) - Endorser + Committer:**
 - `EvaluateProposal()` - Nhận ProposalRequest từ blockchain-gw → thực thi chaincode logic → trả Endorsement + RWSet
+- `CommitBlock()` - Nhận blocks từ Orderer → commit vào private ledger
 - `GET /contract/list` - List contracts từ local MongoDB
 - `GET /contract/{id}` - Contract details từ local MongoDB
 - `GET /contract/{id}/ledger` - Contract audit trail từ local MongoDB
@@ -153,16 +156,16 @@ Sample PBFT consensus block with signatures:
 - `GET /balances/token/{tokenId}` - Token balances từ local MongoDB
 - `GET /health` - Health check
 
-**blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator:**
+**blockchain-gw (Port 9090) - Fabric Client + Endorsement Aggregator + Event Subscriber:**
 - `ProposalRequest()` - Gửi ProposalRequest đến peers để lấy endorsements
 - `CollectEndorsements()` - Thu thập endorsements từ peers
 - `ValidateEndorsements()` - Kiểm tra endorsement policy
 - `SubmitTx()` - Gửi transaction + endorsements sang orderer cluster
-- `DistributeBlocks()` - Nhận blocks từ Orderer và distribute đến peers
+- `SubscribeBlockEvents()` - Subscribe block events từ Orderer để update Application World State
 
 **Orderer gRPC APIs (Ports 7050-7070):**
 - `SubmitTx(Transaction) → SubmitTxReply` - Submit transaction for PBFT consensus
-- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks to blockchain-gw
+- `StreamBlocks(StreamBlocksReq) → stream Block` - Stream finalized blocks trực tiếp đến peers
 - `Consensus(ConsensusMsg) → Ack` - PBFT consensus messages between orderers
 
 ```mermaid
@@ -177,13 +180,13 @@ graph TB
 
     subgraph "Private Blockchain Network"
         subgraph "blockchain-gw (Port 9090)"
-            GW[Blockchain Gateway<br/>Fabric Client<br/>Endorsement Aggregator]
+            GW[Blockchain Gateway<br/>Fabric Client<br/>Endorsement Aggregator<br/>Event Subscriber]
             PROPOSAL[ProposalRequest → Peers]
             COLLECT[Collect Endorsements]
             SUBMIT[SubmitTx → Orderer]
         end
 
-        subgraph "Peers (Endorsers)"
+        subgraph "Peers (Endorsers + Committers)"
             subgraph "Peer Main Bank"
                 MB_API[Peer API<br/>Port: 8082]
                 MB_ENDORSE[Endorsement Logic]
@@ -210,8 +213,8 @@ graph TB
         ORD3[Orderer Follower<br/>Port: 7070]
     end
 
-    subgraph "Shared Services"
-        SHARED_DB[(MongoDB Shared<br/>World State<br/>Managed by blockchain-gw)]
+    subgraph "Application World State (read model)"
+        SHARED_DB[(MongoDB Shared<br/>Application World State<br/>Read Model - Managed by blockchain-gw)]
     end
 
     subgraph "Network Topology"
@@ -240,10 +243,10 @@ graph TB
     ORD2 -->|Prepare/Commit| ORD1
     ORD3 -->|Prepare/Commit| ORD1
 
-    ORD1 -->|StreamBlocks| GW
-    GW -->|Distribute Blocks| MB_API
-    GW -->|Distribute Blocks| SUP_API
-    GW -->|Distribute Blocks| ANC_API
+    ORD1 -->|StreamBlocks| MB_API
+    ORD1 -->|StreamBlocks| SUP_API
+    ORD1 -->|StreamBlocks| ANC_API
+    GW -.->|Subscribe Events| ORD1
 
     MB_API --> MB_DB
     SUP_API --> SUP_DB
@@ -260,18 +263,20 @@ graph TB
 4. **Peers**: Nhận proposal → thực thi chaincode logic → ký RW set → trả endorsement cho blockchain-gw
 5. **blockchain-gw**: Collect endorsements → check endorsement policy
 6. **blockchain-gw**: SubmitTx + endorsements → Orderer PBFT
-7. **Orderer**: Consensus (Pre-Prepare, Prepare, Commit, Finalize) → commit block → stream về blockchain-gw
-8. **blockchain-gw**: Nhận block từ Orderer → distribute đến peers → cập nhật world state
-9. **Response**: blockchain-gw → API Gateway → User
+7. **Orderer**: Consensus (Pre-Prepare, Prepare, Commit, Finalize) → commit block → stream trực tiếp đến peers
+8. **Peers**: Nhận block từ Orderer → commit vào private ledger
+9. **blockchain-gw**: Subscribe block events từ Orderer → cập nhật Application World State (read model)
+10. **Response**: blockchain-gw → API Gateway → User
 
 ### Nguyên tắc quan trọng:
 - **API Gateway**: Chỉ forward request, không gửi trực tiếp đến peers
 - **blockchain-gw**: Fabric Client duy nhất, tổng hợp endorsements và submit transaction
 - **Peers**: Chỉ thực hiện endorsement, không gửi trực tiếp lên Orderer
-- **Orderer**: Chỉ nhận transaction từ blockchain-gw, chỉ stream blocks về blockchain-gw
-- **Block Distribution**: blockchain-gw nhận blocks từ Orderer và distribute đến peers
-- **Databases**: Peers lưu local state, blockchain-gw quản lý world state
+- **Orderer**: Chỉ nhận transaction từ blockchain-gw, stream blocks trực tiếp đến peers
+- **Direct Block Streaming**: Orderer stream blocks trực tiếp đến peers, blockchain-gw chỉ subscribe events
+- **Databases**: Peers lưu private ledger, blockchain-gw quản lý Application World State (read model)
 - **Endorsement Pattern**: Peers chỉ thực hiện EvaluateProposal, không submit transaction
+- **Event Subscription**: blockchain-gw subscribe block events để update read model, không relay blocks
 - **Fabric Client Role**: blockchain-gw đóng vai trò Fabric Client trong Private Blockchain Network
 
 ## Luồng nghiệp vụ chi tiết
@@ -305,10 +310,10 @@ sequenceDiagram
     ORD->>ORD: PBFT Consensus (Pre-Prepare, Prepare, Commit, Finalize)
     ORD->>LED: Commit Block
     LED-->>ORD: Block committed
-    ORD->>GW: StreamBlocks (finalized block)
-    GW->>PeerA: Distribute Block
-    GW->>PeerB: Distribute Block
-    GW->>PeerS: Distribute Block
+    ORD->>PeerA: StreamBlocks (finalized block)
+    ORD->>PeerB: StreamBlocks (finalized block)
+    ORD->>PeerS: StreamBlocks (finalized block)
+    GW-.->>ORD: Subscribe Block Events
     GW-->>APIGW(Java): TX result
     APIGW(Java)-->>User: Response
 
