@@ -499,28 +499,35 @@ graph TD
 ### PBFT Phases
 
 #### 1. Pre-Prepare Phase
-- Leader orderer nhận transaction từ peer
-- Validate transaction format và signatures
-- Broadcast Pre-Prepare message đến followers
-- Include proposed block với transaction
+* Leader (Primary) nhận client request (transaction).
+* Leader kiểm tra hợp lệ (chữ ký, định dạng, không rác).
+* Leader tạo Pre-Prepare message gồm:
+* * View number v
+* * Sequence number n
+* * Digest (hash) của request
+* Leader broadcast Pre-Prepare tới tất cả replicas.
 
 #### 2. Prepare Phase
-- Followers nhận Pre-Prepare message
-- Validate proposed block
-- Send Prepare message đến leader
-- Quorum 2f+1 Prepare messages required
+* Mỗi Replica nhận Pre-Prepare:
+* * Xác thực chữ ký của leader, kiểm tra view number, sequence number, digest.
+* * Nếu hợp lệ → broadcast Prepare message (v, n, digest) tới tất cả replicas (bao gồm leader).
+* Điều kiện để một replica chấp nhận tiến tới Commit:
+* * Nhận được ít nhất 2f Prepare messages khớp nhau từ các replicas khác.
+* * Tổng cộng có 2f+1 thông điệp khớp (bao gồm chính nó).
 
 #### 3. Commit Phase
-- Leader nhận Prepare messages
-- Broadcast Commit message đến followers
-- Followers send Commit message đến leader
-- Quorum 2f+1 Commit messages required
+* Sau khi đủ Prepare quorum, mỗi replica broadcast Commit message (v, n, digest) tới tất cả replicas.
+* Replica “chốt” transaction khi:
+* * Nhận đủ 2f+1 Commit messages giống nhau.
+* Khi commit thành công:
+* * Transaction/block được đánh dấu “executed”.
+* * Replica ghi dữ liệu vào ledger / world state.
 
-#### 4. Finalize Phase
-- Block được finalized với ECDSA signatures
-- Calculate Merkle root và block hash
-- Stream finalized block đến peers
-- Peers validate và apply block
+#### Finalization (Hậu quả sau Commit)
+* Cập nhật state machine (world state).
+* Tính toán Merkle root và block hash.
+* (Blockchain) có thể yêu cầu chữ ký mật mã (ECDSA/BLS) cho block → tạo bằng chứng mật mã đồng thuận.
+* Gửi phản hồi “committed” về client.
 
 ### PBFT Configuration
 
