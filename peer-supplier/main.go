@@ -14,6 +14,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"google.golang.org/grpc"
 
+	"peer-supplier/blockstream"
 	"peer-supplier/endorsement"
 	"peer-supplier/handlers"
 	pb "peer-supplier/proto"
@@ -68,6 +69,11 @@ func main() {
 
 	// Initialize handlers
 	h := handlers.NewHandler(db)
+
+	// Initialize block streaming service (receive blocks from Orderer)
+	blockStreamService := blockstream.NewBlockStreamService(db)
+	ctx2 := context.Background()
+	blockStreamService.StartBlockStreaming(ctx2)
 
 	// Setup routes
 	router := mux.NewRouter()

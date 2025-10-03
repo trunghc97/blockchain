@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 
 	"peer-anchor/blockchain"
+	"peer-anchor/blockstream"
 	"peer-anchor/config"
 	"peer-anchor/db"
 	"peer-anchor/endorsement"
@@ -35,6 +36,11 @@ func main() {
 	// Initialize block builder
 	blockBuilder := blockchain.NewBlockBuilder(database)
 	blockBuilder.Start()
+
+	// Initialize block streaming service (receive blocks from Orderer)
+	blockStreamService := blockstream.NewBlockStreamService()
+	ctx := context.Background()
+	blockStreamService.StartBlockStreaming(ctx)
 
 	// Initialize router
 	router := mux.NewRouter()

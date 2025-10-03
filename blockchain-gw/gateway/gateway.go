@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"blockchain-gw/endorser"
 	orderer_client "blockchain-gw/orderer-client"
@@ -13,9 +14,10 @@ import (
 
 type BlockchainGateway struct {
 	pb.UnimplementedBlockchainGatewayServer
-	endorserClient *endorser.EndorserClient
-	ordererClient  *orderer_client.OrdererClient
-	policy         *EndorsementPolicy
+	endorserClient  *endorser.EndorserClient
+	ordererClient   *orderer_client.OrdererClient
+	policy          *EndorsementPolicy
+	eventSubscriber *EventSubscriber
 }
 
 type EndorsementPolicy struct {
@@ -23,9 +25,61 @@ type EndorsementPolicy struct {
 	MinEndorsements int
 }
 
+type EventSubscriber struct {
+	ordererClient *orderer_client.OrdererClient
+	worldState    map[string]interface{} // Application World State (read model)
+	mutex         sync.RWMutex
+}
+
+func NewEventSubscriber(ordererClient *orderer_client.OrdererClient) *EventSubscriber {
+	return &EventSubscriber{
+		ordererClient: ordererClient,
+		worldState:    make(map[string]interface{}),
+	}
+}
+
+func (es *EventSubscriber) SubscribeBlockEvents(ctx context.Context) {
+	log.Println("Starting block event subscription...")
+
+	// Simulate subscribing to orderer block events
+	// In real implementation, this would be a gRPC stream
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("Block event subscription stopped")
+				return
+			default:
+				// Simulate receiving block events
+				// In real implementation, this would receive actual block events from orderer
+				time.Sleep(5 * time.Second)
+				log.Println("Received block event - updating Application World State")
+
+				// Update Application World State (read model)
+				es.updateWorldState("latest_block", time.Now().Unix())
+			}
+		}
+	}()
+}
+
+func (es *EventSubscriber) updateWorldState(key string, value interface{}) {
+	es.mutex.Lock()
+	defer es.mutex.Unlock()
+	es.worldState[key] = value
+	log.Printf("Updated Application World State: %s = %v", key, value)
+}
+
+func (es *EventSubscriber) GetWorldState(key string) (interface{}, bool) {
+	es.mutex.RLock()
+	defer es.mutex.RUnlock()
+	value, exists := es.worldState[key]
+	return value, exists
+}
+
 func NewBlockchainGateway() *BlockchainGateway {
 	endorserClient := endorser.NewEndorserClient()
 	ordererClient := orderer_client.NewOrdererClient()
+	eventSubscriber := NewEventSubscriber(ordererClient)
 
 	// Default endorsement policy: require Anchor + Bank
 	policy := &EndorsementPolicy{
@@ -33,11 +87,18 @@ func NewBlockchainGateway() *BlockchainGateway {
 		MinEndorsements: 2,
 	}
 
-	return &BlockchainGateway{
-		endorserClient: endorserClient,
-		ordererClient:  ordererClient,
-		policy:         policy,
+	gateway := &BlockchainGateway{
+		endorserClient:  endorserClient,
+		ordererClient:   ordererClient,
+		policy:          policy,
+		eventSubscriber: eventSubscriber,
 	}
+
+	// Start block event subscription
+	ctx := context.Background()
+	eventSubscriber.SubscribeBlockEvents(ctx)
+
+	return gateway
 }
 
 func (bg *BlockchainGateway) SubmitTransaction(ctx context.Context, req *pb.TransactionProposal) (*pb.TransactionResponse, error) {
@@ -166,3 +227,27 @@ func (bg *BlockchainGateway) checkEndorsementPolicy(endorsements []*pb.Endorseme
 
 	return true
 }
+
+/*
+func (bg *BlockchainGateway) GetApplicationWorldState(ctx context.Context, req *pb.WorldStateRequest) (*pb.WorldStateResponse, error) {
+	log.Printf("Querying Application World State for key: %s", req.Key)
+
+	value, exists := bg.eventSubscriber.GetWorldState(req.Key)
+	if !exists {
+		return &pb.WorldStateResponse{
+			Key:    req.Key,
+			Exists: false,
+			Value:  "",
+		}, nil
+	}
+
+	// Convert value to string for response
+	valueStr := fmt.Sprintf("%v", value)
+
+	return &pb.WorldStateResponse{
+		Key:    req.Key,
+		Exists: true,
+		Value:  valueStr,
+	}, nil
+}
+*/

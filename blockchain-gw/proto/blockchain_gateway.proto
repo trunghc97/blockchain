@@ -11,6 +11,9 @@ service BlockchainGateway {
   
   // Get transaction status
   rpc GetTransactionStatus(TransactionStatusRequest) returns (TransactionStatusResponse);
+  
+  // Get Application World State (read model)
+  rpc GetApplicationWorldState(WorldStateRequest) returns (WorldStateResponse);
 }
 
 // Transaction Proposal from API Gateway
@@ -57,6 +60,18 @@ message TransactionStatusResponse {
   string status = 2; // PENDING, COMMITTED, FAILED
   string block_number = 3;
   string error_message = 4;
+}
+
+// World State Request
+message WorldStateRequest {
+  string key = 1;
+}
+
+// World State Response
+message WorldStateResponse {
+  string key = 1;
+  bool exists = 2;
+  string value = 3;
 }
 
 // Peer Endorsement Service
