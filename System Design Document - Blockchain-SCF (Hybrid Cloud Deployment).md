@@ -207,7 +207,7 @@ graph TB
 
     %% =========== NETWORK LINKS ===========
     GW -.->|VPN / Direct Connect| MB1_ORD
-    GW -.->|VPN / Direct Connect (Region-B)| MB2_ORD
+    GW -.->|VPN / Direct Connect| MB2_ORD
 ```
 
 ---
