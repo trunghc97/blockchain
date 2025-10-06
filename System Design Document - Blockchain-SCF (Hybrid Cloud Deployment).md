@@ -135,77 +135,79 @@ The goal is to combine the scalability and integration capabilities of cloud inf
 
 ```mermaid
 graph TB
+    %% ================= CLOUD =================
     subgraph Cloud
-        FE[Angular Frontend<br/>SPA - CloudFront/S3]
-        JAVA[API Gateway - Java Spring Boot<br/>K8s/EKS/GKE/AKS]
-        GW[blockchain-gw<br/>Fabric Client + Endorsement Aggregator<br/>K8s Private Subnet]
-        SHARED_DB[(MongoDB Atlas / DocumentDB<br/>Application Read Model)]
+        FE[Angular Frontend<br/>CloudFront/S3]
+        API[API Gateway<br/>Spring Boot - EKS]
+        GW[blockchain-gw<br/>Fabric Client<br/>Cloud Private Subnet]
+        SHARED_DB[(MongoDB Atlas<br/>Read Model)]
     end
 
-    subgraph On-Premise Consortium
-        subgraph "Peers (Endorsers + Committers)"
-            subgraph "Peer Main Bank"
-                MB_API[Peer API<br/>Port: 8082]
-                MB_ENDORSE[Endorsement Logic]
-                MB_DB[(MongoDB Ledger - MB)]
-            end
-
-            subgraph "Peer Supplier"
-                SUP_API[Peer API<br/>Port: 8083]
-                SUP_ENDORSE[Endorsement Logic]
-                SUP_DB[(MongoDB Ledger - Supplier)]
-            end
-
-            subgraph "Peer Anchor"
-                ANC_API[Peer API<br/>Port: 8084]
-                ANC_ENDORSE[Endorsement Logic]
-                ANC_DB[(MongoDB Ledger - Anchor)]
-            end
-        end
-
-        subgraph "Orderer Cluster (PBFT)"
-            ORD1[Orderer Leader<br/>Port: 7050]
-            ORD2[Orderer Follower<br/>Port: 7060]
-            ORD3[Orderer Follower<br/>Port: 7070]
-        end
+    %% ================= MAIN BANK 1 =================
+    subgraph "On-Prem Region A (Main Bank 1)"
+        MB1_PEER[Peer - Main Bank 1<br/>Port:8082]
+        MB1_DB[(MongoDB Ledger - MB1)]
+        MB1_ORD[Orderer-MB1<br/>Leader<br/>Port:7050]
     end
 
-    subgraph "Network Topology"
-        PUBLIC_NW[Public Cloud Network: FE + API GW + blockchain-gw]
-        PRIVATE_NW[On-Premise Network: Peers]
-        ORDERER_NW[On-Premise Network: Orderers]
+    %% ================= SUPPLIER =================
+    subgraph "On-Prem Region A (Supplier)"
+        SUP_PEER[Peer - Supplier<br/>Port:8083]
+        SUP_DB[(MongoDB Ledger - Supplier)]
     end
 
-    %% Flow
-    FE -->|HTTPS| JAVA
-    JAVA -->|Forward Request| GW
+    %% ================= ANCHOR =================
+    subgraph "On-Prem Region A (Anchor)"
+        ANC_PEER[Peer - Anchor<br/>Port:8084]
+        ANC_DB[(MongoDB Ledger - Anchor)]
+    end
 
-    GW -->|ProposalRequest| MB_API
-    GW -->|ProposalRequest| SUP_API
-    GW -->|ProposalRequest| ANC_API
+    %% ================= MAIN BANK 2 =================
+    subgraph "On-Prem Region B (Main Bank 2)"
+        MB2_PEER[Peer - Main Bank 2<br/>Port:8085]
+        MB2_DB[(MongoDB Ledger - MB2)]
+        MB2_ORD[Orderer-MB2<br/>Follower<br/>Port:7060]
+    end
 
-    MB_API --> MB_ENDORSE -->|Endorsement| GW
-    SUP_API --> SUP_ENDORSE -->|Endorsement| GW
-    ANC_API --> ANC_ENDORSE -->|Endorsement| GW
+    %% ================= PBFT ORDERER CLUSTER =================
+    subgraph "Orderer Cluster (PBFT)"
+        MB1_ORD -->|Pre-Prepare/Prepare/Commit| MB2_ORD
+        MB1_ORD -->|Consensus| ANC_PEER
+    end
 
-    GW -->|SubmitTx + Endorsements| ORD1
+    %% ================= CONNECTIONS =================
+    FE -->|HTTPS| API
+    API -->|Forward Tx| GW
 
-    ORD1 -->|PBFT Consensus| ORD2
-    ORD1 -->|PBFT Consensus| ORD3
-    ORD2 -->|Prepare/Commit| ORD1
-    ORD3 -->|Prepare/Commit| ORD1
+    GW -->|ProposalRequest| MB1_PEER
+    GW -->|ProposalRequest| MB2_PEER
+    GW -->|ProposalRequest| SUP_PEER
+    GW -->|ProposalRequest| ANC_PEER
 
-    %% Block distribution
-    ORD1 -->|StreamBlocks| MB_API
-    ORD1 -->|StreamBlocks| SUP_API
-    ORD1 -->|StreamBlocks| ANC_API
-    GW -.->|Subscribe Events| ORD1
+    MB1_PEER -->|Endorsement| GW
+    MB2_PEER -->|Endorsement| GW
+    SUP_PEER -->|Endorsement| GW
+    ANC_PEER -->|Endorsement| GW
 
-    %% Databases
-    MB_API --> MB_DB
-    SUP_API --> SUP_DB
-    ANC_API --> ANC_DB
+    GW -->|SubmitTx + Endorsements| MB1_ORD
+    MB1_ORD -->|PBFT Replication| MB2_ORD
+
+    %% =========== BLOCK STREAM ===========
+    MB1_ORD -->|Stream Block| MB1_PEER
+    MB1_ORD -->|Stream Block| SUP_PEER
+    MB1_ORD -->|Stream Block| ANC_PEER
+    MB2_ORD -->|Stream Block| MB2_PEER
+
+    %% =========== LEDGERS ===========
+    MB1_PEER --> MB1_DB
+    MB2_PEER --> MB2_DB
+    SUP_PEER --> SUP_DB
+    ANC_PEER --> ANC_DB
     GW --> SHARED_DB
+
+    %% =========== NETWORK LINKS ===========
+    GW -.->|VPN / Direct Connect| MB1_ORD
+    GW -.->|VPN / Direct Connect (Region-B)| MB2_ORD
 ```
 
 ---
