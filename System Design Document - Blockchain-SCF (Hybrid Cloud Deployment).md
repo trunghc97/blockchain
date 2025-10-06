@@ -143,42 +143,49 @@ graph TB
         SHARED_DB[(MongoDB Atlas<br/>Read Model)]
     end
 
-    %% ================= MAIN BANK 1 =================
-    subgraph "On-Prem Region A (Main Bank 1)"
-        MB1_PEER[Peer - Main Bank 1<br/>Port:8082]
-        MB1_DB[(MongoDB Ledger - MB1)]
-        MB1_ORD[Orderer-MB1<br/>Leader<br/>Port:7050]
+    %% ================= ON-PREM REGION A =================
+    subgraph "On-Prem Region A"
+        %% ---- Main Bank 1 ----
+        subgraph "Main Bank 1"
+            MB1_PEER[Peer - Main Bank 1<br/>Port:8082]
+            MB1_DB[(MongoDB Ledger - MB1)]
+        end
+
+        %% ---- Supplier ----
+        subgraph "Supplier"
+            SUP_PEER[Peer - Supplier<br/>Port:8083]
+            SUP_DB[(MongoDB Ledger - Supplier)]
+        end
+
+        %% ---- Anchor ----
+        subgraph "Anchor"
+            ANC_PEER[Peer - Anchor<br/>Port:8084]
+            ANC_DB[(MongoDB Ledger - Anchor)]
+        end
+
+        %% ---- Orderer Cluster (PBFT) only in Region A ----
+        subgraph "Orderer Cluster (PBFT)"
+            ORD1[Orderer-1<br/>Leader<br/>Port:7050]
+            ORD2[Orderer-2<br/>Follower<br/>Port:7060]
+            ORD3[Orderer-3<br/>Follower<br/>Port:7070]
+            ORD1 -->|Pre-Prepare/Prepare/Commit| ORD2
+            ORD1 -->|Pre-Prepare/Prepare/Commit| ORD3
+            ORD2 -->|Prepare/Commit| ORD1
+            ORD3 -->|Prepare/Commit| ORD1
+        end
     end
 
-    %% ================= SUPPLIER =================
-    subgraph "On-Prem Region A (Supplier)"
-        SUP_PEER[Peer - Supplier<br/>Port:8083]
-        SUP_DB[(MongoDB Ledger - Supplier)]
-    end
-
-    %% ================= ANCHOR =================
-    subgraph "On-Prem Region A (Anchor)"
-        ANC_PEER[Peer - Anchor<br/>Port:8084]
-        ANC_DB[(MongoDB Ledger - Anchor)]
-    end
-
-    %% ================= MAIN BANK 2 =================
+    %% ================= ON-PREM REGION B =================
     subgraph "On-Prem Region B (Main Bank 2)"
         MB2_PEER[Peer - Main Bank 2<br/>Port:8085]
         MB2_DB[(MongoDB Ledger - MB2)]
-        MB2_ORD[Orderer-MB2<br/>Follower<br/>Port:7060]
-    end
-
-    %% ================= PBFT ORDERER CLUSTER =================
-    subgraph "Orderer Cluster (PBFT)"
-        MB1_ORD -->|Pre-Prepare/Prepare/Commit| MB2_ORD
-        MB1_ORD -->|Consensus| ANC_PEER
     end
 
     %% ================= CONNECTIONS =================
     FE -->|HTTPS| API
     API -->|Forward Tx| GW
 
+    %% Endorsement path
     GW -->|ProposalRequest| MB1_PEER
     GW -->|ProposalRequest| MB2_PEER
     GW -->|ProposalRequest| SUP_PEER
@@ -189,25 +196,22 @@ graph TB
     SUP_PEER -->|Endorsement| GW
     ANC_PEER -->|Endorsement| GW
 
-    GW -->|SubmitTx + Endorsements| MB1_ORD
-    MB1_ORD -->|PBFT Replication| MB2_ORD
+    %% Submit to Orderer (consensus stays in Region A)
+    GW -.->|VPN / Direct Connect| ORD1
+    GW -->|SubmitTx + Endorsements| ORD1
 
-    %% =========== BLOCK STREAM ===========
-    MB1_ORD -->|Stream Block| MB1_PEER
-    MB1_ORD -->|Stream Block| SUP_PEER
-    MB1_ORD -->|Stream Block| ANC_PEER
-    MB2_ORD -->|Stream Block| MB2_PEER
+    %% Block distribution to ALL peers (incl. Region B)
+    ORD1 -->|Stream Block| MB1_PEER
+    ORD1 -->|Stream Block| SUP_PEER
+    ORD1 -->|Stream Block| ANC_PEER
+    ORD1 -.->|Stream Block via VPN| MB2_PEER
 
-    %% =========== LEDGERS ===========
+    %% Databases
     MB1_PEER --> MB1_DB
     MB2_PEER --> MB2_DB
     SUP_PEER --> SUP_DB
     ANC_PEER --> ANC_DB
     GW --> SHARED_DB
-
-    %% =========== NETWORK LINKS ===========
-    GW -.->|VPN / Direct Connect| MB1_ORD
-    GW -.->|VPN / Direct Connect| MB2_ORD
 ```
 
 ---
