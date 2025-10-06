@@ -318,7 +318,7 @@ sequenceDiagram
     APIGW(Java)-->>User: Response
 
 ## Data Flow Architecture
-
+```
 ### Luồng xử lý dữ liệu hoàn chỉnh:
 
 ```mermaid
